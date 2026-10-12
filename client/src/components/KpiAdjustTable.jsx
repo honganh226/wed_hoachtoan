@@ -573,6 +573,10 @@ export default function KpiAdjustTable({ dateFilter = {}, currentUser }) {
                 </span>
               )}
             </p>
+            <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
+              <span>ℹ️</span>
+              <span>Nguồn thử nghiệm: Bộ 33 chuyến theo dõi tài xế. Độc lập với 77 dòng Excel tháng 1.</span>
+            </div>
           </div>
 
           <div className="flex items-center space-x-2">

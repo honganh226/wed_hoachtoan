@@ -115,6 +115,10 @@ export default function PayrollView({ currentUser }) {
                 <p className="text-xs text-slate-500">
                   Chuẩn công thức: Lương cứng + Lương công chuyến + Khoản động viên GĐ - Tạm ứng
                 </p>
+                <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
+                  <span>ℹ️</span>
+                  <span>Nguồn thử nghiệm: Bộ 33 chuyến & bảng lương (kỳ 09-10/2026). Độc lập với 77 dòng Excel tháng 1.</span>
+                </div>
               </div>
             </div>
           </div>

@@ -133,6 +133,16 @@ export default function App() {
     if (initialUrlTab === 'trips') return 'trips';
     return 'business_overview';
   });
+  const [lastFleetView, setLastFleetView] = useState(null);
+  const [lastSystemView, setLastSystemView] = useState('help');
+  useEffect(() => {
+    if (activeModule === 'fleet' && ['vehicles', 'kpi', 'payroll', 'driver_app'].includes(subView)) {
+      setLastFleetView(subView);
+    }
+    if (activeModule === 'system' && ['help', 'backup'].includes(subView)) {
+      setLastSystemView(subView);
+    }
+  }, [activeModule, subView]);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
@@ -233,6 +243,18 @@ export default function App() {
       setActiveModule('overview');
       setSubView('business_overview');
       setActiveTab('business_overview');
+    } else if (tab === 'kpi') {
+      setActiveModule('fleet');
+      setSubView('kpi');
+      setActiveTab('kpi');
+    } else if (tab === 'vehicles' || tab === 'maintenance') {
+      setActiveModule('fleet');
+      setSubView('vehicles');
+      setActiveTab('maintenance');
+    } else if (tab === 'payroll') {
+      setActiveModule('fleet');
+      setSubView('payroll');
+      setActiveTab('payroll');
     } else {
       setActiveTab(tab);
     }
@@ -643,177 +665,187 @@ export default function App() {
         ) : (
           <>
             {/* ============================================================
-                THANH ĐIỀU HƯỚNG PHÂN HỆ CỐT LÕI THEO PHÂN QUYỀN RBAC (1 TẦNG DUY NHẤT)
+                THANH ĐIỀU HƯỚNG 2 TẦNG (CHUẨN DOANH NGHIỆP: TAB CON NẰM DƯỚI TAB CHA)
                 ============================================================ */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
-              {/* Segmented Tabs chuẩn 1 tầng duy nhất */}
-              <div className="inline-flex p-1 bg-slate-100 rounded-xl space-x-1 overflow-x-auto max-w-full">
-                {/* Tab Tổng Quan Kinh Doanh (Giám Đốc, Kế Toán) */}
-                {(isDirector || isAccountant) && (
+            <div className="space-y-2 border-b border-slate-200 pb-3">
+              {/* TẦNG 1: HÀNG TAB CHÍNH NỔI BẬT */}
+              <div className="flex items-center overflow-x-auto no-scrollbar py-0.5">
+                <div className="inline-flex p-1 bg-slate-100 rounded-xl space-x-1 shrink-0">
+                  {/* Tab Tổng Quan Kinh Doanh (Giám Đốc, Kế Toán) */}
+                  {(isDirector || isAccountant) && (
+                    <button
+                      onClick={() => { setActiveModule('overview'); setSubView('business_overview'); setActiveTab('business_overview'); }}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
+                        activeModule === 'overview'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <TrendingUp className="w-4 h-4 text-slate-500" />
+                      <span>{isAccountant ? 'P&L & Tổng quan' : 'Tổng quan kinh doanh'}</span>
+                      <span className={`w-1.5 h-1.5 rounded-full ${isPlConnected ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                    </button>
+                  )}
+
+                  {/* Tab Chuyến Xe (Giám Đốc, Kế Toán, Quản Lý Khu) */}
                   <button
-                    onClick={() => { setActiveModule('overview'); setSubView('business_overview'); setActiveTab('business_overview'); }}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 shrink-0 ${
-                      activeTab === 'business_overview'
-                        ? 'bg-white text-slate-900 shadow-xs'
+                    onClick={() => { setActiveModule('trips'); setActiveTab('trips'); }}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
+                      activeModule === 'trips'
+                        ? 'bg-white text-slate-900 shadow-sm'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    <TrendingUp className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{isAccountant ? 'P&L & Tổng Quan' : 'Tổng Quan Kinh Doanh'}</span>
-                    <span className={`w-1.5 h-1.5 rounded-full ${isPlConnected ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                    <Truck className="w-4 h-4 text-slate-500" />
+                    <span>
+                      {isAreaManager ? `Chuyến xe khu vực (${sampleTrips.length})` : isAccountant ? `Đối soát chuyến xe (${sampleTrips.length})` : `Chuyến xe (${sampleTrips.length})`}
+                    </span>
                   </button>
-                )}
 
-                {/* Tab Chuyến Xe (Giám Đốc, Kế Toán, Quản Lý Khu) */}
-                <button
-                  onClick={() => { setActiveModule('trips'); setActiveTab('trips'); }}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 shrink-0 ${
-                    activeTab === 'trips'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Truck className="w-3.5 h-3.5 text-slate-500" />
-                  <span>
-                    {isAreaManager ? `Chuyến Xe Khu Vực (${sampleTrips.length})` : isAccountant ? `Đối Soát Chuyến Xe (${sampleTrips.length})` : `Chuyến Xe (${sampleTrips.length})`}
-                  </span>
-                </button>
+                  {/* Tab Công Nợ (Giám Đốc / Kế Toán) */}
+                  {(isDirector || isAccountant) && (
+                    <button
+                      onClick={() => { setActiveModule('debts'); setActiveTab('debts'); }}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
+                        activeModule === 'debts'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <CreditCard className="w-4 h-4 text-slate-500" />
+                      <span>Công nợ</span>
+                    </button>
+                  )}
 
-                {/* Tab Công Nợ (Giám Đốc / Kế Toán) */}
-                {(isDirector || isAccountant) && (
+                  {/* Tab Đội Xe & Lương (Luôn đánh dấu chọn khi xem bất kỳ tab con nào của mục này) */}
                   <button
-                    onClick={() => { setActiveModule('debts'); setActiveTab('debts'); }}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 shrink-0 ${
-                      activeTab === 'debts'
-                        ? 'bg-white text-slate-900 shadow-xs'
+                    onClick={() => {
+                      const permittedViews = isAreaManager ? ['vehicles'] : isAccountant ? ['vehicles', 'kpi', 'payroll'] : ['vehicles', 'kpi', 'payroll', 'driver_app'];
+                      const nextView = permittedViews.includes(lastFleetView) ? lastFleetView : (isAccountant ? 'payroll' : 'vehicles');
+                      setActiveModule('fleet');
+                      setSubView(nextView);
+                      setActiveTab(nextView === 'vehicles' ? 'maintenance' : nextView);
+                    }}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
+                      activeModule === 'fleet'
+                        ? 'bg-white text-slate-900 shadow-sm'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    <CreditCard className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Công Nợ Doanh Nghiệp</span>
+                    <Users className="w-4 h-4 text-slate-500" />
+                    <span>
+                      {isAreaManager ? 'Xe & Chi phí khu vực' : isAccountant ? 'Lương & Tạm ứng' : 'Đội xe & Lương'}
+                    </span>
                   </button>
-                )}
 
-                {/* Tab Đội Xe & Lương / Chi Phí Khu Vực */}
-                <button
-                  onClick={() => {
-                    setActiveModule('fleet');
-                    if (isAreaManager) {
-                      setSubView('vehicles');
-                      setActiveTab('maintenance');
-                    } else if (isAccountant) {
-                      setSubView('payroll');
-                      setActiveTab('payroll');
-                    } else {
-                      setSubView('kpi');
-                      setActiveTab('kpi');
-                    }
-                  }}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 shrink-0 ${
-                    activeModule === 'fleet'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5 text-slate-500" />
-                  <span>
-                    {isAreaManager ? 'Xe & Chi Phí Khu Vực' : isAccountant ? 'Lương & Tạm Ứng' : 'Đội Xe & Lương'}
-                  </span>
-                </button>
-
-                {/* Tab Cẩm Nang SOP & Quản Trị */}
-                <button
-                  onClick={() => { setActiveModule('system'); setSubView('help'); setActiveTab('help'); }}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 shrink-0 ${
-                    activeModule === 'system'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                  <span>{isDirector ? 'Cẩm Nang & Quản Trị' : 'Cẩm Nang SOP'}</span>
-                </button>
+                  {/* Tab Cẩm Nang & Quản Trị */}
+                  <button
+                    onClick={() => {
+                      const nextView = isDirector && lastSystemView === 'backup' ? 'backup' : 'help';
+                      setActiveModule('system');
+                      setSubView(nextView);
+                      setActiveTab(nextView);
+                    }}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
+                      activeModule === 'system'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <BookOpen className="w-4 h-4 text-slate-500" />
+                    <span>{isDirector ? 'Cẩm nang & Quản trị' : 'Cẩm nang SOP'}</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Sub-view Switches chỉ hiện cho các tab chuyên trách cần phân mục, không hiển thị chồng chéo trên Tổng Quan */}
+              {/* TẦNG 2: HÀNG TAB CON NẰM DƯỚI HÀNG TAB CHÍNH */}
               {activeModule === 'fleet' && (
-                <div className="flex items-center space-x-1 text-xs">
-                  {isAreaManager ? (
+                <div className="pt-1.5 border-t border-slate-100 flex items-center overflow-x-auto no-scrollbar">
+                  <div className="inline-flex p-0.5 bg-slate-50 rounded-lg space-x-1 shrink-0">
+                    {/* Tab Con: Đội xe (Trạng thái xe, ODO, kiểm định) */}
                     <button
                       onClick={() => { setSubView('vehicles'); setActiveTab('maintenance'); }}
-                      className="px-2.5 py-1 rounded-md bg-slate-200 text-slate-900 font-semibold"
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all shrink-0 ${
+                        subView === 'vehicles' || activeTab === 'maintenance'
+                          ? 'bg-white text-slate-900 font-semibold shadow-xs border border-slate-200/80'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
                     >
-                      Trạng Thái Xe & ODO Khu Vực
+                      Đội xe
                     </button>
-                  ) : isAccountant ? (
-                    <>
-                      <button
-                        onClick={() => { setSubView('payroll'); setActiveTab('payroll'); }}
-                        className={`px-2.5 py-1 rounded-md transition-colors ${subView === 'payroll' ? 'bg-slate-200 text-slate-900 font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
-                      >
-                        Bảng Lương 3 Phần
-                      </button>
-                      <span className="text-slate-300">|</span>
-                      <button
-                        onClick={() => { setSubView('vehicles'); setActiveTab('maintenance'); }}
-                        className={`px-2.5 py-1 rounded-md transition-colors ${subView === 'vehicles' ? 'bg-slate-200 text-slate-900 font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
-                      >
-                        Trạng Thái Xe & ODO
-                      </button>
-                    </>
-                  ) : (
-                    <>
+
+                    {/* Tab Con: Doanh thu & KPI (DIRECTOR & ACCOUNTANT) */}
+                    {(isDirector || isAccountant) && (
                       <button
                         onClick={() => { setSubView('kpi'); setActiveTab('kpi'); }}
-                        className={`px-2.5 py-1 rounded-md transition-colors ${subView === 'kpi' ? 'bg-slate-200 text-slate-900 font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all shrink-0 ${
+                          subView === 'kpi' || activeTab === 'kpi'
+                            ? 'bg-white text-slate-900 font-semibold shadow-xs border border-slate-200/80'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
                       >
-                        📊 Doanh Thu & KPI Tài Xế
+                        Doanh thu & KPI
                       </button>
-                      <span className="text-slate-300">|</span>
-                      <button
-                        onClick={() => { setSubView('vehicles'); setActiveTab('maintenance'); }}
-                        className={`px-2.5 py-1 rounded-md transition-colors ${subView === 'vehicles' ? 'bg-slate-200 text-slate-900 font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
-                      >
-                        Trạng Thái Xe & ODO
-                      </button>
-                      <span className="text-slate-300">|</span>
+                    )}
+
+                    {/* Tab Con: Bảng lương (DIRECTOR & ACCOUNTANT) */}
+                    {(isDirector || isAccountant) && (
                       <button
                         onClick={() => { setSubView('payroll'); setActiveTab('payroll'); }}
-                        className={`px-2.5 py-1 rounded-md transition-colors ${subView === 'payroll' ? 'bg-slate-200 text-slate-900 font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all shrink-0 ${
+                          subView === 'payroll' || activeTab === 'payroll'
+                            ? 'bg-white text-slate-900 font-semibold shadow-xs border border-slate-200/80'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
                       >
-                        Bảng Lương 3 Phần
+                        Bảng lương
                       </button>
-                      <span className="text-slate-300">|</span>
+                    )}
+
+                    {/* Tab Con: Xem giao diện tài xế (chỉ Director dùng test) */}
+                    {isDirector && (
                       <button
                         onClick={() => { setSubView('driver_app'); setActiveTab('driver_app'); }}
-                        className={`px-2.5 py-1 rounded-md transition-colors ${subView === 'driver_app' ? 'bg-slate-200 text-slate-900 font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all shrink-0 ${
+                          subView === 'driver_app' || activeTab === 'driver_app'
+                            ? 'bg-white text-slate-900 font-semibold shadow-xs border border-slate-200/80'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
                       >
-                        📱 Giả Lập App Lái Xe
+                        Giao diện tài xế
                       </button>
-                    </>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
 
+              {/* TẦNG 2 CHO HỆ THỐNG / QUẢN TRỊ */}
               {activeModule === 'system' && (
-                <div className="flex items-center space-x-1 text-xs">
-                  <button
-                    onClick={() => { setSubView('help'); setActiveTab('help'); }}
-                    className={`px-2.5 py-1 rounded-md transition-colors ${subView === 'help' ? 'bg-slate-200 text-slate-900 font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
-                  >
-                    Từ Điển & Quy Trình SOP
-                  </button>
-                  {isDirector && (
-                    <>
-                      <span className="text-slate-300">|</span>
+                <div className="pt-1.5 border-t border-slate-100 flex items-center overflow-x-auto no-scrollbar">
+                  <div className="inline-flex p-0.5 bg-slate-50 rounded-lg space-x-1 shrink-0">
+                    <button
+                      onClick={() => { setSubView('help'); setActiveTab('help'); }}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all shrink-0 ${
+                        subView === 'help' || activeTab === 'help'
+                          ? 'bg-white text-slate-900 font-semibold shadow-xs border border-slate-200/80'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Từ điển & SOP
+                    </button>
+                    {isDirector && (
                       <button
                         onClick={() => { setSubView('backup'); setActiveTab('system'); }}
-                        className={`px-2.5 py-1 rounded-md transition-colors ${subView === 'backup' ? 'bg-slate-200 text-slate-900 font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all shrink-0 ${
+                          subView === 'backup' || activeTab === 'system'
+                            ? 'bg-white text-slate-900 font-semibold shadow-xs border border-slate-200/80'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
                       >
-                        💾 Sao Lưu SQLite & Telegram
+                        Sao lưu & Kỹ thuật
                       </button>
-                    </>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
             </div>
