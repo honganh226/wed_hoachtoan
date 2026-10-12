@@ -7,6 +7,7 @@
  * ============================================================
  */
 import 'dotenv/config';
+import { idempotentWrites } from './middlewares/idempotency.middleware.js';
 import { readOnlyTest } from './middlewares/readOnlyTest.middleware.js';
 import express from 'express';
 import fs from 'fs';
@@ -33,9 +34,14 @@ import maintenanceRoutes from './routes/maintenance.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import helpRoutes from './routes/help.routes.js';
 import businessRoutes from './routes/business.routes.js';
+import excelRoutes from './routes/excel.routes.js';
+import directorDataRoutes from './routes/directorData.routes.js';
+import { initializeDurableState,durableWrites } from './services/durableState.service.js';
 import { initOffsiteBackupScheduler } from './services/offsiteBackup.service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const durableReady = await initializeDurableState();
+if (process.env.ONLINE_EDITING === 'true') process.env.RENDER_READ_ONLY = durableReady ? 'false' : 'true';
 const app = express();
 const PORT = parseInt(process.env.PORT || '5000', 10);
 
@@ -120,6 +126,8 @@ app.use('/uploads', authenticateToken, express.static(path.join(__dirname, '../u
 
 // Tiền tố chuẩn: /api/v1/ (Hợp đồng kỹ thuật)
 app.use('/api/v1', readOnlyTest);
+app.use('/api/v1', durableWrites);
+app.use('/api/v1', idempotentWrites);
 app.use('/api/v1/health', healthRoutes);
 app.use('/api/v1/backup', backupRoutes);
 app.use('/api/v1/data', dataRoutes);
@@ -136,6 +144,8 @@ app.use('/api/v1/maintenance', maintenanceRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/help', helpRoutes);
 app.use('/api/v1/business', businessRoutes);
+app.use('/api/v1/excel', excelRoutes);
+app.use('/api/v1/manage', directorDataRoutes);
 
 // Serve thư mục client/dist (nếu đã build) cho môi trường Production / Windows Service
 const CLIENT_DIST = path.join(__dirname, '../../client/dist');

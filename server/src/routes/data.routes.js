@@ -5,6 +5,7 @@
  */
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
 import { db } from '../db/database.js';
 import { successResponse, errorResponse, serverErrorResponse } from '../utils/response.js';
 import { importExcelData } from '../scripts/importExcel.js';
@@ -115,7 +116,7 @@ router.post('/seed', authenticateToken, requireRole(USER_ROLES.DIRECTOR), async 
 router.get('/vehicles', (req, res) => {
   try {
     const vehicles = db.prepare(`
-      SELECT v.*, d.full_name as driver_name, d.phone as driver_phone
+      SELECT v.*, COALESCE(d.full_name,t.driver_name) as driver_name, d.phone as driver_phone
       FROM vehicles v
       LEFT JOIN drivers d ON v.default_driver_id = d.id
       ORDER BY v.plate_number ASC
@@ -166,8 +167,8 @@ router.get('/trips', (req, res) => {
              MIN(c.dropoff_yard) as dropoff_yard, 
              SUM(c.lift_on_fee) as lift_on_fee, 
              SUM(c.lift_off_fee) as lift_off_fee,
-             d.full_name as driver_name, 
-             v.plate_number as vehicle_plate
+             COALESCE(d.full_name,t.driver_name) as driver_name, 
+             COALESCE(v.plate_number,t.vehicle_plate) as vehicle_plate
       FROM trips t
       LEFT JOIN containers c ON t.id = c.trip_id
       LEFT JOIN drivers d ON t.driver_id = d.id
@@ -211,6 +212,165 @@ router.get('/eport', (req, res) => {
       encryption_standard: 'AES-256-GCM'
     }));
     return successResponse(res, accounts, 'Lấy danh sách tài khoản ePort thành công');
+  } catch (err) {
+    return serverErrorResponse(res, err);
+  }
+});
+
+/**
+ * GET /api/v1/data/customers
+ */
+router.get('/customers', (req, res) => {
+  try {
+    const customers = db.prepare('SELECT * FROM customers ORDER BY name ASC').all();
+    return successResponse(res, customers, 'Lấy danh sách khách hàng thành công');
+  } catch (err) {
+    return serverErrorResponse(res, err);
+  }
+});
+
+/**
+ * POST /api/v1/data/customers
+ * Thêm nhanh khách hàng mới
+ */
+router.post('/customers', requireRole([USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT, USER_ROLES.AREA_MANAGER]), (req, res) => {
+  try {
+    const { name, code, phone, address, tax_code, notes } = req.body;
+    if (!name || !name.trim()) return errorResponse(res, 'Tên khách hàng là bắt buộc', 400);
+    const cleanName = name.trim().toUpperCase();
+
+    const existing = db.prepare('SELECT * FROM customers WHERE name = ?').get(cleanName);
+    if (existing) return successResponse(res, existing, 'Khách hàng đã tồn tại', 200);
+
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    db.prepare(`
+      INSERT INTO customers (id, code, name, phone, address, tax_code, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, code || null, cleanName, phone || null, address || null, tax_code || null, notes || null, now, now);
+
+    const created = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+    return successResponse(res, created, 'Thêm mới khách hàng thành công', 201);
+  } catch (err) {
+    return serverErrorResponse(res, err);
+  }
+});
+
+/**
+ * GET /api/v1/data/subcontractors
+ */
+router.get('/subcontractors', (req, res) => {
+  try {
+    const subs = db.prepare('SELECT * FROM subcontractors ORDER BY name ASC').all();
+    return successResponse(res, subs, 'Lấy danh sách nhà xe ngoài thành công');
+  } catch (err) {
+    return serverErrorResponse(res, err);
+  }
+});
+
+/**
+ * POST /api/v1/data/subcontractors
+ * Thêm nhanh nhà xe / thầu phụ
+ */
+router.post('/subcontractors', requireRole([USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT, USER_ROLES.AREA_MANAGER]), (req, res) => {
+  try {
+    const { name, contact_person, phone, bank_account, bank_name, notes } = req.body;
+    if (!name || !name.trim()) return errorResponse(res, 'Tên nhà xe là bắt buộc', 400);
+    const cleanName = name.trim().toUpperCase();
+
+    const existing = db.prepare('SELECT * FROM subcontractors WHERE name = ?').get(cleanName);
+    if (existing) return successResponse(res, existing, 'Nhà xe đã tồn tại', 200);
+
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    db.prepare(`
+      INSERT INTO subcontractors (id, name, contact_person, phone, bank_account, bank_name, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, cleanName, contact_person || null, phone || null, bank_account || null, bank_name || null, notes || null, now, now);
+
+    const created = db.prepare('SELECT * FROM subcontractors WHERE id = ?').get(id);
+    return successResponse(res, created, 'Thêm mới nhà xe thành công', 201);
+  } catch (err) {
+    return serverErrorResponse(res, err);
+  }
+});
+
+/**
+ * POST /api/v1/data/vehicles
+ * Thêm nhanh đầu xe mới
+ */
+router.post('/vehicles', requireRole([USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT, USER_ROLES.AREA_MANAGER]), (req, res) => {
+  try {
+    const { plate_number, vehicle_type = 'TRACTOR', default_driver_id, inspection_expiry, insurance_expiry, notes } = req.body;
+    if (!plate_number || !plate_number.trim()) return errorResponse(res, 'Biển số xe là bắt buộc', 400);
+    const cleanPlate = plate_number.trim().toUpperCase();
+
+    const existing = db.prepare('SELECT * FROM vehicles WHERE plate_number = ?').get(cleanPlate);
+    if (existing) return successResponse(res, existing, 'Đầu xe đã tồn tại', 200);
+
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    db.prepare(`
+      INSERT INTO vehicles (id, plate_number, vehicle_type, default_driver_id, status, inspection_expiry, insurance_expiry, current_km, last_maintenance_km, oil_change_interval_km, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, 0, 0, 10000, ?, ?, ?)
+    `).run(id, cleanPlate, vehicle_type, default_driver_id || null, inspection_expiry || null, insurance_expiry || null, notes || null, now, now);
+
+    const created = db.prepare('SELECT * FROM vehicles WHERE id = ?').get(id);
+    return successResponse(res, created, 'Thêm mới đầu xe thành công', 201);
+  } catch (err) {
+    return serverErrorResponse(res, err);
+  }
+});
+
+/**
+ * POST /api/v1/data/drivers
+ * Thêm nhanh tài xế mới
+ */
+router.post('/drivers', requireRole([USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT, USER_ROLES.AREA_MANAGER]), (req, res) => {
+  try {
+    const { full_name, phone, license_number, license_expiry, area_id, default_vehicle_id, base_salary, notes } = req.body;
+    if (!full_name || !full_name.trim()) return errorResponse(res, 'Tên tài xế là bắt buộc', 400);
+    const cleanName = full_name.trim();
+
+    const existing = db.prepare('SELECT * FROM drivers WHERE full_name = ?').get(cleanName);
+    if (existing) return successResponse(res, existing, 'Tài xế đã tồn tại', 200);
+
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    db.prepare(`
+      INSERT INTO drivers (id, user_id, full_name, phone, license_number, license_expiry, area_id, default_vehicle_id, base_salary, kpi_target, is_active, notes, created_at, updated_at)
+      VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?)
+    `).run(id, cleanName, phone || null, license_number || null, license_expiry || null, area_id || null, default_vehicle_id || null, Math.round(Number(base_salary) || 0), notes || null, now, now);
+
+    const created = db.prepare('SELECT * FROM drivers WHERE id = ?').get(id);
+    return successResponse(res, created, 'Thêm mới tài xế thành công', 201);
+  } catch (err) {
+    return serverErrorResponse(res, err);
+  }
+});
+
+/**
+ * POST /api/v1/data/routes
+ * Thêm nhanh tuyến đường mới
+ */
+router.post('/routes', requireRole([USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT, USER_ROLES.AREA_MANAGER]), (req, res) => {
+  try {
+    const { route_name, route_code, departure, destination, default_price, default_driver_pay, default_toll, default_fuel_liters, notes } = req.body;
+    if (!route_name || !route_name.trim()) return errorResponse(res, 'Tên tuyến đường là bắt buộc', 400);
+    const cleanName = route_name.trim().toUpperCase();
+
+    const existing = db.prepare('SELECT * FROM routes WHERE route_name = ?').get(cleanName);
+    if (existing) return successResponse(res, existing, 'Tuyến đường đã tồn tại', 200);
+
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    db.prepare(`
+      INSERT INTO routes (id, route_code, route_name, departure, destination, distance_km, default_price, default_driver_pay, default_fuel_liters, default_toll, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, route_code || null, cleanName, departure || null, destination || null, Math.round(Number(default_price) || 0), Math.round(Number(default_driver_pay) || 0), Math.round(Number(default_fuel_liters) || 0), Math.round(Number(default_toll) || 0), notes || null, now, now);
+
+    const created = db.prepare('SELECT * FROM routes WHERE id = ?').get(id);
+    return successResponse(res, created, 'Thêm mới tuyến đường thành công', 201);
   } catch (err) {
     return serverErrorResponse(res, err);
   }

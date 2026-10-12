@@ -48,6 +48,12 @@ export default function DirectorDebtsView() {
   useEffect(() => {
     loadDebts();
   }, [loadDebts]);
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible') loadDebts(); };
+    window.addEventListener('business-data-changed', refresh);
+    const timer = setInterval(refresh, 30000);
+    return () => { window.removeEventListener('business-data-changed', refresh); clearInterval(timer); };
+  }, [loadDebts]);
 
   const receivables = debts?.receivables || {};
   const payables = debts?.payables || {};
@@ -147,7 +153,7 @@ export default function DirectorDebtsView() {
     <div className="space-y-6 pb-20 animate-fade-in text-slate-800">
       {/* 1. Header & Điều hướng 2 tab công nợ */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col gap-4 min-w-0">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
               <CreditCard className="w-7 h-7 text-indigo-600" />
@@ -159,7 +165,7 @@ export default function DirectorDebtsView() {
           </div>
 
           {/* Tab Selector */}
-          <div className="flex p-1 bg-slate-100 rounded-xl max-w-md w-full sm:w-auto border border-slate-200">
+          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl w-full border border-slate-200">
             <button
               onClick={() => { setActiveTab('receivables'); setFilterStatus('ALL'); }}
               className={`flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-semibold transition-all cursor-pointer ${

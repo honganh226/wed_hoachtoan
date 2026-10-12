@@ -25,6 +25,8 @@ import xlsx from 'xlsx';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { db } from '../db/database.js';
+import { overlayBusiness } from './directorData.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,11 +57,7 @@ const ALLOCATIONS_STORAGE_PATH = resolveDataPath(
 );
 
 // Danh mục tài xế mặc định cho 3 xe công ty
-const INTERNAL_VEHICLE_DRIVERS = {
-  '15H00266': 'Vũ Văn Liêm',
-  '15C35981': 'Phạm Văn Tuân',
-  '15C22405': 'Trương Văn Hội'
-};
+const INTERNAL_VEHICLE_DRIVERS = {}; // Excel does not identify historical drivers.
 
 export class ExcelMonthService {
   constructor(excelPath = DEFAULT_EXCEL_PATH, storagePath = ALLOCATIONS_STORAGE_PATH) {
@@ -509,20 +507,128 @@ export class ExcelMonthService {
   }
 
   /**
-   * Lấy toàn bộ dữ liệu đã phân tích
+   * Lấy toàn bộ dữ liệu đã phân tích chuẩn hóa từ Excel tháng 1
+   * kèm các cuốc xe mới tạo (MANUAL, BATCH, EXCEL) trong SQLite
    */
   getData() {
-    if (!this.cachedData) {
-      return this.parseSheetData();
+    const base = this.cachedData ? this.cachedData : this.parseSheetData();
+
+    // Tra cứu các cuốc xe mới tạo trong SQLite chưa có trong file Excel nguồn
+    try {
+      const dbTrips = db.prepare(`
+        SELECT t.*, (SELECT GROUP_CONCAT(container_number, ', ') FROM containers WHERE trip_id=t.id) AS container_number,
+          (SELECT container_size FROM containers WHERE trip_id=t.id ORDER BY is_second_cont LIMIT 1) AS container_size
+        FROM trips t ORDER BY t.trip_date ASC, t.created_at ASC
+      `).all().filter(t => !(t.source_type === 'EXCEL' && base.rows.some(r => r.row_index === t.source_row && r.trip_date === t.trip_date && r.customer_name === t.customer_name && r.route_name === t.route_name && r.cuoc_vao === t.total_revenue)));
+
+      if (dbTrips && dbTrips.length > 0) {
+        // Chuyển đổi format của dbTrips sang cấu trúc chuẩn của view
+        const adaptedDbTrips = dbTrips.map((dt, idx) => {
+          const rev = dt.total_revenue || dt.trip_revenue || 0;
+          const toll = dt.toll_fee || 0;
+          const subCost = dt.subcontractor_cost || 0;
+          const fuel = dt.fuel_liters || 0;
+          const other = (dt.other_costs || 0) + (dt.port_fee || 0) + (dt.parking_fee || 0) + (dt.handling_fee || 0) + (dt.meal_allowance || 0);
+          const directCost = toll + subCost + other;
+
+          return {
+            id: dt.id,
+            trip_code: dt.trip_code,
+            row_index: 1000 + idx,
+            stt: base.rows.length + idx + 1,
+            trip_date: dt.trip_date,
+            raw_date: dt.trip_date,
+            is_typo_2025: false,
+            customer_name: dt.customer_name || 'KHÁCH HÀNG',
+            route_name: dt.route_name || '',
+            container_number: dt.container_number || null,
+            bks_raw: dt.vehicle_plate || '',
+            vehicle_plate: dt.vehicle_plate || null,
+            is_subcontractor: Boolean(dt.is_subcontractor),
+            subcontractor_name: dt.subcontractor_name || null,
+            driver_name: dt.driver_name || (dt.is_subcontractor ? `Xe ngoài ${dt.subcontractor_name || ''}` : 'Chưa xác định'),
+            container_size: dt.container_size || '40',
+            container_type: 'DC',
+            is_lach_huyen: false,
+            cuoc_vao: rev,
+            dau_liters: fuel,
+            tien_duong: toll,
+            phat_sinh: other,
+            phat_sinh_note: dt.notes || null,
+            cuoc_ra: subCost,
+            customer_payment_status: dt.customer_payment_status || 'CHUA_TT',
+            is_customer_paid: ['DA_TT','TUOI','X'].includes(dt.customer_payment_status),
+            is_offset: dt.customer_payment_status === 'DOI_TRU',
+            customer_payment_status: dt.customer_payment_status || 'CHUA_TT',
+            subcontractor_payment_status: dt.subcontractor_payment_status || 'CHUA_TT',
+            other_costs: dt.other_costs || 0,
+            additional_expenses: db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM expenses WHERE trip_id=? AND source_component IS NULL').get(dt.id)?.total || 0,
+            port_fee: dt.port_fee || 0,
+            parking_fee: dt.parking_fee || 0,
+            handling_fee: dt.handling_fee || 0,
+            meal_allowance: dt.meal_allowance || 0,
+            is_customer_tuoi: dt.customer_payment_status === 'TUOI',
+            is_customer_x: dt.customer_payment_status === 'X',
+            is_customer_doi_tru: dt.customer_payment_status === 'DOI_TRU',
+            notes_r: dt.notes || null,
+            is_grouped: Boolean(dt.group_id),
+            group_id: dt.group_id || null,
+            allocated_shared_cost: null,
+            allocated_shared_liters: null,
+            allocation_status: dt.group_id ? 'UNALLOCATED' : 'SINGLE',
+            direct_cost: directCost,
+            trip_profit: rev - directCost,
+            raw_O: rev
+          };
+        });
+
+        // Kết hợp 77 cuốc chuẩn tháng 1 với các cuốc mới
+        const mergedRows = [...base.rows, ...adaptedDbTrips];
+
+        return this.refreshBusinessData(base, mergedRows);
+      }
+    } catch (e) {
+      console.warn('[ExcelMonthService] Tra cứu SQLite bổ sung:', e.message);
     }
-    return this.cachedData;
+
+    return this.refreshBusinessData(base, base.rows);
+  }
+
+  refreshBusinessData(base, inputRows) {
+    const rows = overlayBusiness(inputRows);
+    const groups = structuredClone(base.groups);
+    for (const g of groups) {
+      const members = rows.filter(r => g.trips.includes(r.id));
+      g.total_revenue = members.reduce((s,r)=>s+r.cuoc_vao,0);
+      for (const cost of g.shared_costs) {
+        const key = {TIEN_DUONG:"tien_duong",CUOC_RA:"cuoc_ra",DAU_LITERS:"dau_liters"}[cost.type];
+        if(key) {const total=members.reduce((s,r)=>s+Number(r[key]||0),0);if(key==="dau_liters")cost.liters=total;else cost.amount=total;}
+      }
+      g.total_shared_money=g.shared_costs.reduce((s,c)=>s+Number(c.amount||0),0);
+      g.group_margin=members.reduce((s,r)=>s+r.cuoc_vao-r.direct_cost,0);
+      const setting=this.groupAllocations.get(g.group_key);
+      const monetary=g.shared_costs.filter(c=>c.amount>0);
+      const allocation=setting?.allocations||{};
+      const valid=setting?.mode==='MANUAL'&&monetary.length<=1&&members.every(r=>Number.isInteger(allocation[r.id])&&allocation[r.id]>=0)&&members.reduce((s,r)=>s+allocation[r.id],0)===g.total_shared_money;
+      g.allocation_mode=valid?'MANUAL':'UNALLOCATED';
+      g.manual_allocations=valid?allocation:{};
+      for(const r of members){
+        r.allocation_status=valid?'MANUAL':'UNALLOCATED';
+        r.allocated_shared_cost=valid?allocation[r.id]:null;
+        r.allocated_toll=valid&&monetary[0]?.type==='TIEN_DUONG'?allocation[r.id]:null;
+        r.allocated_subcontractor_cost=valid&&monetary[0]?.type==='CUOC_RA'?allocation[r.id]:null;
+        r.direct_cost=(r.allocated_toll??Number(r.tien_duong||0))+(r.allocated_subcontractor_cost??Number(r.cuoc_ra||0))+r.phat_sinh;
+        r.trip_profit=valid?r.cuoc_vao-r.direct_cost:null;
+      }
+    }
+    return {...base,rows,groups};
   }
 
   /**
    * Cập nhật phương thức phân bổ chi phí cho một nhóm cuốc có validator nghiêm ngặt
    */
   setGroupAllocation(groupKey, mode, manualAllocations = {}) {
-    const validModes = ['UNALLOCATED', 'PROPORTIONAL', 'MANUAL'];
+    const validModes = ['UNALLOCATED', 'MANUAL'];
     if (!validModes.includes(mode)) {
       throw new Error(`Chế độ phân bổ không hợp lệ: [${mode}]. Chỉ chấp nhận: ${validModes.join(', ')}`);
     }
@@ -534,6 +640,7 @@ export class ExcelMonthService {
     }
 
     if (mode === 'MANUAL') {
+      if(group.shared_costs.filter(c=>c.amount>0).length>1)throw Error('Nhóm có nhiều loại chi phí chung cần phân bổ riêng từng loại; chưa hỗ trợ ghép tổng.');
       if (!manualAllocations || typeof manualAllocations !== 'object') {
         throw new Error('Cấu hình phân bổ thủ công phải là một đối tượng chứa danh sách mã cuốc và số tiền!');
       }
@@ -570,7 +677,7 @@ export class ExcelMonthService {
 
     // Reset cache và parse lại để cập nhật toàn bộ trạng thái
     this.cachedData = null;
-    return this.parseSheetData();
+    return this.getData();
   }
 
   /**
@@ -601,13 +708,12 @@ export class ExcelMonthService {
       c.trip_count += 1;
       c.total_revenue += r.cuoc_vao;
 
-      if (r.is_offset) {
-        c.total_offset += r.cuoc_vao;
-      } else if (r.is_customer_paid) {
-        c.total_paid += r.cuoc_vao;
-      } else {
-        c.balance_due += r.cuoc_vao;
-      }
+      const received = Number(r.received_amount || 0);
+      const offset = Number(r.offset_amount || 0);
+      const balance = Math.max(0, r.cuoc_vao - received - offset);
+      c.total_paid += received;
+      c.total_offset += offset;
+      c.balance_due += balance;
 
       c.trips.push({
         id: r.id,
@@ -621,7 +727,7 @@ export class ExcelMonthService {
         payment_timing_q: r.payment_timing_q,
         is_offset: r.is_offset,
         is_paid: r.is_customer_paid,
-        balance: (r.is_customer_paid || r.is_offset) ? 0 : r.cuoc_vao,
+        balance,
         notes: r.notes_r || r.payment_status_p
       });
     });
@@ -646,12 +752,10 @@ export class ExcelMonthService {
       s.trip_count += 1;
       s.total_payable += r.cuoc_ra;
 
-      const isSubPaid = Boolean(r.phat_sinh_note && r.phat_sinh_note.toUpperCase().includes('ĐÃ TT'));
-      if (isSubPaid) {
-        s.total_paid += r.cuoc_ra;
-      } else {
-        s.balance_due += r.cuoc_ra;
-      }
+      const paidAmount = Number(r.sub_paid_amount || 0);
+      const isSubPaid = paidAmount >= r.cuoc_ra;
+      s.total_paid += paidAmount;
+      s.balance_due += Math.max(0, r.cuoc_ra - paidAmount);
 
       s.trips.push({
         id: r.id,
@@ -663,7 +767,7 @@ export class ExcelMonthService {
         vehicle_plate: r.vehicle_plate,
         cuoc_ra: r.cuoc_ra,
         is_paid: isSubPaid,
-        balance: isSubPaid ? 0 : r.cuoc_ra,
+        balance: Math.max(0, r.cuoc_ra - paidAmount),
         notes: r.phat_sinh_note || r.notes_r
       });
     });
@@ -795,11 +899,11 @@ export class ExcelMonthService {
       v.trip_count += 1;
       v.total_revenue += r.cuoc_vao;
       v.total_toll += (r.tien_duong || 0);
-      const cCost = r.allocated_shared_cost !== null ? (r.allocated_shared_cost || 0) : (r.cuoc_ra || 0);
+      const cCost = r.allocated_subcontractor_cost ?? (r.cuoc_ra || 0);
       v.total_cuoc_ra += cCost;
       v.total_phat_sinh += (r.phat_sinh || 0);
       v.total_dau_liters += (r.dau_liters || 0);
-      const tripCost = (r.tien_duong || 0) + cCost + (r.phat_sinh || 0);
+      const tripCost = r.direct_cost;
       v.total_direct_cost += tripCost;
       v.total_profit += (r.cuoc_vao - tripCost);
     });
@@ -831,11 +935,11 @@ export class ExcelMonthService {
       d.trip_count += 1;
       d.total_revenue += r.cuoc_vao;
       d.total_toll += (r.tien_duong || 0);
-      const cCost = r.allocated_shared_cost !== null ? (r.allocated_shared_cost || 0) : (r.cuoc_ra || 0);
+      const cCost = r.allocated_subcontractor_cost ?? (r.cuoc_ra || 0);
       d.total_cuoc_ra += cCost;
       d.total_phat_sinh += (r.phat_sinh || 0);
       d.total_dau_liters += (r.dau_liters || 0);
-      const tripCost = (r.tien_duong || 0) + cCost + (r.phat_sinh || 0);
+      const tripCost = r.direct_cost;
       d.total_direct_cost += tripCost;
       d.total_profit += (r.cuoc_vao - tripCost);
     });

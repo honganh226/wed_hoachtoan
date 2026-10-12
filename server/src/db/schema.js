@@ -11,7 +11,7 @@
  *   NEW -> DISPATCHED -> CONT_PICKED -> RUNNING -> CONT_DROPPED -> COMPLETED -> EIR_SUBMITTED -> PAID
  * ============================================================
  */
-import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 
 // ============================================================
@@ -225,7 +225,23 @@ export const trips = sqliteTable('trips', {
   status: text('status').notNull().default(TRIP_STATUSES.NEW), // 8 trạng thái vòng đời
   is_subcontractor: integer('is_subcontractor').notNull().default(0), // 0: Xe nhà, 1: Xe thuê ngoài
   subcontractor_id: text('subcontractor_id'),                         // Khóa ngoại subcontractors.id
+  subcontractor_name: text('subcontractor_name'),                     // Tên nhà xe ngoài
   subcontractor_cost: integer('subcontractor_cost').notNull().default(0), // Tiền cước trả đối tác (VND)
+  toll_fee: integer('toll_fee').notNull().default(0),                 // Phí cầu đường/cao tốc
+  port_fee: integer('port_fee').notNull().default(0),                 // Phí cảng/nâng hạ
+  parking_fee: integer('parking_fee').notNull().default(0),           // Phí bến bãi/đỗ xe
+  handling_fee: integer('handling_fee').notNull().default(0),         // Tiền bốc xếp
+  meal_allowance: integer('meal_allowance').notNull().default(0),     // Tiền ăn/phụ cấp chuyến
+  fuel_liters: real('fuel_liters').notNull().default(0),              // Lượng dầu cấp (lít)
+  other_costs: integer('other_costs').notNull().default(0),           // Tổng chi phí khác
+  customer_payment_status: text('customer_payment_status').notNull().default('CHUA_TT'), // CHUA_TT | TUOI | X | DA_TT | DOI_TRU
+  subcontractor_payment_status: text('subcontractor_payment_status').notNull().default('CHUA_TT'), // CHUA_TT | DA_TT
+  group_id: text('group_id'),                                         // Mã nhóm chi phí dùng chung (ô gộp)
+  source_type: text('source_type').notNull().default('MANUAL'),       // MANUAL | BATCH | EXCEL
+  source_file: text('source_file'),
+  source_sheet: text('source_sheet'),
+  source_row: integer('source_row'),
+  raw_data: text('raw_data'),
   eir_status: text('eir_status').notNull().default(EIR_STATUSES.CHUA_TRA),     // CHUA_TRA | DA_TRA
   eir_paid_status: text('eir_paid_status').notNull().default(EIR_PAID_STATUSES.CHUA_TT), // CHUA_TT | DA_TT
   eir_photo_url: text('eir_photo_url'),     // URL ảnh phiếu phơi
@@ -243,6 +259,22 @@ export const trips = sqliteTable('trips', {
   index('idx_trips_area_id').on(t.area_id),
   index('idx_trips_status').on(t.status)
 ]);
+
+// ============================================================
+// 8B. BẢNG IMPORT_BATCHES
+// ============================================================
+export const importBatches = sqliteTable('import_batches', {
+  id: text('id').primaryKey(),
+  batch_name: text('batch_name').notNull(),
+  file_name: text('file_name'),
+  sheet_name: text('sheet_name'),
+  total_rows: integer('total_rows').notNull().default(0),
+  total_revenue: integer('total_revenue').notNull().default(0),
+  total_cost: integer('total_cost').notNull().default(0),
+  created_by: text('created_by'),
+  status: text('status').notNull().default('ACTIVE'),
+  created_at: text('created_at').notNull()
+});
 
 // ============================================================
 // 9. BẢNG CONTAINERS (Container theo chuyến, hỗ trợ cont kẹp 2x20')

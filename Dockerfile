@@ -13,5 +13,5 @@ RUN npm ci --omit=dev
 COPY server/src ./src
 COPY --from=build /app/client/dist /app/client/dist
 COPY ["tháng 1.xlsx", "/app/tháng 1.xlsx"]
-ENV NODE_ENV=production RENDER_READ_ONLY=true DB_PATH=/tmp/hoachtoan-test/hoachtoan.db GROUP_ALLOCATIONS_PATH=/tmp/hoachtoan-test/group_allocations.json EXCEL_PATH="/app/tháng 1.xlsx"
+ENV NODE_ENV=production ONLINE_EDITING=true RENDER_READ_ONLY=true DB_PATH=/tmp/hoachtoan-test/hoachtoan.db GROUP_ALLOCATIONS_PATH=/tmp/hoachtoan-test/group_allocations.json EXCEL_PATH="/app/tháng 1.xlsx"
 CMD ["sh", "-c", "node src/scripts/initRenderTest.js && exec node src/index.js"]

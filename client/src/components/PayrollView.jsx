@@ -113,7 +113,7 @@ export default function PayrollView({ currentUser }) {
                   Bảng Lương 3 Thành Phần Toàn Đội
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Chuẩn công thức: Lương cứng + Lương công chuyến + Khoản động viên GĐ - Tạm ứng
+                  Lương cứng phải được xác nhận theo kỳ; số liệu chưa đủ cấu hình chỉ là tạm tính.
                 </p>
                 <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
                   <span>ℹ️</span>
@@ -123,14 +123,14 @@ export default function PayrollView({ currentUser }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+          <div className="flex items-center gap-2 min-w-0 w-full md:w-auto">
+            <div className="flex items-center gap-2 bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200 min-w-0 flex-1">
               <Calendar className="w-4 h-4 text-slate-500" />
               <span className="text-xs font-medium text-slate-600">Kỳ Lương:</span>
               <select
                 value={periodMonth}
                 onChange={(e) => setPeriodMonth(e.target.value)}
-                className="bg-transparent text-sm font-semibold text-slate-800 focus:outline-none cursor-pointer"
+                className="bg-transparent text-sm font-semibold text-slate-800 focus:outline-none cursor-pointer min-w-0 w-full"
               >
                 <option value="2026-09">Tháng 09/2026 (Dữ liệu mẫu)</option>
                 <option value="2026-10">Tháng 10/2026 (Hiện tại)</option>
@@ -142,7 +142,7 @@ export default function PayrollView({ currentUser }) {
             <button
               onClick={() => loadPayroll(periodMonth)}
               disabled={loading}
-              className="p-2 text-slate-600 hover:text-emerald-600 hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-2 shrink-0 text-slate-600 hover:text-emerald-600 hover:bg-slate-100 rounded-lg transition-colors"
               title="Tải lại bảng lương"
             >
               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin text-emerald-600' : ''}`} />
@@ -168,7 +168,7 @@ export default function PayrollView({ currentUser }) {
                 1. Lương Cứng
               </p>
               <p className="text-lg font-bold font-mono text-blue-900 mt-1">
-                {formatMoney(payrollData.summary.total_base_salary)}
+                {payrollData.summary.missing_base_salary ? 'Chưa thiết lập đủ' : formatMoney(payrollData.summary.total_base_salary)}
               </p>
               <p className="text-[10px] text-blue-500 mt-0.5">Định mức hàng tháng</p>
             </div>
@@ -203,7 +203,7 @@ export default function PayrollView({ currentUser }) {
                 💰 Tổng Quỹ Thực Chi
               </p>
               <p className="text-lg font-black font-mono text-emerald-800 mt-1">
-                {formatMoney(payrollData.summary.total_net_payout)}
+                {payrollData.summary.missing_base_salary ? 'Chưa chốt' : formatMoney(payrollData.summary.total_net_payout)}
               </p>
               <p className="text-[10px] text-emerald-600 mt-0.5">
                 (Đã trừ {formatMoney(payrollData.summary.total_deductions)} tạm ứng)
@@ -282,7 +282,7 @@ export default function PayrollView({ currentUser }) {
 
                         {/* 1. Lương cứng */}
                         <td className="py-3 px-4 text-right font-medium text-slate-700">
-                          {formatMoney(drv.base_salary)}
+                          {drv.base_salary_confirmed ? formatMoney(drv.base_salary) : 'Chưa thiết lập'}
                         </td>
 
                         {/* 2. Lương chuyến */}
@@ -327,7 +327,7 @@ export default function PayrollView({ currentUser }) {
 
                         {/* Thực lĩnh */}
                         <td className="py-3 px-4 text-right bg-emerald-50 font-black text-emerald-700 text-base">
-                          {formatMoney(drv.net_salary)}
+                          {drv.base_salary_confirmed ? formatMoney(drv.net_salary) : 'Chưa chốt'}
                         </td>
 
                         {/* Nút xem chi tiết */}

@@ -195,9 +195,7 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
   const totalVariableExpenses = totalVariableExpensesDirect + totalDriverSalary + additionalSubcontractor;
 
   // Lương cứng tài xế (Cố định phân bổ hàng tháng của các xe)
-  const baseSalaryTotal = db.prepare(`
-    SELECT COALESCE(SUM(base_salary), 0) as total FROM drivers WHERE is_active = 1
-  `).get()?.total || 0;
+  const baseSalaryTotal = 0; // Fixed salaries are confirmed per period in Payroll; trip P&L excludes them.
 
   // Tổng chi phí cố định bao gồm cả lương cứng tài xế
   const totalFixedExpensesWithSalary = totalFixedExpenses + Math.round(Number(baseSalaryTotal || 0));

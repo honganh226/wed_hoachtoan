@@ -21,6 +21,9 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/database.js';
+function configuredSalary(driverId, month) {
+  try { return db.prepare('SELECT amount FROM salary_settings WHERE driver_id=? AND effective_month<=? ORDER BY effective_month DESC LIMIT 1').get(driverId,month); } catch { return null; }
+}
 import { recordAuditLog, AUDIT_ACTIONS } from '../services/audit.service.js';
 import { calculateDriverPayroll, toVndInteger } from '../utils/financialMath.js';
 import { USER_ROLES } from '../db/schema.js';
@@ -91,9 +94,11 @@ export function getPayrollSummary({ periodMonth = null, user = null } = {}) {
       LIMIT 1
     `).get(drv.id, targetMonth);
 
+    const salarySetting = configuredSalary(drv.id, targetMonth);
+    const salaryConfirmed = salarySetting != null || incentiveRec?.base_salary_override != null;
     const baseSalary = incentiveRec?.base_salary_override !== null && incentiveRec?.base_salary_override !== undefined
       ? toVndInteger(incentiveRec.base_salary_override)
-      : toVndInteger(drv.base_salary || 5000000); // Mặc định 5 triệu nếu chưa cài
+      : toVndInteger(salarySetting?.amount ?? 0); // Mặc định 5 triệu nếu chưa cài
 
     const incentiveBonus = incentiveRec ? toVndInteger(incentiveRec.incentive_amount) : 0;
     const incentiveNote = incentiveRec?.incentive_note || '';
@@ -140,7 +145,8 @@ export function getPayrollSummary({ periodMonth = null, user = null } = {}) {
       kpi_target: toVndInteger(drv.kpi_target),
       
       // 3 THÀNH PHẦN LƯƠNG
-      base_salary: calc.baseSalary,       // Thành phần 1: Lương cứng
+      base_salary: salaryConfirmed ? calc.baseSalary : null,
+      base_salary_confirmed: salaryConfirmed,       // Thành phần 1: Lương cứng
       trip_salary: calc.tripSalary,       // Thành phần 2: Lương chuyến
       incentive_bonus: calc.incentiveBonus, // Thành phần 3: Động viên GĐ
       incentive_note: incentiveNote,
@@ -149,7 +155,7 @@ export function getPayrollSummary({ periodMonth = null, user = null } = {}) {
 
       total_earnings: calc.totalEarnings, // Tổng thu nhập
       deductions: calc.deductions,        // Tạm ứng khấu trừ
-      net_salary: calc.netSalary,         // Thực lĩnh
+      net_salary: salaryConfirmed ? calc.netSalary : null,         // Thực lĩnh
       breakdown_percentages: calc.breakdownPercentages,
 
       // Thống kê tác nghiệp & Doanh thu tạo ra
@@ -172,12 +178,13 @@ export function getPayrollSummary({ periodMonth = null, user = null } = {}) {
     total_drivers: payrollRows.length,
     total_trips_completed: totalTripsCount,
     summary: {
-      total_base_salary: totalBaseSalary,
+      missing_base_salary: payrollRows.filter(r=>!r.base_salary_confirmed).length,
+      total_base_salary: payrollRows.some(r=>!r.base_salary_confirmed) ? null : totalBaseSalary,
       total_trip_salary: totalTripSalary,
       total_incentive: totalIncentive,
       total_gross_earnings: totalBaseSalary + totalTripSalary + totalIncentive,
       total_deductions: totalDeductions,
-      total_net_payout: totalNetSalary,
+      total_net_payout: payrollRows.some(r=>!r.base_salary_confirmed) ? null : totalNetSalary,
       total_revenue_generated: payrollRows.reduce((s, r) => s + (r.total_revenue || 0), 0)
     },
     drivers: payrollRows
@@ -333,7 +340,7 @@ export function getDriverPersonalAppView({ user, periodMonth = null } = {}) {
 
   const baseSalary = incentiveRec?.base_salary_override !== null && incentiveRec?.base_salary_override !== undefined
     ? toVndInteger(incentiveRec.base_salary_override)
-    : toVndInteger(driver.base_salary || 5000000);
+    : toVndInteger(configuredSalary(driver.id, targetMonth)?.amount ?? 0);
 
   const incentiveAmount = incentiveRec ? toVndInteger(incentiveRec.incentive_amount) : 0;
   const incentiveNote = incentiveRec?.incentive_note || '';

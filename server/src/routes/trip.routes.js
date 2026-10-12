@@ -12,6 +12,8 @@
  * ============================================================
  */
 import { Router } from 'express';
+import { createHash } from 'node:crypto';
+import { excelMonthService } from '../services/excelMonthService.js';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -19,6 +21,7 @@ import fs from 'fs';
 import { db } from '../db/database.js';
 import { 
   createTrip, 
+  createBatchTrips,
   duplicateTrip, 
   updateTrip, 
   getRouteDefaultPrice,
@@ -83,6 +86,10 @@ router.get('/pending-eir', authenticateToken, (req, res) => {
 router.get('/routes', (req, res) => {
   try {
     const routes = db.prepare('SELECT * FROM routes ORDER BY route_name ASC').all();
+    const names=new Set(routes.map(r=>r.route_name));
+    for(const trip of excelMonthService.getData().rows.slice().sort((a,b)=>b.trip_date.localeCompare(a.trip_date))){
+      if(trip.route_name&&!names.has(trip.route_name)){names.add(trip.route_name);routes.push({id:'history-'+createHash('sha256').update(trip.route_name).digest('hex').slice(0,16),route_name:trip.route_name,default_price:trip.cuoc_vao,source:'HISTORY'});}
+    }
     return successResponse(res, routes, 'Lấy danh mục tuyến đường thành công');
   } catch (err) {
     return serverErrorResponse(res, err);
@@ -135,6 +142,33 @@ router.post(
         ipAddress
       });
       return successResponse(res, created, `Tạo mới chuyến xe ${created.trip_code} thành công`, 201);
+    } catch (err) {
+      return serverErrorResponse(res, err);
+    }
+  }
+);
+
+/**
+ * POST /api/v1/trips/batch
+ * Nhập nhiều cuốc xe đồng thời theo lô
+ */
+router.post(
+  '/batch',
+  authenticateToken,
+  requireRole([USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT, USER_ROLES.AREA_MANAGER]),
+  (req, res) => {
+    try {
+      const { trips: batchTrips } = req.body;
+      if (!Array.isArray(batchTrips) || batchTrips.length === 0) {
+        return errorResponse(res, 'Danh sách cuốc xe trống hoặc không đúng định dạng', 400);
+      }
+      const ipAddress = req.ip || req.connection.remoteAddress;
+      const result = createBatchTrips({
+        tripsData: batchTrips,
+        user: req.user,
+        ipAddress
+      });
+      return successResponse(res, result, `Đã xử lý nhập theo lô: ${result.inserted} thành công, ${result.failed} lỗi/trùng`, 201);
     } catch (err) {
       return serverErrorResponse(res, err);
     }

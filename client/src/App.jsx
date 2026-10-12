@@ -38,6 +38,9 @@ import {
 import LoginModal from './components/LoginModal.jsx';
 import PeriodLockModal from './components/PeriodLockModal.jsx';
 import TripCreateModal from './components/TripCreateModal.jsx';
+import DataManagementView from './components/DataManagementView.jsx';
+import BatchTripCreateModal from './components/BatchTripCreateModal.jsx';
+import ExcelImportModal from './components/ExcelImportModal.jsx';
 import AdvanceSettlementModal from './components/AdvanceSettlementModal.jsx';
 import ExpenseEntryModal from './components/ExpenseEntryModal.jsx';
 import EirPhotoModal from './components/EirPhotoModal.jsx';
@@ -111,6 +114,8 @@ export default function App() {
   const [isLoginOpen, setIsLoginOpen] = useState(() => !getStoredUser());
   const [isPeriodLockOpen, setIsPeriodLockOpen] = useState(false);
   const [isTripCreateOpen, setIsTripCreateOpen] = useState(false);
+  const [isBatchTripCreateOpen, setIsBatchTripCreateOpen] = useState(false);
+  const [isExcelImportOpen, setIsExcelImportOpen] = useState(false);
   const [duplicateTargetTrip, setDuplicateTargetTrip] = useState(null);
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
   const [targetTripForAdvance, setTargetTripForAdvance] = useState(null);
@@ -414,7 +419,7 @@ export default function App() {
           ENTERPRISE MINIMALIST HEADER (CHUẨN DOANH NGHIỆP LỚN)
           ============================================================ */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2 sm:py-0 min-h-16 sm:h-16 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2 sm:py-0 min-h-16 lg:h-16 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-2">
           {/* Logo & Brand */}
           <div className="flex items-center space-x-3">
             <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm">
@@ -443,7 +448,7 @@ export default function App() {
           </div>
 
           {/* Action Buttons & Profile Controls */}
-          <div className="flex w-full sm:w-auto items-center justify-end space-x-2 sm:space-x-3">
+          <div className="flex w-full lg:w-auto flex-wrap gap-2 items-center justify-end">
             {/* Menu Dropdown Thao Tác Nghiệp Vụ Nhanh (ẨN ĐỐI VỚI LÁI XE) */}
             {!isDriver && (
               <div className="relative">
@@ -464,6 +469,20 @@ export default function App() {
                       <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                         Tác Nghiệp Vận Tải
                       </div>
+                      <button
+                        onClick={() => { setIsBatchTripCreateOpen(true); setIsActionsMenuOpen(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
+                      >
+                        <Table className="w-4 h-4 text-indigo-600" />
+                        <span>Nhập Nhiều Cuốc (Bảng Grid)</span>
+                      </button>
+                      <button
+                        onClick={() => { setIsExcelImportOpen(true); setIsActionsMenuOpen(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
+                      >
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        <span>Nhập Bảng Kê Từ Excel</span>
+                      </button>
                       <button
                         onClick={() => { setIsAiDispatchOpen(true); setIsActionsMenuOpen(false); }}
                         className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
@@ -698,7 +717,7 @@ export default function App() {
                   >
                     <Truck className="w-4 h-4 text-slate-500" />
                     <span>
-                      {isAreaManager ? `Chuyến xe khu vực (${sampleTrips.length})` : isAccountant ? `Đối soát chuyến xe (${sampleTrips.length})` : `Chuyến xe (${sampleTrips.length})`}
+                      {isAreaManager ? `Chuyến xe khu vực (${sampleTrips.length})` : isAccountant ? `Đối soát chuyến xe (${sampleTrips.length})` : 'Chuyến xe'}
                     </span>
                   </button>
 
@@ -738,6 +757,7 @@ export default function App() {
                     </span>
                   </button>
 
+                  {isDirector && <button onClick={() => { setActiveModule('manage'); setActiveTab('manage'); }} className={`px-3.5 py-2 rounded-lg text-xs font-bold shrink-0 ${activeModule === 'manage' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}>Dữ liệu & chỉnh sửa</button>}
                   {/* Tab Cẩm Nang & Quản Trị */}
                   <button
                     onClick={() => {
@@ -849,6 +869,8 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {isDirector && activeTab === 'manage' && <DataManagementView />}
 
             {/* PHÂN HỆ TỔNG QUAN KINH DOANH - ĐÚNG 3 PHẦN GỌN RÕ */}
             {(isDirector || isAccountant) && (activeTab === 'business_overview') && (
@@ -1082,7 +1104,8 @@ export default function App() {
         )}
 
         {/* SECTION: DỮ LIỆU ĐÃ IMPORT TỪ EXCEL */}
-        {(activeTab === 'trips' || activeTab === 'all') && (
+        {isDirector && activeTab === 'trips' && <DataManagementView />}
+        {!isDirector && (activeTab === 'trips' || activeTab === 'all') && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
             <div>
@@ -1491,8 +1514,57 @@ export default function App() {
         currentUser={currentUser}
         duplicateFromTrip={duplicateTargetTrip}
         onTripCreated={(newTrip) => {
-          setMsg(`Đã lưu cuốc xe [${newTrip.trip_code}] thành công!`);
+          setMsg(`Đã lưu cuốc xe [${newTrip.trip_code}] thành công! Lãi tạm tính: ${new Intl.NumberFormat('vi-VN').format(newTrip.temp_profit || 0)} ₫`);
           loadData();
+          setTimeout(() => setMsg(null), 5000);
+        }}
+        onSwitchToBatch={() => {
+          setIsTripCreateOpen(false);
+          setIsBatchTripCreateOpen(true);
+        }}
+        onSwitchToExcelImport={() => {
+          setIsTripCreateOpen(false);
+          setIsExcelImportOpen(true);
+        }}
+      />
+
+      {/* Modal Nhập Nhiều Cuốc Xe (Spreadsheet Grid) */}
+      <BatchTripCreateModal
+        isOpen={isBatchTripCreateOpen}
+        onClose={() => setIsBatchTripCreateOpen(false)}
+        currentUser={currentUser}
+        onBatchCreated={(result) => {
+          setMsg(`Đã nhập thành công ${result.inserted} cuốc xe theo lô vào hệ thống!`);
+          loadData();
+          setTimeout(() => setMsg(null), 5000);
+        }}
+        onSwitchToOneTrip={() => {
+          setIsBatchTripCreateOpen(false);
+          setIsTripCreateOpen(true);
+        }}
+        onSwitchToExcelImport={() => {
+          setIsBatchTripCreateOpen(false);
+          setIsExcelImportOpen(true);
+        }}
+      />
+
+      {/* Modal Nhập Bảng Kê Từ Excel (5 bước theo chuẩn tháng 1) */}
+      <ExcelImportModal
+        isOpen={isExcelImportOpen}
+        onClose={() => setIsExcelImportOpen(false)}
+        currentUser={currentUser}
+        onImportSuccess={() => {
+          setMsg('Đã nhập bảng kê Excel vào hệ thống thành công! Dữ liệu tổng quan đã được cập nhật.');
+          loadData();
+          setTimeout(() => setMsg(null), 5000);
+        }}
+        onSwitchToOneTrip={() => {
+          setIsExcelImportOpen(false);
+          setIsTripCreateOpen(true);
+        }}
+        onSwitchToBatch={() => {
+          setIsExcelImportOpen(false);
+          setIsBatchTripCreateOpen(true);
         }}
       />
 

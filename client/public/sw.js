@@ -7,7 +7,7 @@
  * - API POST/PUT: Bỏ qua SW, xử lý hàng đợi qua IndexedDB Sync Engine
  */
 
-const CACHE_NAME = 'wed-hoachtoan-cache-v2';
+const CACHE_NAME = 'wed-hoachtoan-cache-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -86,37 +86,7 @@ self.addEventListener('fetch', (event) => {
 
   // 1. Đối với API GET danh mục (/api/v1/data/*, /api/v1/vehicles, /api/v1/trips, /api/v1/help/*):
   // Thử Network trước để lấy số mới nhất, nếu mất mạng (offline ngoài bãi) thì fallback sang Cache đã lưu
-  if (url.pathname.startsWith('/api/v1/')) {
-    event.respondWith(
-      fetch(req)
-        .then((networkRes) => {
-          // Lưu bản sao vào cache nếu thành công
-          if (networkRes && networkRes.status === 200) {
-            const resClone = networkRes.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
-          }
-          return networkRes;
-        })
-        .catch(() => {
-          // Khi offline, tìm lại trong cache
-          return caches.match(req).then((cachedRes) => {
-            if (cachedRes) {
-              console.log('[ServiceWorker] 📶 Trả về dữ liệu Cache Offline cho:', url.pathname);
-              return cachedRes;
-            }
-            return new Response(JSON.stringify({
-              success: false,
-              offline: true,
-              message: 'Thiết bị đang ở chế độ Ngoại Tuyến (Offline ngoài bãi cảng). Dữ liệu này chưa được lưu đệm.'
-            }), {
-              headers: { 'Content-Type': 'application/json' },
-              status: 503
-            });
-          });
-        })
-    );
-    return;
-  }
+  if (url.pathname.startsWith('/api/v1/')) return; // Authenticated business data stays out of shared app-shell caches.
 
   // 2. Đối với Static Assets (JS, CSS, HTML, Fonts, Images):
   // Stale-While-Revalidate: trả về cache trước nếu có, song song fetch cập nhật cache

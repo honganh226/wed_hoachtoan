@@ -18,7 +18,7 @@ router.use(requireRole(USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT));
 router.get('/overview', (req, res) => {
   try {
     const period = req.query.period || 'month';
-    const result = excelMonthService.getExecutiveOverview({ period });
+    const result = excelMonthService.getExecutiveOverview({ period, start_date:req.query.start_date, end_date:req.query.end_date });
     return successResponse(res, result, 'Lấy tổng quan kinh doanh thành công');
   } catch (err) {
     return errorResponse(res, err.message, 500);
@@ -104,12 +104,9 @@ router.get('/groups', (req, res) => {
  * TẠM KHÓA TRONG BẢN ONLINE ĐẦU TIÊN (Theo yêu cầu rà soát của Ban Giám đốc và Codex)
  * Nhóm chưa phân bổ chỉ hiển thị chênh lệch cấp nhóm, không cho phép ghi phân bổ để tránh sai lệch đối soát chi tiết chuyến.
  */
-router.post('/group/:groupKey/allocate', (req, res) => {
-  return errorResponse(
-    res,
-    'Chức năng phân bổ chi phí nhóm ô gộp đang tạm khóa trong bản online đầu tiên để phục vụ đối soát đồng bộ cấp nhóm.',
-    403
-  );
+router.post('/group/:groupKey/allocate', requireRole(USER_ROLES.DIRECTOR), (req,res)=>{
+  try { const result=excelMonthService.setGroupAllocation(req.params.groupKey,req.body.mode,req.body.allocations||req.body.manualAllocations||req.body.manual_allocations||{});return successResponse(res,result,'Đã lưu phân bổ thủ công'); }
+  catch(e){return errorResponse(res,e.message,400);}
 });
 
 /**

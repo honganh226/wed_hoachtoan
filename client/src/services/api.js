@@ -216,11 +216,83 @@ export async function fetchRouteDefaultPrice(routeId) {
   return res.json();
 }
 
-export async function createTripApi(tripData) {
+export async function createTripApi(tripData, requestId) {
   const res = await fetch(`${API_BASE}/trips`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: {...authHeaders(), ...(requestId ? {'Idempotency-Key':requestId} : {})},
     body: JSON.stringify(tripData)
+  });
+  const result=await res.json();
+  if(result.success&&!result.data?.failed)window.dispatchEvent(new Event('business-data-changed'));
+  return result;
+}
+
+export async function createBatchTripsApi(trips, requestId) {
+  const res = await fetch(`${API_BASE}/trips/batch`, {
+    method: 'POST',
+    headers: {...authHeaders(), ...(requestId ? {'Idempotency-Key':requestId} : {})},
+    body: JSON.stringify({ trips })
+  });
+  const result=await res.json();
+  if(result.success&&!result.data?.failed)window.dispatchEvent(new Event('business-data-changed'));
+  return result;
+}
+
+export async function fetchCustomersApi() {
+  const res = await fetch(`${API_BASE}/data/customers`, {
+    headers: authHeaders()
+  });
+  return res.json();
+}
+
+export async function createCustomerApi(data) {
+  const res = await fetch(`${API_BASE}/data/customers`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+export async function fetchSubcontractorsApi() {
+  const res = await fetch(`${API_BASE}/data/subcontractors`, {
+    headers: authHeaders()
+  });
+  return res.json();
+}
+
+export async function createSubcontractorApi(data) {
+  const res = await fetch(`${API_BASE}/data/subcontractors`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+export async function createVehicleApi(data) {
+  const res = await fetch(`${API_BASE}/data/vehicles`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+export async function createDriverApi(data) {
+  const res = await fetch(`${API_BASE}/data/drivers`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+export async function createRouteApi(data) {
+  const res = await fetch(`${API_BASE}/data/routes`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data)
   });
   return res.json();
 }
@@ -969,6 +1041,63 @@ export async function saveBusinessGroupAllocationApi(groupKey, mode, allocations
  */
 export async function fetchBusinessDebtsApi() {
   const res = await fetch(`${API_BASE}/business/debts`, {
+    headers: authHeaders()
+  });
+  return res.json();
+}
+
+// ================= EXCEL IMPORT APIS =================
+
+/**
+ * Tải file Excel lên để xem trước và đối chiếu chống trùng
+ */
+export async function previewExcelImportApi(file, mapping) {
+  const token = getAuthToken();
+  const formData = new FormData();
+  formData.append('file', file);
+  if(mapping)formData.append('mapping',JSON.stringify(mapping));
+
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/excel/preview`, {
+    method: 'POST',
+    headers,
+    body: formData
+  });
+  return res.json();
+}
+
+/**
+ * Xác nhận nhập các dòng đã kiểm tra vào cơ sở dữ liệu
+ */
+export async function commitExcelImportApi(payload) {
+  const res = await fetch(`${API_BASE}/excel/commit`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
+  });
+  const result=await res.json();
+  if(result.success&&!result.data?.failed)window.dispatchEvent(new Event('business-data-changed'));
+  return result;
+}
+
+/**
+ * Lấy lịch sử các đợt nhập Excel
+ */
+export async function fetchExcelBatchesApi() {
+  const res = await fetch(`${API_BASE}/excel/batches`, {
+    headers: authHeaders()
+  });
+  return res.json();
+}
+
+/**
+ * Hoàn tác một đợt nhập
+ */
+export async function rollbackExcelBatchApi(batchId) {
+  const res = await fetch(`${API_BASE}/excel/batches/${encodeURIComponent(batchId)}/rollback`, {
+    method: 'POST',
     headers: authHeaders()
   });
   return res.json();

@@ -36,6 +36,8 @@ export default function BusinessOverviewView({ onNavigateTab }) {
   const [loadError, setLoadError] = useState(null);
 
   // 1. BỘ LỌC TOÀN TRANG: THỜI GIAN & KHU VỰC
+  const [rangeStart,setRangeStart]=useState('');
+  const [rangeEnd,setRangeEnd]=useState('');
   const [dateFilter, setDateFilter] = useState('month'); // 'month' | 'day_09' | 'day_08'
   const [selectedArea, setSelectedArea] = useState('ALL');
 
@@ -84,10 +86,16 @@ export default function BusinessOverviewView({ onNavigateTab }) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible') loadData(); };
+    window.addEventListener('business-data-changed', refresh);
+    const timer = setInterval(refresh, 30000);
+    return () => { window.removeEventListener('business-data-changed', refresh); clearInterval(timer); };
+  }, [loadData]);
 
   const handleOpenAllocationModal = (group) => {
     setSelectedGroupForAllocation(group);
-    setAllocationMode(group.allocation_mode || 'PROPORTIONAL');
+    setAllocationMode(group.allocation_mode === 'MANUAL' ? 'MANUAL' : 'UNALLOCATED');
     setManualInputs(group.manual_allocations || {});
   };
 
@@ -137,23 +145,28 @@ export default function BusinessOverviewView({ onNavigateTab }) {
   // Các chuyến xe trong phạm vi lọc
   const scopedTrips = useMemo(() => {
     return tripsData.filter((trip) => {
+      if (dateFilter === 'range' && ((rangeStart && trip.trip_date < rangeStart) || (rangeEnd && trip.trip_date > rangeEnd))) return false;
+      if (dateFilter === 'all') return true;
+      if (dateFilter === 'month' && !trip.trip_date.startsWith('2026-01')) return false;
       if (dateFilter === 'day_09' && trip.trip_date !== '2026-01-09') return false;
       if (dateFilter === 'day_08' && trip.trip_date !== '2026-01-08') return false;
       if (selectedArea !== 'ALL' && trip.area_id !== selectedArea) return false;
       return true;
     });
-  }, [tripsData, dateFilter, selectedArea]);
+  }, [tripsData, dateFilter, selectedArea, rangeStart, rangeEnd]);
 
   // Nhãn phạm vi hiển thị
   const scopeLabel = useMemo(() => {
-    let d = dateFilter === 'month' 
+    let d = dateFilter === 'all'
+      ? `Toàn bộ thời gian (${scopedTrips.length} cuốc)`
+      : dateFilter === 'month' 
       ? 'Tháng 01/2026 (77 cuốc bảng kê Excel)' 
       : dateFilter === 'day_09' 
       ? 'Ngày 09/01/2026' 
-      : 'Ngày 08/01/2026';
+      : dateFilter === 'range' ? `Từ ${rangeStart || 'đầu kỳ'} đến ${rangeEnd || 'hiện tại'}` : 'Ngày 08/01/2026';
     let a = selectedArea === 'ALL' ? 'Toàn công ty' : selectedArea === 'TUAN' ? 'Khu vực Tuân' : 'Khu vực ngoài';
     return `${d} • ${a}`;
-  }, [dateFilter, selectedArea]);
+  }, [dateFilter, selectedArea, scopedTrips.length, rangeStart, rangeEnd]);
 
   // Các chỉ số tài chính cốt lõi (Phần A)
   const metrics = useMemo(() => {
@@ -459,7 +472,7 @@ export default function BusinessOverviewView({ onNavigateTab }) {
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
             {/* Bộ chọn thời gian */}
-            <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 font-medium shadow-2xs">
+            <div className="flex flex-wrap rounded-lg border border-slate-300 bg-white p-0.5 font-medium shadow-2xs">
               <button
                 type="button"
                 onClick={() => setDateFilter('month')}
@@ -467,7 +480,16 @@ export default function BusinessOverviewView({ onNavigateTab }) {
                   dateFilter === 'month' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Tháng 01/2026 (77 cuốc)
+                Tháng 01/2026 ({tripsData.filter(t=>t.trip_date.startsWith('2026-01')).length} cuốc)
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilter('all')}
+                className={`px-3 py-1.5 rounded-md transition-colors ${
+                  dateFilter === 'all' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Tất cả ({tripsData.length} cuốc)
               </button>
               <button
                 type="button"
@@ -489,6 +511,7 @@ export default function BusinessOverviewView({ onNavigateTab }) {
               </button>
             </div>
 
+            <div className="flex flex-wrap gap-2 items-center"><label>Từ ngày <input aria-label="Từ ngày báo cáo" type="date" className="border rounded p-1.5 max-w-full" value={rangeStart} onChange={e=>{setRangeStart(e.target.value);setDateFilter('range');}}/></label><label>Đến ngày <input aria-label="Đến ngày báo cáo" type="date" className="border rounded p-1.5 max-w-full" value={rangeEnd} onChange={e=>{setRangeEnd(e.target.value);setDateFilter('range');}}/></label></div>
             {/* Dropdown khu vực */}
             <select
               value={selectedArea}
@@ -1039,7 +1062,7 @@ export default function BusinessOverviewView({ onNavigateTab }) {
 
                 <button
                   type="button"
-                  onClick={() => setAllocationMode('PROPORTIONAL')}
+                  disabled title="Chưa xác nhận quy tắc phân bổ tự động"
                   className={`p-2.5 rounded-lg border text-xs font-semibold transition-all ${
                     allocationMode === 'PROPORTIONAL'
                       ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-500/20'
@@ -1047,7 +1070,7 @@ export default function BusinessOverviewView({ onNavigateTab }) {
                   }`}
                 >
                   2. Theo tỷ trọng cước
-                  <span className="text-[10px] text-slate-500 block font-normal mt-0.5">Công bằng theo doanh thu</span>
+                  <span className="text-[10px] text-slate-500 block font-normal mt-0.5">Chưa xác nhận quy tắc</span>
                 </button>
 
                 <button

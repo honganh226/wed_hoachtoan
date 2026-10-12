@@ -291,6 +291,21 @@ export function initDatabase() {
       FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
     );
 
+    -- 17. BẢNG IMPORT_BATCHES (Lịch sử các đợt nhập Excel/Batch để đối chiếu & hoàn tác)
+    CREATE TABLE IF NOT EXISTS import_batches (
+      id TEXT PRIMARY KEY,
+      batch_name TEXT NOT NULL,
+      file_name TEXT,
+      sheet_name TEXT,
+      total_rows INTEGER NOT NULL DEFAULT 0,
+      total_revenue INTEGER NOT NULL DEFAULT 0,
+      total_cost INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      notes TEXT,
+      created_at TEXT NOT NULL
+    );
+
     -- CÁC CHỈ MỤC TỐI ƯU TRUY VẤN
     CREATE INDEX IF NOT EXISTS idx_trips_trip_date ON trips(trip_date);
     CREATE INDEX IF NOT EXISTS idx_trips_vehicle_id ON trips(vehicle_id);
@@ -314,7 +329,45 @@ export function initDatabase() {
   `;
 
   db.exec(ddl);
-  console.log('[DB INIT] Hoàn tất khởi tạo 16 bảng dữ liệu và chỉ mục SQLite thành công!');
+
+  // Tự động kiểm tra và nâng cấp schema bảng trips nếu thiếu các trường chi phí chi tiết
+  try {
+    const existingCols = db.prepare("PRAGMA table_info(trips)").all().map(c => c.name);
+    const newTripCols = [
+      { name: 'subcontractor_name', def: 'TEXT' },
+      { name: 'toll_fee', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'port_fee', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'parking_fee', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'handling_fee', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'meal_allowance', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'fuel_liters', def: 'REAL NOT NULL DEFAULT 0' },
+      { name: 'other_costs', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'customer_payment_status', def: "TEXT NOT NULL DEFAULT 'CHUA_TT'" },
+      { name: 'subcontractor_payment_status', def: "TEXT NOT NULL DEFAULT 'CHUA_TT'" },
+      { name: 'group_id', def: 'TEXT' },
+      { name: 'source_type', def: "TEXT NOT NULL DEFAULT 'MANUAL'" },
+      { name: 'source_file', def: 'TEXT' },
+      { name: 'source_sheet', def: 'TEXT' },
+      { name: 'source_row', def: 'INTEGER' },
+      { name: 'raw_data', def: 'TEXT' }
+    ];
+
+    for (const col of newTripCols) {
+      if (!existingCols.includes(col.name)) {
+        db.exec(`ALTER TABLE trips ADD COLUMN ${col.name} ${col.def};`);
+      }
+    }
+    // Tự động kiểm tra và thêm cột notes cho bảng import_batches nếu chưa có
+    const batchCols = db.prepare('PRAGMA table_info(import_batches);').all();
+    const hasBatchNotes = batchCols.some(c => c.name === 'notes');
+    if (!hasBatchNotes) {
+      db.prepare('ALTER TABLE import_batches ADD COLUMN notes TEXT;').run();
+    }
+  } catch (err) {
+    console.warn('[DB INIT] Cảnh báo nâng cấp cột trips:', err.message);
+  }
+
+  console.log('[DB INIT] Hoàn tất khởi tạo 17 bảng dữ liệu và chỉ mục SQLite thành công!');
 }
 
 export default initDatabase;
