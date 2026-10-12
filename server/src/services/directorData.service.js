@@ -66,6 +66,11 @@ export function saveEntity(entity,id,values,expectedVersion,user,reason=''){
  if(id&&!old)throw Error('Không tìm thấy dữ liệu');
  if(old&&version(old)!==expectedVersion){const e=Error('Dữ liệu đã được sửa ở nơi khác. Tải lại trước khi sửa tiếp.');e.status=409;throw e;}
  const clean=validate(c,{...(old||{}),...values});const now=new Date().toISOString();
+ if(c.business && values.customer_payment_status && values.customer_payment_status!==old?.customer_payment_status){
+   if(values.received_amount===undefined||clean.received_amount===old?.received_amount)clean.received_amount=['TUOI','X','DA_TT'].includes(clean.customer_payment_status)?clean.cuoc_vao:0;
+   if(values.offset_amount===undefined||clean.offset_amount===old?.offset_amount)clean.offset_amount=clean.customer_payment_status==='DOI_TRU'?clean.cuoc_vao:0;
+ }
+ if(c.business && values.subcontractor_payment_status && values.subcontractor_payment_status!==old?.subcontractor_payment_status)clean.sub_paid_amount=clean.subcontractor_payment_status==='DA_TT'?clean.cuoc_ra:0;
  db.transaction(()=>{
   if(c.business){
    if(!old){const created=createTrip({tripData:{trip_date:clean.trip_date,customer_name:clean.customer_name,route_name:clean.route_name,vehicle_plate:clean.vehicle_plate,driver_name:clean.driver_name,container_number:clean.container_number,container_size:clean.container_size,trip_revenue:clean.cuoc_vao,subcontractor_cost:clean.cuoc_ra,is_subcontractor:clean.is_subcontractor,subcontractor_name:clean.subcontractor_name,toll_fee:clean.tien_duong,port_fee:clean.port_fee,parking_fee:clean.parking_fee,handling_fee:clean.handling_fee,meal_allowance:clean.meal_allowance,other_costs:clean.other_costs,fuel_liters:clean.dau_liters,customer_payment_status:clean.customer_payment_status,subcontractor_payment_status:clean.subcontractor_payment_status,source_type:'MANUAL',notes:clean.notes_r},user});id=created.id;}
