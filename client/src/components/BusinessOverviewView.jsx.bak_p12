@@ -1,0 +1,3264 @@
+/**
+ * ============================================================
+ * TRANG TỔNG QUAN KINH DOANH - WED_HOACHTOAN
+ * BẢN MẪU GIAO DIỆN ĐỢT 1 (HOÀN THIỆN THEO RÀ SOÁT CỦA CODEX)
+ * ============================================================
+ * Quy chuẩn nghiệp vụ & kỹ thuật:
+ * 1. Bộ lọc Ngày / Khu vực thống nhất:
+ *    - Áp dụng đồng bộ cho Chỉ số, Cảnh báo, Bảng chuyến và Bảng tài xế/xe.
+ *    - Hiển thị rõ phạm vi số liệu đang xem.
+ * 2. Thống nhất phạm vi tổng:
+ *    - Mặc định xem kết quả Chuyến hoàn thành.
+ *    - Chuyến đang chạy có góc xem riêng, số tiền ghi chú là "Dự kiến".
+ *    - Hàng tổng cuối bảng khớp 100% các dòng đang hiển thị.
+ *    - Tuyệt đối không cộng chuyến đang chạy vào lãi hoàn thành.
+ * 3. Làm rõ độ tin cậy của Lãi:
+ *    - Tách biệt rõ "Lãi đã đối soát" và "Lãi tạm tính".
+ *    - Xếp hạng tài xế/xe mặc định theo "Lãi đã đối soát".
+ *    - Chuyến chưa nhập dầu ghi nhãn cảnh báo rõ ràng, không hiện như lãi đã xác nhận.
+ * 4. Thao tác chi tiết:
+ *    - Bấm tài xế/xe lọc đúng người/xe, có chip bỏ lọc rõ ràng.
+ *    - Drawer mở trong 1 lần bấm, đóng bằng phím Escape, dùng tốt trên điện thoại/máy tính.
+ *    - Giữ nguyên bộ lọc và vị trí khi mở/đóng chi tiết.
+ *    - Chứng từ/lịch sử ghi rõ "Minh họa", không có nút giả gây hiểu nhầm.
+ * ============================================================
+ */
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import {
+  Search,
+  Filter,
+  ArrowUpDown,
+  X,
+  AlertCircle,
+  AlertTriangle,
+  AlertOctagon,
+  CheckCircle,
+  Clock,
+  ChevronRight,
+  ChevronLeft,
+  User,
+  Truck,
+  Building,
+  FileText,
+  Calendar,
+  Layers,
+  ArrowRight,
+  ArrowDown,
+  Info,
+  TrendingUp,
+  TrendingDown,
+  Wrench,
+  Scale,
+  Sparkles,
+  Activity,
+  Compass,
+  HelpCircle,
+  Check
+} from 'lucide-react';
+
+// ============================================================
+// DỮ LIỆU MINH HỌA KIỂM SOÁT ĐƯỢC: 2 NGÀY (09/10 & 08/10) VÀ 2 KHU (TUÂN & TUẤN ANH)
+// ============================================================
+const MOCK_TRIPS_DATA = [
+  // --- NGÀY HÔM NAY (2026-10-09) ---
+  {
+    id: 'TRIP-20261009-001',
+    trip_code: 'C20261009-001',
+    trip_date: '2026-10-09',
+    area_id: 'TUAN', // Khu Tuân
+    vehicle_plate: '15C-22405',
+    driver_name: 'Vũ Văn Liêm',
+    is_subcontractor: false,
+    customer_name: 'TTP',
+    route_name: 'ĐÓNG BÌNH XUYÊN',
+    pickup_location: 'MEDLOG MINH PHƯƠNG',
+    dropoff_location: 'BÌNH XUYÊN - VĨNH PHÚC',
+    container_number: 'MSMU5022544',
+    container_size: '40',
+    container_type: 'DC',
+    status: 'COMPLETED', // Hoàn thành
+    reconciliation_status: 'RECONCILED', // Đã đối soát
+    revenue_pre_tax: 3200000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 256000,
+    total_revenue: 3456000,
+    driver_salary: 550000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 1400000,
+      fuel_status: 'CONFIRMED',
+      toll: 200000,
+      toll_status: 'CONFIRMED',
+      lift_on: 250000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 0,
+      lift_off_status: 'ZERO_CONFIRMED',
+      other: 50000,
+      other_note: 'Phí chọn vỏ cont',
+      other_status: 'CONFIRMED'
+    },
+    direct_cost: 2450000,
+    trip_profit: 750000,
+    audit_trail: {
+      created_by: 'Kế toán Hương',
+      created_at: '2026-10-09 08:15',
+      reconciled_by: 'Kế toán trưởng Lan',
+      reconciled_at: '2026-10-09 16:40',
+      last_edited_by: 'Kế toán Hương',
+      last_edited_at: '2026-10-09 16:30',
+      documents_count: 2,
+      notes: 'Đã nhận phơi và vé BOT đầy đủ'
+    }
+  },
+  {
+    id: 'TRIP-20261009-002',
+    trip_code: 'C20261009-002',
+    trip_date: '2026-10-09',
+    area_id: 'TUAN', // Khu Tuân
+    vehicle_plate: '15C-35981',
+    driver_name: 'Phạm Văn Tuân',
+    is_subcontractor: false,
+    customer_name: 'VTM',
+    route_name: 'ĐÓNG LÀO CAI',
+    pickup_location: 'TÂN VŨ',
+    dropoff_location: 'KCN BẮC DUYÊN HẢI - LÀO CAI',
+    container_number: 'TRHU4891201',
+    container_size: '40',
+    container_type: 'HC',
+    status: 'COMPLETED',
+    reconciliation_status: 'PENDING_RECONCILIATION', // Chờ đối soát
+    revenue_pre_tax: 7500000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 600000,
+    total_revenue: 8100000,
+    driver_salary: 1200000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 3200000,
+      fuel_status: 'CONFIRMED',
+      toll: 600000,
+      toll_status: 'CONFIRMED',
+      lift_on: 280000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 0,
+      lift_off_status: 'ZERO_CONFIRMED',
+      other: 100000,
+      other_note: 'Vé cân xe quá cảnh',
+      other_status: 'CONFIRMED'
+    },
+    direct_cost: 5380000,
+    trip_profit: 2120000,
+    audit_trail: {
+      created_by: 'Kế toán Hương',
+      created_at: '2026-10-09 09:20',
+      reconciled_by: null,
+      reconciled_at: null,
+      last_edited_by: 'Kế toán Hương',
+      last_edited_at: '2026-10-09 17:00',
+      documents_count: 3,
+      notes: 'Lái xe Tuân đã nộp vé cầu đường điện tử VETC'
+    }
+  },
+  {
+    id: 'TRIP-20261009-003',
+    trip_code: 'C20261009-003',
+    trip_date: '2026-10-09',
+    area_id: 'TUAN_ANH', // Khu Tuấn Anh
+    vehicle_plate: '15H-00266',
+    driver_name: 'Trương Văn Hội',
+    is_subcontractor: false,
+    customer_name: 'ĐẠI THỊNH',
+    route_name: 'ĐÓNG HƯNG YÊN',
+    pickup_location: 'ĐÌNH VŨ',
+    dropoff_location: 'KCN PHỐ NỐI A - HƯNG YÊN',
+    container_number: 'TCKU7102934',
+    container_size: '40',
+    container_type: 'DC',
+    status: 'COMPLETED',
+    reconciliation_status: 'MISSING_DATA', // Chưa đủ chi phí (thiếu dầu)
+    revenue_pre_tax: 2500000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 200000,
+    total_revenue: 2700000,
+    driver_salary: 450000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 0,
+      fuel_status: 'UNENTERED', // Chưa nhập dầu!
+      toll: 90000,
+      toll_status: 'CONFIRMED',
+      lift_on: 250000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 0,
+      lift_off_status: 'ZERO_CONFIRMED',
+      other: 0,
+      other_note: '',
+      other_status: 'ZERO_CONFIRMED'
+    },
+    direct_cost: 790000,
+    trip_profit: 1710000, // Tạm tính khi chưa trừ dầu
+    audit_trail: {
+      created_by: 'Kế toán Mai',
+      created_at: '2026-10-09 10:00',
+      reconciled_by: null,
+      reconciled_at: null,
+      last_edited_by: 'Kế toán Mai',
+      last_edited_at: '2026-10-09 14:15',
+      documents_count: 1,
+      notes: 'Lái xe Hội chưa gửi hóa đơn cây dầu Petrolimex Đình Vũ'
+    }
+  },
+  {
+    id: 'TRIP-20261009-004',
+    trip_code: 'C20261009-004',
+    trip_date: '2026-10-09',
+    area_id: 'TUAN', // Khu Tuân
+    vehicle_plate: 'DOLTRUCK (Xe ngoài)',
+    driver_name: 'Xe thuê ngoài DOLTRUCK',
+    is_subcontractor: true,
+    customer_name: 'TTP',
+    route_name: 'ĐÓNG PHÚ THỌ',
+    pickup_location: 'NAM HẢI ICD',
+    dropoff_location: 'KCN THỤY VÂN - PHÚ THỌ',
+    container_number: 'TEMU6193820',
+    container_size: '40',
+    container_type: 'DC',
+    status: 'COMPLETED',
+    reconciliation_status: 'RECONCILED',
+    revenue_pre_tax: 2700000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 216000,
+    total_revenue: 2916000,
+    driver_salary: 0,
+    subcontractor_cost: 2300000,
+    expenses: {
+      fuel: 0,
+      fuel_status: 'ZERO_CONFIRMED',
+      toll: 0,
+      toll_status: 'ZERO_CONFIRMED',
+      lift_on: 250000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 0,
+      lift_off_status: 'ZERO_CONFIRMED',
+      other: 0,
+      other_note: '',
+      other_status: 'ZERO_CONFIRMED'
+    },
+    direct_cost: 2550000,
+    trip_profit: 150000,
+    audit_trail: {
+      created_by: 'Kế toán Hương',
+      created_at: '2026-10-09 11:30',
+      reconciled_by: 'Kế toán trưởng Lan',
+      reconciled_at: '2026-10-09 17:15',
+      last_edited_by: 'Kế toán Hương',
+      last_edited_at: '2026-10-09 17:10',
+      documents_count: 1,
+      notes: 'Đã nhận hóa đơn dịch vụ vận tải của Doltruck'
+    }
+  },
+  {
+    id: 'TRIP-20261009-005',
+    trip_code: 'C20261009-005',
+    trip_date: '2026-10-09',
+    area_id: 'TUAN_ANH', // Khu Tuấn Anh
+    vehicle_plate: '15H-04255',
+    driver_name: 'Nguyễn Văn Nam',
+    is_subcontractor: false,
+    customer_name: 'THÁI BÌNH CHÂU Á',
+    route_name: 'HẠ BÃI TIÊN LÃNG (LỖ DO SỰ CỐ)',
+    pickup_location: 'HICT',
+    dropoff_location: 'TIÊN LÃNG - HẢI PHÒNG',
+    container_number: 'SUDU8302194',
+    container_size: '40',
+    container_type: 'OT',
+    status: 'COMPLETED',
+    reconciliation_status: 'RECONCILED',
+    revenue_pre_tax: 1800000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 144000,
+    total_revenue: 1944000,
+    driver_salary: 400000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 950000,
+      fuel_status: 'CONFIRMED',
+      toll: 70000,
+      toll_status: 'CONFIRMED',
+      lift_on: 260000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 260000,
+      lift_off_status: 'CONFIRMED',
+      other: 650000,
+      other_note: 'Sửa van hơi phanh khẩn cấp trên đường 354',
+      other_status: 'CONFIRMED'
+    },
+    direct_cost: 2590000,
+    trip_profit: -790000, // Chuyến lỗ
+    audit_trail: {
+      created_by: 'Kế toán Mai',
+      created_at: '2026-10-09 13:00',
+      reconciled_by: 'Kế toán trưởng Lan',
+      reconciled_at: '2026-10-09 17:30',
+      last_edited_by: 'Kế toán Mai',
+      last_edited_at: '2026-10-09 17:25',
+      documents_count: 3,
+      notes: 'Đã đính kèm biên lai sửa xe gara Hoàng Mai'
+    }
+  },
+  {
+    id: 'TRIP-20261009-006',
+    trip_code: 'C20261009-006',
+    trip_date: '2026-10-09',
+    area_id: 'TUAN', // Khu Tuân
+    vehicle_plate: '15C-22405',
+    driver_name: 'Vũ Văn Liêm',
+    is_subcontractor: false,
+    customer_name: 'VTM',
+    route_name: 'VỎ RỖNG VỀ TÂN VŨ',
+    pickup_location: 'BÌNH XUYÊN',
+    dropoff_location: 'TÂN VŨ',
+    container_number: 'MSMU5022544',
+    container_size: '40',
+    container_type: 'DC',
+    status: 'COMPLETED',
+    reconciliation_status: 'RECONCILED',
+    revenue_pre_tax: 2100000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 168000,
+    total_revenue: 2268000,
+    driver_salary: 450000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 1100000,
+      fuel_status: 'CONFIRMED',
+      toll: 150000,
+      toll_status: 'CONFIRMED',
+      lift_on: 0,
+      lift_on_status: 'ZERO_CONFIRMED',
+      lift_off: 250000,
+      lift_off_status: 'CONFIRMED',
+      other: 0,
+      other_note: '',
+      other_status: 'ZERO_CONFIRMED'
+    },
+    direct_cost: 1950000,
+    trip_profit: 150000,
+    audit_trail: {
+      created_by: 'Kế toán Hương',
+      created_at: '2026-10-09 14:00',
+      reconciled_by: 'Kế toán trưởng Lan',
+      reconciled_at: '2026-10-09 17:40',
+      last_edited_by: 'Kế toán Hương',
+      last_edited_at: '2026-10-09 17:35',
+      documents_count: 2,
+      notes: 'Cuốc kéo vỏ về bãi hạ Tân Vũ'
+    }
+  },
+  {
+    id: 'TRIP-20261009-007',
+    trip_code: 'C20261009-007',
+    trip_date: '2026-10-09',
+    area_id: 'TUAN', // Khu Tuân
+    vehicle_plate: '15C-35981',
+    driver_name: 'Phạm Văn Tuân',
+    is_subcontractor: false,
+    customer_name: 'ĐẠI THỊNH',
+    route_name: 'ĐÓNG YÊN PHONG - BẮC NINH',
+    pickup_location: 'ĐÌNH VŨ',
+    dropoff_location: 'YÊN PHONG - BẮC NINH',
+    container_number: 'CBHU9012384',
+    container_size: '40',
+    container_type: 'HC',
+    status: 'RUNNING', // Đang chạy
+    reconciliation_status: 'MISSING_DATA',
+    revenue_pre_tax: 2900000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 232000,
+    total_revenue: 3132000,
+    driver_salary: 500000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 1200000,
+      fuel_status: 'CONFIRMED',
+      toll: 0,
+      toll_status: 'UNENTERED',
+      lift_on: 250000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 0,
+      lift_off_status: 'UNENTERED',
+      other: 0,
+      other_note: '',
+      other_status: 'ZERO_CONFIRMED'
+    },
+    direct_cost: 1950000,
+    trip_profit: 950000, // Lãi dự kiến
+    audit_trail: {
+      created_by: 'Kế toán Hương',
+      created_at: '2026-10-09 15:10',
+      reconciled_by: null,
+      reconciled_at: null,
+      last_edited_by: 'Kế toán Hương',
+      last_edited_at: '2026-10-09 15:10',
+      documents_count: 1,
+      notes: 'Xe đang trên đường giao hàng'
+    }
+  },
+  {
+    id: 'TRIP-20261009-008',
+    trip_code: 'C20261009-008',
+    trip_date: '2026-10-09',
+    area_id: 'TUAN_ANH', // Khu Tuấn Anh
+    vehicle_plate: '15H-00266',
+    driver_name: 'Trương Văn Hội',
+    is_subcontractor: false,
+    customer_name: 'AN PHÚ',
+    route_name: 'KẸP 2X20 CẢNG HẢI AN',
+    pickup_location: 'HẢI AN',
+    dropoff_location: 'AN DƯƠNG - HẢI PHÒNG',
+    container_number: 'BSIU2019482 / FSCU2910481',
+    container_size: '2x20',
+    container_type: 'DC',
+    status: 'RUNNING', // Đang chạy
+    reconciliation_status: 'MISSING_DATA',
+    revenue_pre_tax: 2400000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 192000,
+    total_revenue: 2592000,
+    driver_salary: 550000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 600000,
+      fuel_status: 'CONFIRMED',
+      toll: 0,
+      toll_status: 'ZERO_CONFIRMED',
+      lift_on: 400000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 0,
+      lift_off_status: 'UNENTERED',
+      other: 0,
+      other_note: '',
+      other_status: 'ZERO_CONFIRMED'
+    },
+    direct_cost: 1550000,
+    trip_profit: 850000, // Lãi dự kiến
+    audit_trail: {
+      created_by: 'Kế toán Mai',
+      created_at: '2026-10-09 16:00',
+      reconciled_by: null,
+      reconciled_at: null,
+      last_edited_by: 'Kế toán Mai',
+      last_edited_at: '2026-10-09 16:00',
+      documents_count: 1,
+      notes: 'Đơn hàng cont kẹp 2x20'
+    }
+  },
+
+  // --- NGÀY HÔM QUA (2026-10-08) ---
+  {
+    id: 'TRIP-20261008-001',
+    trip_code: 'C20261008-001',
+    trip_date: '2026-10-08',
+    area_id: 'TUAN', // Khu Tuân
+    vehicle_plate: '15C-22405',
+    driver_name: 'Vũ Văn Liêm',
+    is_subcontractor: false,
+    customer_name: 'TTP',
+    route_name: 'ĐÓNG QUANG MINH - HÀ NỘI',
+    pickup_location: 'TÂN VŨ',
+    dropoff_location: 'KCN QUANG MINH - MÊ LINH',
+    container_number: 'CMAU9210384',
+    container_size: '40',
+    container_type: 'DC',
+    status: 'COMPLETED',
+    reconciliation_status: 'RECONCILED',
+    revenue_pre_tax: 2800000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 224000,
+    total_revenue: 3024000,
+    driver_salary: 500000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 1250000,
+      fuel_status: 'CONFIRMED',
+      toll: 180000,
+      toll_status: 'CONFIRMED',
+      lift_on: 250000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 0,
+      lift_off_status: 'ZERO_CONFIRMED',
+      other: 0,
+      other_note: '',
+      other_status: 'ZERO_CONFIRMED'
+    },
+    direct_cost: 2180000,
+    trip_profit: 620000,
+    audit_trail: {
+      created_by: 'Kế toán Hương',
+      created_at: '2026-10-08 07:45',
+      reconciled_by: 'Kế toán trưởng Lan',
+      reconciled_at: '2026-10-08 17:00',
+      last_edited_by: 'Kế toán Hương',
+      last_edited_at: '2026-10-08 16:50',
+      documents_count: 2,
+      notes: 'Đã hoàn tất thanh quyết toán hôm qua'
+    }
+  },
+  {
+    id: 'TRIP-20261008-002',
+    trip_code: 'C20261008-002',
+    trip_date: '2026-10-08',
+    area_id: 'TUAN_ANH', // Khu Tuấn Anh
+    vehicle_plate: '15H-00266',
+    driver_name: 'Trương Văn Hội',
+    is_subcontractor: false,
+    customer_name: 'VTM',
+    route_name: 'ĐÓNG ĐỒNG VĂN - HÀ NAM',
+    pickup_location: 'NAM HẢI ICD',
+    dropoff_location: 'KCN ĐỒNG VĂN - HÀ NAM',
+    container_number: 'GLDU3910294',
+    container_size: '40',
+    container_type: 'HC',
+    status: 'COMPLETED',
+    reconciliation_status: 'RECONCILED',
+    revenue_pre_tax: 2700000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 216000,
+    total_revenue: 2916000,
+    driver_salary: 480000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 1200000,
+      fuel_status: 'CONFIRMED',
+      toll: 160000,
+      toll_status: 'CONFIRMED',
+      lift_on: 250000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 0,
+      lift_off_status: 'ZERO_CONFIRMED',
+      other: 0,
+      other_note: '',
+      other_status: 'ZERO_CONFIRMED'
+    },
+    direct_cost: 2090000,
+    trip_profit: 610000,
+    audit_trail: {
+      created_by: 'Kế toán Mai',
+      created_at: '2026-10-08 08:30',
+      reconciled_by: 'Kế toán trưởng Lan',
+      reconciled_at: '2026-10-08 17:15',
+      last_edited_by: 'Kế toán Mai',
+      last_edited_at: '2026-10-08 17:10',
+      documents_count: 2,
+      notes: 'Đã nhận phơi đầy đủ'
+    }
+  },
+  {
+    id: 'TRIP-20261008-003',
+    trip_code: 'C20261008-003',
+    trip_date: '2026-10-08',
+    area_id: 'TUAN_ANH', // Khu Tuấn Anh
+    vehicle_plate: '15H-04255',
+    driver_name: 'Nguyễn Văn Nam',
+    is_subcontractor: false,
+    customer_name: 'ĐẠI THỊNH',
+    route_name: 'ĐÓNG PHỐ NỐI - HƯNG YÊN',
+    pickup_location: 'ĐÌNH VŨ',
+    dropoff_location: 'PHỐ NỐI - HƯNG YÊN',
+    container_number: 'KKFU1920391',
+    container_size: '40',
+    container_type: 'DC',
+    status: 'COMPLETED',
+    reconciliation_status: 'PENDING_RECONCILIATION',
+    revenue_pre_tax: 2500000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 200000,
+    total_revenue: 2700000,
+    driver_salary: 450000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 1100000,
+      fuel_status: 'CONFIRMED',
+      toll: 90000,
+      toll_status: 'CONFIRMED',
+      lift_on: 250000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 0,
+      lift_off_status: 'ZERO_CONFIRMED',
+      other: 0,
+      other_note: '',
+      other_status: 'ZERO_CONFIRMED'
+    },
+    direct_cost: 1890000,
+    trip_profit: 610000,
+    audit_trail: {
+      created_by: 'Kế toán Mai',
+      created_at: '2026-10-08 09:00',
+      reconciled_by: null,
+      reconciled_at: null,
+      last_edited_by: 'Kế toán Mai',
+      last_edited_at: '2026-10-08 17:30',
+      documents_count: 2,
+      notes: 'Chờ duyệt bảng kê'
+    }
+  },
+  {
+    id: 'TRIP-20261008-004',
+    trip_code: 'C20261008-004',
+    trip_date: '2026-10-08',
+    area_id: 'TUAN', // Khu Tuân
+    vehicle_plate: '15C-35981',
+    driver_name: 'Phạm Văn Tuân',
+    is_subcontractor: false,
+    customer_name: 'AN PHÚ',
+    route_name: 'ĐÓNG ĐÌNH TRÁM - BẮC GIANG',
+    pickup_location: 'TÂN VŨ',
+    dropoff_location: 'KCN ĐÌNH TRÁM - BẮC GIANG',
+    container_number: 'TGHU8201942',
+    container_size: '40',
+    container_type: 'DC',
+    status: 'COMPLETED',
+    reconciliation_status: 'MISSING_DATA', // Thiếu hóa đơn BOT
+    revenue_pre_tax: 2900000,
+    vat_type: 'V',
+    vat_rate: 8,
+    vat_amount: 232000,
+    total_revenue: 3132000,
+    driver_salary: 500000,
+    subcontractor_cost: 0,
+    expenses: {
+      fuel: 1300000,
+      fuel_status: 'CONFIRMED',
+      toll: 0,
+      toll_status: 'UNENTERED', // Chưa nhập BOT
+      lift_on: 250000,
+      lift_on_status: 'CONFIRMED',
+      lift_off: 0,
+      lift_off_status: 'ZERO_CONFIRMED',
+      other: 0,
+      other_note: '',
+      other_status: 'ZERO_CONFIRMED'
+    },
+    direct_cost: 2050000,
+    trip_profit: 850000, // Tạm tính do thiếu BOT
+    audit_trail: {
+      created_by: 'Kế toán Hương',
+      created_at: '2026-10-08 10:15',
+      reconciled_by: null,
+      reconciled_at: null,
+      last_edited_by: 'Kế toán Hương',
+      last_edited_at: '2026-10-08 15:00',
+      documents_count: 1,
+      notes: 'Lái xe chưa nộp biên lai vé BOT quốc lộ 1A'
+    }
+  }
+];
+
+// Danh bạ Đội xe & Tài xế chuẩn của công ty (phục vụ đối soát và quản lý nhân sự đầy đủ)
+const COMPANY_DRIVERS = [
+  { name: 'Vũ Văn Liêm', default_plate: '15C-22405', area_id: 'TUAN', is_subcontractor: false, note: 'Tài xế chính thức' },
+  { name: 'Phạm Văn Tuân', default_plate: '15C-35981', area_id: 'TUAN', is_subcontractor: false, note: 'Tài xế chính thức' },
+  { name: 'Trương Văn Hội', default_plate: '15H-00266', area_id: 'TUAN_ANH', is_subcontractor: false, note: 'Tài xế chính thức' },
+  { name: 'Nguyễn Văn Nam', default_plate: '15H-04255', area_id: 'TUAN_ANH', is_subcontractor: false, note: 'Tài xế chính thức' },
+  { name: 'Lê Anh Sức', default_plate: '15C-99881', area_id: 'TUAN_ANH', is_subcontractor: false, note: 'Tài xế dự phòng / Trực bãi' },
+  { name: 'Xe thuê ngoài DOLTRUCK', default_plate: 'DOLTRUCK (Xe ngoài)', area_id: 'TUAN', is_subcontractor: true, note: 'Đối tác xe thuê ngoài' }
+];
+
+const COMPANY_VEHICLES = [
+  { plate: '15C-22405', default_driver: 'Vũ Văn Liêm', area_id: 'TUAN', is_subcontractor: false, note: 'Đầu kéo công ty' },
+  { plate: '15C-35981', default_driver: 'Phạm Văn Tuân', area_id: 'TUAN', is_subcontractor: false, note: 'Đầu kéo công ty' },
+  { plate: '15H-00266', default_driver: 'Trương Văn Hội', area_id: 'TUAN_ANH', is_subcontractor: false, note: 'Đầu kéo công ty' },
+  { plate: '15H-04255', default_driver: 'Nguyễn Văn Nam', area_id: 'TUAN_ANH', is_subcontractor: false, note: 'Đầu kéo công ty' },
+  { plate: '15C-99881', default_driver: 'Lê Anh Sức', area_id: 'TUAN_ANH', is_subcontractor: false, note: 'Xe dự phòng / Trực bãi' },
+  { plate: 'DOLTRUCK (Xe ngoài)', default_driver: 'Xe thuê ngoài DOLTRUCK', area_id: 'TUAN', is_subcontractor: true, note: 'Xe vệ tinh thầu phụ' }
+];
+
+// Helper định dạng tiền tệ Việt Nam đồng
+function formatVnd(amount) {
+  if (amount === null || amount === undefined) return '0 đ';
+  const isNegative = amount < 0;
+  const absFormatted = new Intl.NumberFormat('vi-VN').format(Math.abs(amount));
+  return isNegative ? `-${absFormatted} đ` : `${absFormatted} đ`;
+}
+
+// Helper định dạng triệu đồng (hiển thị tóm tắt tổng quan)
+function formatTrieuDong(amount) {
+  if (amount === null || amount === undefined) return '0 tr đ';
+  const trieu = amount / 1000000;
+  return trieu.toLocaleString('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' tr đ';
+}
+
+export default function BusinessOverviewView({ onOpenTripCreate }) {
+  // Hỗ trợ khởi tạo state từ URL query params phục vụ kiểm thử và xem góc nhìn nhanh
+  const initialParams = useMemo(() => {
+    if (typeof window === 'undefined') return {};
+    const sp = new URLSearchParams(window.location.search);
+    return {
+      tripCode: sp.get('trip'),
+      date: sp.get('date'),
+      area: sp.get('area'),
+      tab: sp.get('tab'),
+      entityType: sp.get('entityType'),
+      entityName: sp.get('entityName'),
+      reconcile: sp.get('reconcile')
+    };
+  }, []);
+
+  // ============================================================
+  // 1. BỘ LỌC TOÀN TRANG (ÁP DỤNG THỐNG NHẤT CHO TOÀN BỘ CHỈ SỐ VÀ BẢNG)
+  // ============================================================
+  const [dateFilter, setDateFilter] = useState(initialParams.date || 'today'); // 'today' | 'yesterday' | 'month' | 'custom'
+  const [customStartDate, setCustomStartDate] = useState('2026-10-01');
+  const [customEndDate, setCustomEndDate] = useState('2026-10-09');
+  const [selectedArea, setSelectedArea] = useState(initialParams.area || 'ALL'); // 'ALL' | 'TUAN' | 'TUAN_ANH'
+
+  // ============================================================
+  // 2. BỘ LỌC RIÊNG CỦA BẢNG CHUYẾN XE
+  // ============================================================
+  const [tripSearch, setTripSearch] = useState('');
+  const [tripStatusTab, setTripStatusTab] = useState(initialParams.tab || 'COMPLETED'); // 'COMPLETED' (Mặc định) | 'RUNNING' (Góc xem riêng)
+  const [reconcileFilter, setReconcileFilter] = useState(initialParams.reconcile || 'ALL'); // 'ALL' | 'RECONCILED' | 'PENDING' | 'MISSING' | 'LOSS'
+  const [sortField, setSortField] = useState('trip_date');
+  const [sortDirection, setSortDirection] = useState('desc');
+  const [drilldownNotice, setDrilldownNotice] = useState(null); // Ghi chú giải thích khi bấm từ KPI xuống bảng
+
+  // Lọc theo đối tượng (khi bấm dòng tài xế/xe từ Bảng hiệu quả)
+  const [activeEntityFilter, setActiveEntityFilter] = useState(
+    initialParams.entityType && initialParams.entityName
+      ? { type: initialParams.entityType, name: initialParams.entityName }
+      : null
+  );
+
+  // ============================================================
+  // 3. BẢNG HIỆU QUẢ TÀI XẾ / XE
+  // ============================================================
+  const [breakdownView, setBreakdownView] = useState('DRIVER'); // 'DRIVER' | 'VEHICLE'
+  const [breakdownSort, setBreakdownSort] = useState('RECONCILED_PROFIT_DESC'); // 'RECONCILED_PROFIT_DESC' (Mặc định) | 'TOTAL_PROFIT_DESC' | 'PROFIT_PER_TRIP_DESC' | 'TRIPS_ASC'
+
+  // Chuyến được chọn xem chi tiết (Drawer bên phải)
+  const [selectedTrip, setSelectedTrip] = useState(() => {
+    if (initialParams.tripCode) {
+      return MOCK_TRIPS_DATA.find(t => t.trip_code === initialParams.tripCode) || null;
+    }
+    return null;
+  });
+
+  // Xử lý drill-down từ 4 chỉ số KPI tổng quan xuống bảng danh sách chuyến (Ưu tiên 2 & Đợt A sửa lỗi)
+  const handleDrilldownFromMetric = (metricType) => {
+    // 1. Luôn xóa tìm kiếm và bộ lọc tài xế/xe cũ cho MỌI chỉ số tổng
+    setTripSearch('');
+    setActiveEntityFilter(null);
+
+    const tableEl = document.getElementById('trips-table-section');
+    if (tableEl) {
+      tableEl.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    if (metricType === 'COMPLETED_TRIPS') {
+      setTripStatusTab('COMPLETED');
+      setReconcileFilter('ALL');
+      setSortField('trip_date');
+      setSortDirection('desc');
+      setDrilldownNotice('Đang xem: Toàn bộ danh sách chuyến đã hoàn thành trong kỳ.');
+    } else if (metricType === 'RUNNING_TRIPS') {
+      setTripStatusTab('RUNNING');
+      setReconcileFilter('ALL');
+      setSortField('trip_date');
+      setSortDirection('desc');
+      setDrilldownNotice('Đang xem: Các chuyến xe đang chạy trên đường (Doanh thu & Chi phí dự kiến).');
+    } else if (metricType === 'REVENUE') {
+      setTripStatusTab('COMPLETED');
+      setReconcileFilter('ALL');
+      setSortField('revenue_pre_tax');
+      setSortDirection('desc');
+      setDrilldownNotice('Đang xem: Toàn bộ chuyến hoàn thành, sắp xếp Doanh thu cao nhất trước (Giải thích nguồn tạo doanh thu).');
+    } else if (metricType === 'DIRECT_COST') {
+      setTripStatusTab('COMPLETED');
+      setReconcileFilter('ALL');
+      setSortField('direct_cost');
+      setSortDirection('desc');
+      setDrilldownNotice('Đang xem: Toàn bộ chuyến hoàn thành, sắp xếp Chi phí trực tiếp lớn nhất trước (Giải thích các khoản chi phí phát sinh).');
+    } else if (metricType === 'PROFIT') {
+      setTripStatusTab('COMPLETED');
+      setReconcileFilter('ALL');
+      setSortField('trip_profit');
+      setSortDirection('desc');
+      setDrilldownNotice('Đang xem: Toàn bộ chuyến hoàn thành, sắp xếp theo Lãi chuyến cao nhất trước.');
+    } else if (metricType === 'RECONCILED_PROFIT') {
+      setTripStatusTab('COMPLETED');
+      setReconcileFilter('RECONCILED');
+      setSortField('trip_profit');
+      setSortDirection('desc');
+      setDrilldownNotice('Đang lọc: Chỉ các chuyến Lãi đã đối soát chuẩn xác.');
+    } else if (metricType === 'PROVISIONAL_PROFIT') {
+      setTripStatusTab('COMPLETED');
+      setReconcileFilter('UNRECONCILED');
+      setSortField('trip_profit');
+      setSortDirection('desc');
+      setDrilldownNotice('Đang lọc: Các chuyến Chưa đối soát (gồm chuyến chờ duyệt và chuyến chưa đủ hóa đơn dầu/BOT).');
+    }
+  };
+
+  // Xử lý chuyển từ 4 cảnh báo sang danh sách (Đợt B: loại bỏ bộ lọc cũ gây xung đột)
+  const handleActionAlert = (alertType) => {
+    // Luôn dọn sạch tìm kiếm và lọc đối tượng cũ để không gây xung đột danh sách
+    setTripSearch('');
+    setActiveEntityFilter(null);
+
+    if (alertType === 'LOSS') {
+      setTripStatusTab('COMPLETED');
+      setReconcileFilter('LOSS');
+      // Danh sách chuyến lỗ sắp xếp lỗ nhiều nhất trước (trip_profit tăng dần: âm lớn nhất lên đầu)
+      setSortField('trip_profit');
+      setSortDirection('asc');
+      setDrilldownNotice('Đang lọc: Các chuyến phát sinh lỗ trong kỳ (sắp xếp lỗ nhiều nhất lên đầu).');
+      const tableEl = document.getElementById('trips-table-section');
+      if (tableEl) tableEl.scrollIntoView({ behavior: 'smooth' });
+    } else if (alertType === 'MISSING') {
+      setTripStatusTab('COMPLETED');
+      setReconcileFilter('MISSING');
+      setSortField('trip_date');
+      setSortDirection('desc');
+      setDrilldownNotice('Đang lọc: Các chuyến chưa đủ chi phí (chưa nhập tiền dầu hoặc vé BOT).');
+      const tableEl = document.getElementById('trips-table-section');
+      if (tableEl) tableEl.scrollIntoView({ behavior: 'smooth' });
+    } else if (alertType === 'PENDING') {
+      setTripStatusTab('COMPLETED');
+      setReconcileFilter('PENDING');
+      setSortField('trip_date');
+      setSortDirection('desc');
+      setDrilldownNotice('Đang lọc: Các chuyến chờ đối soát / chờ duyệt bảng kê.');
+      const tableEl = document.getElementById('trips-table-section');
+      if (tableEl) tableEl.scrollIntoView({ behavior: 'smooth' });
+    } else if (alertType === 'ZERO_DRIVERS') {
+      setBreakdownView('DRIVER');
+      setBreakdownSort('TRIPS_ASC');
+      const breakdownEl = document.getElementById('breakdown-section');
+      if (breakdownEl) breakdownEl.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // Xử lý khi bấm một tài xế hoặc xe từ bảng hiệu quả
+  const handleSelectEntity = (type, name) => {
+    setTripSearch('');
+    setReconcileFilter('ALL');
+    setTripStatusTab('COMPLETED');
+    setActiveEntityFilter({ type, name });
+    setDrilldownNotice(`Đang lọc danh sách chuyến của ${type === 'DRIVER' ? 'tài xế' : 'xe'}: ${name}`);
+    const tableEl = document.getElementById('trips-table-section');
+    if (tableEl) tableEl.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // ============================================================
+  // BƯỚC 1: LỌC PHẠM VI TOÀN TRANG THEO NGÀY & KHU VỰC (SCOPED TRIPS)
+  // ============================================================
+  const scopedTrips = useMemo(() => {
+    return MOCK_TRIPS_DATA.filter((trip) => {
+      // 1. Lọc theo ngày
+      if (dateFilter === 'today' && trip.trip_date !== '2026-10-09') {
+        return false;
+      }
+      if (dateFilter === 'yesterday' && trip.trip_date !== '2026-10-08') {
+        return false;
+      }
+      if (dateFilter === 'month' && !trip.trip_date.startsWith('2026-10')) {
+        return false;
+      }
+      if (dateFilter === 'custom') {
+        if (customStartDate && trip.trip_date < customStartDate) return false;
+        if (customEndDate && trip.trip_date > customEndDate) return false;
+      }
+
+      // 2. Lọc theo khu vực
+      if (selectedArea !== 'ALL' && trip.area_id !== selectedArea) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [dateFilter, selectedArea, customStartDate, customEndDate]);
+
+  // ============================================================
+  // BƯỚC 2: TÍNH TOÁN 4 CHỈ SỐ DOANH NGHIỆP TRÊN TẬP SCOPED TRIPS
+  // MẶC ĐỊNH TÍNH TRÊN CHUYẾN HOÀN THÀNH (KHÔNG CỘNG CHUYẾN ĐANG CHẠY)
+  // ============================================================
+  const metrics = useMemo(() => {
+    const completedTrips = scopedTrips.filter((t) => t.status === 'COMPLETED');
+    const runningTrips = scopedTrips.filter((t) => t.status === 'RUNNING');
+
+    // Doanh thu và Chi phí của các chuyến hoàn thành
+    const totalRevenuePreTax = completedTrips.reduce((sum, t) => sum + t.revenue_pre_tax, 0);
+    const totalDirectCost = completedTrips.reduce((sum, t) => sum + t.direct_cost, 0);
+
+    // Tách bạch: Lãi đã đối soát vs Lãi tạm tính
+    const reconciledTrips = completedTrips.filter((t) => t.reconciliation_status === 'RECONCILED');
+    const reconciledProfit = reconciledTrips.reduce((sum, t) => sum + t.trip_profit, 0);
+
+    const provisionalTrips = completedTrips.filter((t) => t.reconciliation_status !== 'RECONCILED');
+    const provisionalProfit = provisionalTrips.reduce((sum, t) => sum + t.trip_profit, 0);
+
+    const totalProfit = totalRevenuePreTax - totalDirectCost;
+
+    // Tiến độ đối soát trên toàn bộ chuyến trong phạm vi
+    const reconciledCount = scopedTrips.filter((t) => t.reconciliation_status === 'RECONCILED').length;
+    const missingDataCount = scopedTrips.filter((t) => t.reconciliation_status === 'MISSING_DATA').length;
+    const pendingReconcileCount = scopedTrips.filter((t) => t.reconciliation_status === 'PENDING_RECONCILIATION').length;
+    const lossTripsCount = completedTrips.filter((t) => t.trip_profit < 0).length;
+
+    // Dự kiến của chuyến đang chạy
+    const runningExpectedRevenue = runningTrips.reduce((sum, t) => sum + t.revenue_pre_tax, 0);
+    const runningExpectedProfit = runningTrips.reduce((sum, t) => sum + t.trip_profit, 0);
+
+    return {
+      completedCount: completedTrips.length,
+      runningCount: runningTrips.length,
+      totalCount: scopedTrips.length,
+      totalRevenuePreTax,
+      totalDirectCost,
+      reconciledProfit,
+      reconciledTripsCount: reconciledTrips.length,
+      provisionalProfit,
+      provisionalTripsCount: provisionalTrips.length,
+      totalProfit,
+      reconciledCount,
+      missingDataCount,
+      pendingReconcileCount,
+      lossTripsCount,
+      runningExpectedRevenue,
+      runningExpectedProfit
+    };
+  }, [scopedTrips]);
+
+  // ============================================================
+  // BƯỚC 3: TÍNH TOÁN HIỆU QUẢ TÀI XẾ & ĐẦU XE (TRÊN SCOPED TRIPS)
+  // ĐỢT B: LÃI BÌNH QUÂN ĐÃ ĐỐI SOÁT CHIA CHO SỐ CHUYẾN ĐÃ ĐỐI SOÁT
+  // ============================================================
+  const driverPerformance = useMemo(() => {
+    const targetDrivers = COMPANY_DRIVERS.filter(d => selectedArea === 'ALL' || d.area_id === selectedArea);
+    const map = new Map();
+
+    // Khởi tạo trước cho tất cả tài xế trong biên chế
+    targetDrivers.forEach(d => {
+      map.set(d.name, {
+        driver_name: d.name,
+        vehicle_plate: d.default_plate,
+        is_subcontractor: d.is_subcontractor,
+        completed_trips: 0,
+        reconciled_trips_count: 0,
+        running_trips: 0,
+        active_days_set: new Set(),
+        total_revenue: 0,
+        total_cost: 0,
+        reconciled_profit: 0,
+        provisional_profit: 0,
+        total_profit: 0,
+        unreconciled_trips: 0,
+        missing_data_trips: 0
+      });
+    });
+
+    scopedTrips.forEach((t) => {
+      const key = t.driver_name;
+      if (!map.has(key)) {
+        map.set(key, {
+          driver_name: key,
+          vehicle_plate: t.vehicle_plate,
+          is_subcontractor: t.is_subcontractor,
+          completed_trips: 0,
+          reconciled_trips_count: 0,
+          running_trips: 0,
+          active_days_set: new Set(),
+          total_revenue: 0,
+          total_cost: 0,
+          reconciled_profit: 0,
+          provisional_profit: 0,
+          total_profit: 0,
+          unreconciled_trips: 0,
+          missing_data_trips: 0
+        });
+      }
+
+      const item = map.get(key);
+      if (t.status === 'COMPLETED') {
+        item.completed_trips += 1;
+        item.active_days_set.add(t.trip_date);
+        item.total_revenue += t.revenue_pre_tax;
+        item.total_cost += t.direct_cost;
+        item.total_profit += t.trip_profit;
+
+        if (t.reconciliation_status === 'RECONCILED') {
+          item.reconciled_trips_count += 1;
+          item.reconciled_profit += t.trip_profit;
+        } else {
+          item.provisional_profit += t.trip_profit;
+        }
+      } else if (t.status === 'RUNNING') {
+        item.running_trips += 1;
+      }
+
+      if (t.reconciliation_status === 'PENDING_RECONCILIATION') {
+        item.unreconciled_trips += 1;
+      } else if (t.reconciliation_status === 'MISSING_DATA') {
+        item.missing_data_trips += 1;
+      }
+    });
+
+    const list = Array.from(map.values()).map((item) => {
+      // QUY TẮC CỐT LÕI: Lãi bình quân đã đối soát = Lãi đã đối soát / Số chuyến đã đối soát
+      // Tuyệt đối không chia cho toàn bộ chuyến!
+      const avgReconciled = item.reconciled_trips_count > 0 
+        ? Math.round(item.reconciled_profit / item.reconciled_trips_count) 
+        : 0;
+
+      return {
+        ...item,
+        active_days: item.active_days_set.size,
+        reconciled_profit_per_trip: avgReconciled
+      };
+    });
+
+    // Sắp xếp theo các góc xem nhanh
+    if (breakdownSort === 'TRIPS_ASC') {
+      return list.sort((a, b) => a.completed_trips - b.completed_trips);
+    }
+    if (breakdownSort === 'RECONCILED_PROFIT_DESC') {
+      return list.sort((a, b) => b.reconciled_profit - a.reconciled_profit);
+    }
+    if (breakdownSort === 'TOTAL_PROFIT_DESC') {
+      return list.sort((a, b) => b.total_profit - a.total_profit);
+    }
+    if (breakdownSort === 'PROFIT_PER_TRIP_DESC') {
+      return list.sort((a, b) => b.reconciled_profit_per_trip - a.reconciled_profit_per_trip);
+    }
+    return list;
+  }, [scopedTrips, breakdownSort, selectedArea]);
+
+  const vehiclePerformance = useMemo(() => {
+    const targetVehicles = COMPANY_VEHICLES.filter(v => selectedArea === 'ALL' || v.area_id === selectedArea);
+    const map = new Map();
+
+    targetVehicles.forEach(v => {
+      map.set(v.plate, {
+        vehicle_plate: v.plate,
+        driver_name: v.default_driver,
+        is_subcontractor: v.is_subcontractor,
+        completed_trips: 0,
+        reconciled_trips_count: 0,
+        running_trips: 0,
+        active_days_set: new Set(),
+        total_revenue: 0,
+        total_cost: 0,
+        reconciled_profit: 0,
+        provisional_profit: 0,
+        total_profit: 0,
+        unreconciled_trips: 0,
+        missing_data_trips: 0
+      });
+    });
+
+    scopedTrips.forEach((t) => {
+      const key = t.vehicle_plate;
+      if (!map.has(key)) {
+        map.set(key, {
+          vehicle_plate: key,
+          driver_name: t.driver_name,
+          is_subcontractor: t.is_subcontractor,
+          completed_trips: 0,
+          reconciled_trips_count: 0,
+          running_trips: 0,
+          active_days_set: new Set(),
+          total_revenue: 0,
+          total_cost: 0,
+          reconciled_profit: 0,
+          provisional_profit: 0,
+          total_profit: 0,
+          unreconciled_trips: 0,
+          missing_data_trips: 0
+        });
+      }
+
+      const item = map.get(key);
+      if (t.status === 'COMPLETED') {
+        item.completed_trips += 1;
+        item.active_days_set.add(t.trip_date);
+        item.total_revenue += t.revenue_pre_tax;
+        item.total_cost += t.direct_cost;
+        item.total_profit += t.trip_profit;
+
+        if (t.reconciliation_status === 'RECONCILED') {
+          item.reconciled_trips_count += 1;
+          item.reconciled_profit += t.trip_profit;
+        } else {
+          item.provisional_profit += t.trip_profit;
+        }
+      } else if (t.status === 'RUNNING') {
+        item.running_trips += 1;
+      }
+
+      if (t.reconciliation_status === 'PENDING_RECONCILIATION') {
+        item.unreconciled_trips += 1;
+      } else if (t.reconciliation_status === 'MISSING_DATA') {
+        item.missing_data_trips += 1;
+      }
+    });
+
+    const list = Array.from(map.values()).map((item) => {
+      const avgReconciled = item.reconciled_trips_count > 0 
+        ? Math.round(item.reconciled_profit / item.reconciled_trips_count) 
+        : 0;
+
+      return {
+        ...item,
+        active_days: item.active_days_set.size,
+        reconciled_profit_per_trip: avgReconciled
+      };
+    });
+
+    if (breakdownSort === 'TRIPS_ASC') {
+      return list.sort((a, b) => a.completed_trips - b.completed_trips);
+    }
+    if (breakdownSort === 'RECONCILED_PROFIT_DESC') {
+      return list.sort((a, b) => b.reconciled_profit - a.reconciled_profit);
+    }
+    if (breakdownSort === 'TOTAL_PROFIT_DESC') {
+      return list.sort((a, b) => b.total_profit - a.total_profit);
+    }
+    if (breakdownSort === 'PROFIT_PER_TRIP_DESC') {
+      return list.sort((a, b) => b.reconciled_profit_per_trip - a.reconciled_profit_per_trip);
+    }
+    return list;
+  }, [scopedTrips, breakdownSort, selectedArea]);
+
+  // ============================================================
+  // BƯỚC 4: LỌC DANH SÁCH CHUYẾN TRONG BẢNG (KẾT HỢP SCOPE + SEARCH + TABS)
+  // ============================================================
+  const filteredTrips = useMemo(() => {
+    return scopedTrips.filter((trip) => {
+      // 1. Phân định tab: Chuyến hoàn thành vs Chuyến đang chạy
+      if (tripStatusTab === 'COMPLETED' && trip.status !== 'COMPLETED') {
+        return false;
+      }
+      if (tripStatusTab === 'RUNNING' && trip.status !== 'RUNNING') {
+        return false;
+      }
+
+      // 2. Lọc theo đối tượng (khi bấm tài xế hoặc xe ở Bảng hiệu quả)
+      if (activeEntityFilter) {
+        if (activeEntityFilter.type === 'DRIVER' && trip.driver_name !== activeEntityFilter.name) {
+          return false;
+        }
+        if (activeEntityFilter.type === 'VEHICLE' && trip.vehicle_plate !== activeEntityFilter.name) {
+          return false;
+        }
+      }
+
+      // 3. Tìm kiếm trong bảng
+      const term = tripSearch.trim().toLowerCase();
+      if (term) {
+        const matchPlate = trip.vehicle_plate.toLowerCase().includes(term);
+        const matchCode = trip.trip_code.toLowerCase().includes(term);
+        const matchCustomer = trip.customer_name.toLowerCase().includes(term);
+        const matchCont = trip.container_number.toLowerCase().includes(term);
+        const matchDriver = trip.driver_name.toLowerCase().includes(term);
+        if (!matchPlate && !matchCode && !matchCustomer && !matchCont && !matchDriver) {
+          return false;
+        }
+      }
+
+      // 4. Lọc trạng thái đối soát
+      if (reconcileFilter === 'LOSS') {
+        return trip.trip_profit < 0;
+      }
+      if (reconcileFilter === 'UNRECONCILED') {
+        // Mọi chuyến chưa đối soát (gồm cả MISSING_DATA và PENDING_RECONCILIATION)
+        return trip.reconciliation_status !== 'RECONCILED';
+      }
+      if (reconcileFilter === 'MISSING') {
+        return trip.reconciliation_status === 'MISSING_DATA';
+      }
+      if (reconcileFilter === 'PENDING') {
+        return trip.reconciliation_status === 'PENDING_RECONCILIATION';
+      }
+      if (reconcileFilter === 'RECONCILED') {
+        return trip.reconciliation_status === 'RECONCILED';
+      }
+
+      return true;
+    }).sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+      if (sortField === 'trip_profit') {
+        valA = a.trip_profit;
+        valB = b.trip_profit;
+      } else if (sortField === 'revenue_pre_tax') {
+        valA = a.revenue_pre_tax;
+        valB = b.revenue_pre_tax;
+      } else if (sortField === 'direct_cost') {
+        valA = a.direct_cost;
+        valB = b.direct_cost;
+      }
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [scopedTrips, tripStatusTab, activeEntityFilter, tripSearch, reconcileFilter, sortField, sortDirection]);
+
+  // Tổng hàng chân bảng: Khớp chính xác các dòng đang hiển thị thuộc phạm vi lọc
+  const tableTotals = useMemo(() => {
+    return filteredTrips.reduce(
+      (acc, t) => {
+        acc.revenue += t.revenue_pre_tax;
+        acc.cost += t.direct_cost;
+        acc.profit += t.trip_profit;
+        return acc;
+      },
+      { revenue: 0, cost: 0, profit: 0 }
+    );
+  }, [filteredTrips]);
+
+  const toggleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
+  // ============================================================
+  // MỤC 1: DỮ LIỆU BẢN TÓM TẮT ĐIỀU HÀNH DÀNH CHO GIÁM ĐỐC
+  // ============================================================
+  // So sánh hôm nay (09/10) với kỳ trước (hôm qua 08/10)
+  const periodComparison = useMemo(() => {
+    const todayCompleted = MOCK_TRIPS_DATA.filter(t => t.trip_date === '2026-10-09' && t.status === 'COMPLETED');
+    const yesterdayCompleted = MOCK_TRIPS_DATA.filter(t => t.trip_date === '2026-10-08' && t.status === 'COMPLETED');
+
+    const todayProfit = todayCompleted.reduce((s, t) => s + t.trip_profit, 0);
+    const yesterdayProfit = yesterdayCompleted.reduce((s, t) => s + t.trip_profit, 0);
+
+    const todayRev = todayCompleted.reduce((s, t) => s + t.revenue_pre_tax, 0);
+    const yesterdayRev = yesterdayCompleted.reduce((s, t) => s + t.revenue_pre_tax, 0);
+
+    const tripDiff = todayCompleted.length - yesterdayCompleted.length;
+    const profitDiff = todayProfit - yesterdayProfit;
+    const revDiff = todayRev - yesterdayRev;
+
+    const profitPct = yesterdayProfit > 0 ? Math.round((profitDiff / yesterdayProfit) * 100) : 0;
+    const revPct = yesterdayRev > 0 ? Math.round((revDiff / yesterdayRev) * 100) : 0;
+
+    return {
+      todayTrips: todayCompleted.length,
+      yesterdayTrips: yesterdayCompleted.length,
+      tripDiff,
+      todayProfit,
+      yesterdayProfit,
+      profitDiff,
+      profitPct,
+      todayRev,
+      yesterdayRev,
+      revDiff,
+      revPct
+    };
+  }, []);
+
+  // Hiện trạng đội xe nội bộ hôm nay (5 xe công ty)
+  const fleetSummary = useMemo(() => {
+    const vehicles = [
+      { plate: '15C-35981', driver: 'Phạm Văn Tuân', status: 'RUNNING', statusText: 'Đang chạy (Yên Phong - Bắc Ninh)', location: 'Quốc lộ 1A', completed: 1, profit: 2120000 },
+      { plate: '15H-00266', driver: 'Trương Văn Hội', status: 'RUNNING', statusText: 'Đang chạy (Kẹp 2x20 Hải An)', location: 'Hải An -> An Dương', completed: 1, profit: 1710000 },
+      { plate: '15C-22405', driver: 'Vũ Văn Liêm', status: 'READY', statusText: 'Sẵn sàng nhận việc (Đã giao xong 2 cuốc)', location: 'Bãi Tân Vũ', completed: 2, profit: 900000 },
+      { plate: '15C-99881', driver: 'Lê Anh Sức', status: 'READY', statusText: 'Trực bãi (Sẵn sàng 100%)', location: 'Bãi Đình Vũ', completed: 0, profit: 0 },
+      { plate: '15H-04255', driver: 'Nguyễn Văn Nam', status: 'MAINTENANCE', statusText: 'Bảo dưỡng / Kiểm tra van phanh', location: 'Gara Tiên Lãng', completed: 1, profit: -790000 }
+    ];
+
+    const running = vehicles.filter(v => v.status === 'RUNNING').length;
+    const ready = vehicles.filter(v => v.status === 'READY').length;
+    const maintenance = vehicles.filter(v => v.status === 'MAINTENANCE').length;
+
+    return { total: vehicles.length, running, ready, maintenance, vehicles };
+  }, []);
+
+  // ============================================================
+  // MỤC 2: SO SÁNH ĐỐI ĐẦU HIỆU QUẢ (2 XE HOẶC 2 TÀI XẾ CẠNH NHAU)
+  // ============================================================
+  const [compareMode, setCompareMode] = useState('VEHICLE'); // 'VEHICLE' | 'DRIVER'
+  const [compareEntityA, setCompareEntityA] = useState('15C-35981');
+  const [compareEntityB, setCompareEntityB] = useState('15C-22405');
+
+  const handleQuickCompare = (mode, a, b) => {
+    setCompareMode(mode);
+    setCompareEntityA(a);
+    setCompareEntityB(b);
+    const compEl = document.getElementById('side-by-side-comparison-section');
+    if (compEl) compEl.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const getEntityStats = (mode, key) => {
+    const trips = scopedTrips.filter(t => (mode === 'VEHICLE' ? t.vehicle_plate === key : t.driver_name === key));
+    const completedTrips = trips.filter(t => t.status === 'COMPLETED');
+    const runningTrips = trips.filter(t => t.status === 'RUNNING');
+
+    const totalRev = completedTrips.reduce((s, t) => s + t.revenue_pre_tax, 0);
+    const totalCost = completedTrips.reduce((s, t) => s + t.direct_cost, 0);
+    const fuelCost = completedTrips.reduce((s, t) => s + (t.expenses?.fuel || 0), 0);
+    const tollCost = completedTrips.reduce((s, t) => s + (t.expenses?.toll || 0), 0);
+    const salaryCost = completedTrips.reduce((s, t) => s + (t.driver_salary || 0), 0);
+    const subCost = completedTrips.reduce((s, t) => s + (t.subcontractor_cost || 0), 0);
+    const otherCost = completedTrips.reduce((s, t) => s + (t.expenses?.other || 0), 0);
+    const profit = totalRev - totalCost;
+    const avgProfit = completedTrips.length > 0 ? Math.round(profit / completedTrips.length) : 0;
+    const margin = totalRev > 0 ? ((profit / totalRev) * 100).toFixed(1) : '0';
+
+    const routes = Array.from(new Set(trips.map(t => t.route_name)));
+    const customers = Array.from(new Set(trips.map(t => t.customer_name)));
+
+    let statusText = 'Sẵn sàng nhận việc';
+    let statusBadge = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+    if (runningTrips.length > 0) {
+      statusText = `Đang chạy (${runningTrips.length} xe trên đường)`;
+      statusBadge = 'bg-blue-50 text-blue-800 border-blue-200';
+    } else if (key === '15H-04255' || key === 'Nguyễn Văn Nam') {
+      statusText = 'Bảo dưỡng / Kiểm tra phanh';
+      statusBadge = 'bg-rose-50 text-rose-800 border-rose-200';
+    } else if (completedTrips.length === 0 && runningTrips.length === 0) {
+      statusText = 'Trực bãi (Sẵn sàng 100%)';
+      statusBadge = 'bg-slate-100 text-slate-800 border-slate-300';
+    }
+
+    return {
+      key,
+      trips,
+      completedCount: completedTrips.length,
+      runningCount: runningTrips.length,
+      totalRev,
+      totalCost,
+      fuelCost,
+      tollCost,
+      salaryCost,
+      subCost,
+      otherCost,
+      profit,
+      avgProfit,
+      margin,
+      routes,
+      customers,
+      statusText,
+      statusBadge
+    };
+  };
+
+  const comparisonDiagnosis = useMemo(() => {
+    const statsA = getEntityStats(compareMode, compareEntityA);
+    const statsB = getEntityStats(compareMode, compareEntityB);
+
+    if (statsA.completedCount === 0 && statsB.completedCount === 0) {
+      return {
+        title: 'Cả hai đối tượng chưa phát sinh chuyến hoàn thành trong kỳ',
+        desc: 'Cần kiểm tra lại kế hoạch điều vận hoặc lịch trực bãi để phân bổ công việc kịp thời.',
+        type: 'warning'
+      };
+    }
+
+    if (statsA.completedCount > 0 && statsB.completedCount === 0) {
+      return {
+        title: `${statsA.key} đang chạy chính, trong khi ${statsB.key} chưa có chuyến trong kỳ`,
+        desc: `Cần xem xét phân bổ công việc cho ${statsB.key} để tránh dồn tải hoặc hạn chế việc phải thuê xe ngoài phát sinh chi phí thầu phụ.`,
+        type: 'action'
+      };
+    }
+
+    if (statsA.profit > statsB.profit) {
+      return {
+        title: `${statsA.key} mang lại hiệu quả cao hơn (${formatVnd(statsA.profit)} vs ${formatVnd(statsB.profit)})`,
+        desc: `${statsA.key} đạt tỷ suất lãi ${statsA.margin}% nhờ cước tốt trên tuyến: ${statsA.routes.join(', ')}. Trong khi đó ${statsB.key} (${statsB.margin}%) ${statsB.otherCost > 0 ? 'bị kéo giảm do chi phí sự cố dọc đường (' + formatVnd(statsB.otherCost) + ')' : 'chạy tuyến cước thấp hơn/kéo vỏ rỗng'}. Đề xuất: Cân đối lại tuyến hàng ghép hai chiều.`,
+        type: 'success'
+      };
+    }
+
+    return {
+      title: `${statsB.key} mang lại hiệu quả cao hơn (${formatVnd(statsB.profit)} vs ${formatVnd(statsA.profit)})`,
+      desc: `${statsB.key} đạt tỷ suất lãi ${statsB.margin}% so với ${statsA.margin}% của ${statsA.key}. Đề xuất kiểm tra chi phí nhiên liệu/BOT hoặc ghép hàng chiều về để nâng cao hiệu suất của ${statsA.key}.`,
+      type: 'info'
+    };
+  }, [compareMode, compareEntityA, compareEntityB, scopedTrips]);
+
+  // Danh sách tài xế chưa có chuyến trong kỳ lọc (Đợt B)
+  const zeroTripDrivers = useMemo(() => {
+    return driverPerformance.filter(d => d.completed_trips === 0 && d.running_trips === 0);
+  }, [driverPerformance]);
+
+  // Tìm chuyến lỗ có ghi chú thực tế làm căn cứ (Đợt B)
+  const lossTripInfo = useMemo(() => {
+    const lossTrip = scopedTrips.find(t => t.status === 'COMPLETED' && t.trip_profit < 0);
+    if (!lossTrip) return null;
+    const note = lossTrip.expenses?.other_note || lossTrip.audit_trail?.notes;
+    return {
+      trip_code: lossTrip.trip_code,
+      profit: lossTrip.trip_profit,
+      note: note ? `Căn cứ: ${note}` : 'Cần kiểm tra chi phí phát sinh bất thường.'
+    };
+  }, [scopedTrips]);
+
+  // Vị trí chuyến hiện tại trong danh sách đang lọc (Phục vụ duyệt tuần tự Chuyến trước / Chuyến sau)
+  const currentTripIndex = useMemo(() => {
+    if (!selectedTrip) return -1;
+    return filteredTrips.findIndex(t => t.trip_code === selectedTrip.trip_code);
+  }, [selectedTrip, filteredTrips]);
+
+  const hasPrevTrip = currentTripIndex > 0;
+  const hasNextTrip = currentTripIndex >= 0 && currentTripIndex < filteredTrips.length - 1;
+
+  // Lắng nghe bàn phím: ESC để đóng Drawer, ArrowLeft / ArrowRight để duyệt liên tiếp các chuyến
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!selectedTrip) return;
+      if (e.key === "Escape") {
+        setSelectedTrip(null);
+      } else if (e.key === "ArrowLeft") {
+        const idx = filteredTrips.findIndex(t => t.trip_code === selectedTrip.trip_code);
+        if (idx > 0) {
+          setSelectedTrip(filteredTrips[idx - 1]);
+        }
+      } else if (e.key === "ArrowRight") {
+        const idx = filteredTrips.findIndex(t => t.trip_code === selectedTrip.trip_code);
+        if (idx >= 0 && idx < filteredTrips.length - 1) {
+          setSelectedTrip(filteredTrips[idx + 1]);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedTrip, filteredTrips]);
+
+  // Nhãn mô tả phạm vi đang xem
+  const scopeLabel = useMemo(() => {
+    const dateText = dateFilter === "today"
+      ? "Hôm nay (09/10/2026)"
+      : dateFilter === "yesterday"
+      ? "Hôm qua (08/10/2026)"
+      : dateFilter === "month"
+      ? "Tháng 10/2026"
+      : `Khoảng ngày (${customStartDate} → ${customEndDate})`;
+    const areaText = selectedArea === "ALL"
+      ? "Toàn công ty"
+      : selectedArea === "TUAN"
+      ? "Khu vực Tuân"
+      : "Khu vực Tuấn Anh";
+    return `${dateText} • ${areaText}`;
+  }, [dateFilter, selectedArea, customStartDate, customEndDate]);
+
+  return (
+    <div className="space-y-6 pb-16 bg-slate-50 min-h-screen text-slate-800 antialiased font-sans">
+      {/* 1. THANH ĐẦU (HEADER CỐ ĐỊNH CHO GIÁM ĐỐC - ƯU TIÊN 1) */}
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-6 py-3.5 shadow-xs">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center space-x-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                CÔNG TY VẬN TẢI TUÂN THÀNH PHÁT / ANH SỨC
+              </span>
+              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                BẢN MẪU ĐỢT 1 • DỮ LIỆU MINH HỌA
+              </span>
+            </div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight mt-0.5">
+              Tổng Quan Kinh Doanh
+            </h1>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Bộ chọn thời gian cố định: Hôm nay / Hôm qua / Tháng này / Khoảng ngày */}
+            <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 text-xs font-medium">
+              <button
+                onClick={() => setDateFilter("today")}
+                className={`px-3 py-1.5 rounded-md transition-colors ${dateFilter === "today" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"}`}
+              >
+                Hôm nay (09/10)
+              </button>
+              <button
+                onClick={() => setDateFilter("yesterday")}
+                className={`px-3 py-1.5 rounded-md transition-colors ${dateFilter === "yesterday" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"}`}
+              >
+                Hôm qua (08/10)
+              </button>
+              <button
+                onClick={() => setDateFilter("month")}
+                className={`px-3 py-1.5 rounded-md transition-colors ${dateFilter === "month" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"}`}
+              >
+                Tháng này
+              </button>
+              <button
+                onClick={() => setDateFilter("custom")}
+                className={`px-3 py-1.5 rounded-md transition-colors ${dateFilter === "custom" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"}`}
+              >
+                Khoảng ngày
+              </button>
+            </div>
+
+            {/* Input khoảng ngày tùy chỉnh nếu chọn custom */}
+            {dateFilter === "custom" && (
+              <div className="flex items-center space-x-1.5 text-xs bg-slate-100 p-1 rounded-lg border border-slate-300">
+                <span className="text-slate-500 pl-1 text-[11px]">Từ:</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-medium text-slate-800"
+                />
+                <span className="text-slate-500 text-[11px]">Đến:</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-medium text-slate-800"
+                />
+              </div>
+            )}
+
+            {/* Chọn khu vực */}
+            <select
+              value={selectedArea}
+              onChange={(e) => setSelectedArea(e.target.value)}
+              className="text-xs bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-slate-900"
+            >
+              <option value="ALL">Toàn công ty</option>
+              <option value="TUAN">Khu vực Tuân</option>
+              <option value="TUAN_ANH">Khu vực Tuấn Anh</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 space-y-6">
+        {/* BANNER PHẠM VI DỮ LIỆU ĐANG XEM */}
+        <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-blue-900">
+          <div className="flex items-center space-x-2">
+            <Info className="w-4 h-4 text-blue-600 shrink-0" />
+            <span>
+              Phạm vi số liệu đang xem: <b>{scopeLabel}</b> • Tổng cộng <b>{metrics.totalCount} chuyến</b> ({metrics.completedCount} hoàn thành, {metrics.runningCount} đang chạy).
+            </span>
+          </div>
+          <span className="text-[11px] text-blue-700 italic">
+            * Bộ lọc ngày và khu vực ở trên áp dụng thống nhất cho toàn bộ chỉ số và bảng bên dưới.
+          </span>
+        </div>
+
+        {/* ============================================================ */}
+        {/* MỤC 1: BẢN TÓM TẮT ĐIỀU HÀNH DÀNH CHO GIÁM ĐỐC (EXECUTIVE BRIEFING) */}
+        {/* ============================================================ */}
+        <div id="executive-briefing-section" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
+                <Compass className="w-4 h-4 text-amber-400" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                    Bản Tóm Tắt Điều Hành Dành Cho Giám Đốc
+                  </h2>
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                    Dữ liệu minh họa điều hành
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Tổng hợp nhanh: Kết quả kỳ • So sánh tăng trưởng • Hiện trạng đội xe • 3 vấn đề cần quyết định.
+                </p>
+              </div>
+            </div>
+
+            <span className="text-[11px] font-mono font-medium text-slate-500 self-start sm:self-auto bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+              Kỳ báo cáo: {scopeLabel}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs">
+            {/* Cột 1: Kết quả hôm nay & So sánh kỳ trước */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+                  <Activity className="w-3.5 h-3.5 text-blue-600" />
+                  <span>1. Kết Quả & Tăng Trưởng</span>
+                </span>
+                <span className="text-[10px] text-slate-500 italic">So với hôm qua (08/10)</span>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-slate-600">Chuyến hoàn thành:</span>
+                  <div className="flex items-center space-x-1.5 font-mono">
+                    <span className="font-bold text-slate-900 text-sm">{metrics.completedCount} chuyến</span>
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 flex items-center">
+                      <TrendingUp className="w-3 h-3 mr-0.5" /> +{periodComparison.tripDiff} (+{periodComparison.todayTrips > 0 ? '50%' : '0%'})
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-baseline justify-between">
+                  <span className="text-slate-600">Doanh thu trước thuế:</span>
+                  <div className="flex items-center space-x-1.5 font-mono">
+                    <span className="font-bold text-slate-900">{formatTrieuDong(metrics.totalRevenuePreTax)}</span>
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                      +{formatTrieuDong(periodComparison.revDiff)} (+{periodComparison.revPct}%)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-baseline justify-between pt-1 border-t border-slate-200">
+                  <span className="text-slate-700 font-semibold">Lãi chuyến tạm tính:</span>
+                  <div className="flex items-center space-x-1.5 font-mono">
+                    <span className="font-bold text-emerald-800 text-sm">{formatTrieuDong(metrics.totalProfit)}</span>
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                      +{formatTrieuDong(periodComparison.profitDiff)} (+{periodComparison.profitPct}%)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-500 pt-1 flex justify-between items-center">
+                  <span>(Đã đối soát: <b>{formatTrieuDong(metrics.reconciledProfit)}</b> • Tạm tính: <b>+{formatVnd(metrics.provisionalProfit)}</b>)</span>
+                  <button
+                    onClick={() => handleDrilldownFromMetric('PROFIT')}
+                    className="text-blue-700 hover:text-blue-900 font-semibold underline"
+                  >
+                    Giải thích ↓
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Cột 2: Hiện trạng đội xe */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+                  <Truck className="w-3.5 h-3.5 text-blue-600" />
+                  <span>2. Hiện Trạng Đội Xe ({fleetSummary.total} Xe)</span>
+                </span>
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('side-by-side-comparison-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="text-[10px] text-blue-700 hover:underline font-bold"
+                >
+                  So sánh xe →
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 bg-blue-50/80 border border-blue-200 rounded-lg">
+                  <span className="text-xl font-bold font-mono text-blue-900 block">{fleetSummary.running}</span>
+                  <span className="text-[10px] text-blue-800 font-medium">Xe đang chạy</span>
+                </div>
+                <div className="p-2 bg-emerald-50/80 border border-emerald-200 rounded-lg">
+                  <span className="text-xl font-bold font-mono text-emerald-900 block">{fleetSummary.ready}</span>
+                  <span className="text-[10px] text-emerald-800 font-medium">Sẵn sàng nhận việc</span>
+                </div>
+                <div className="p-2 bg-rose-50/80 border border-rose-200 rounded-lg">
+                  <span className="text-xl font-bold font-mono text-rose-900 block">{fleetSummary.maintenance}</span>
+                  <span className="text-[10px] text-rose-800 font-medium">Bảo dưỡng/Sự cố</span>
+                </div>
+              </div>
+
+              <div className="space-y-1 text-[11px] text-slate-600 pt-1">
+                <div className="flex items-center justify-between">
+                  <span>• Xe bận: <b>15C-35981</b> (Bắc Ninh), <b>15H-00266</b> (An Dương)</span>
+                </div>
+                <div className="flex items-center justify-between text-emerald-800">
+                  <span>• Sẵn sàng ngay: <b>15C-99881</b> (Trực bãi Đình Vũ), <b>15C-22405</b></span>
+                </div>
+                <div className="flex items-center justify-between text-rose-800">
+                  <span>• Cần bảo dưỡng: <b>15H-04255</b> (Kiểm tra van hơi gara Tiên Lãng)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Cột 3: Ba vấn đề đáng chú ý nhất */}
+            <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-amber-950 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+                  <AlertOctagon className="w-3.5 h-3.5 text-amber-700" />
+                  <span>3. Ba Vấn Đề Cần Quyết Định</span>
+                </span>
+                <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded">
+                  Ưu tiên cao
+                </span>
+              </div>
+
+              <div className="space-y-2 text-[11px]">
+                {/* Vấn đề 1 */}
+                <div className="p-2 bg-white rounded-lg border border-amber-200/80 flex items-start justify-between gap-2 shadow-2xs">
+                  <div>
+                    <span className="font-bold text-rose-900 block">1. Sự cố chuyến lỗ (-790k):</span>
+                    <span className="text-slate-600 line-clamp-1">Xe 15H-04255 hỏng van hơi phanh trên đường 354.</span>
+                  </div>
+                  <button
+                    onClick={() => handleActionAlert('LOSS')}
+                    className="shrink-0 text-rose-700 hover:text-rose-900 font-bold underline text-[10px]"
+                  >
+                    Xem cuốc →
+                  </button>
+                </div>
+
+                {/* Vấn đề 2 */}
+                <div className="p-2 bg-white rounded-lg border border-amber-200/80 flex items-start justify-between gap-2 shadow-2xs">
+                  <div>
+                    <span className="font-bold text-amber-900 block">2. Chưa đủ chứng từ dầu/BOT:</span>
+                    <span className="text-slate-600 line-clamp-1">3 chuyến thiếu hóa đơn dầu Petrolimex & vé BOT.</span>
+                  </div>
+                  <button
+                    onClick={() => handleActionAlert('MISSING')}
+                    className="shrink-0 text-amber-800 hover:text-amber-950 font-bold underline text-[10px]"
+                  >
+                    Xem 3 chuyến →
+                  </button>
+                </div>
+
+                {/* Vấn đề 3 */}
+                <div className="p-2 bg-white rounded-lg border border-amber-200/80 flex items-start justify-between gap-2 shadow-2xs">
+                  <div>
+                    <span className="font-bold text-slate-900 block">3. Lệch tải điều phối xe:</span>
+                    <span className="text-slate-600 line-clamp-1">Xe nội bộ 15C-99881 trực bãi trong khi thuê ngoài DOLTRUCK (2.3 tr).</span>
+                  </div>
+                  <button
+                    onClick={() => handleQuickCompare('VEHICLE', 'DOLTRUCK (Xe ngoài)', '15C-99881')}
+                    className="shrink-0 text-blue-700 hover:text-blue-900 font-bold underline text-[10px]"
+                  >
+                    So sánh →
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. HÀNG 4 CHỈ SỐ DOANH NGHIỆP CỐT LÕI (BẤM ĐỂ MỞ DANH SÁCH GIẢI THÍCH - ƯU TIÊN 2) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Thẻ 1: Chuyến hoàn thành */}
+          <div
+            onClick={() => handleDrilldownFromMetric("COMPLETED_TRIPS")}
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+            title="Bấm để xem danh sách chuyến đã hoàn thành"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                  1. Chuyến Hoàn Thành
+                </span>
+                <span className="text-[11px] text-blue-600 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                  Xem danh sách ↓
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline space-x-2">
+                <span className="text-3xl font-bold text-slate-900 font-mono">
+                  {metrics.completedCount}
+                </span>
+                <span className="text-xs text-slate-500 font-medium">
+                  chuyến
+                </span>
+              </div>
+            </div>
+            <div className="mt-4 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span className="text-slate-500">Đang trên đường:</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDrilldownFromMetric("RUNNING_TRIPS");
+                }}
+                className="font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition-colors"
+                title="Bấm để xem các chuyến đang chạy"
+              >
+                {metrics.runningCount} chuyến đang chạy →
+              </button>
+            </div>
+          </div>
+
+          {/* Thẻ 2: Doanh thu chuyến hoàn thành */}
+          <div
+            id="kpi-card-revenue"
+            onClick={() => handleDrilldownFromMetric("REVENUE")}
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+            title="Bấm để xem các chuyến tạo doanh thu (sắp xếp doanh thu cao nhất trước)"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                  2. Doanh Thu Chuyến (Trước Thuế)
+                </span>
+                <span className="text-[11px] text-blue-600 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                  Giải thích số tổng ↓
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline space-x-2">
+                <span className="text-3xl font-bold text-slate-900 font-mono">
+                  {formatTrieuDong(metrics.totalRevenuePreTax)}
+                </span>
+              </div>
+            </div>
+            <div className="mt-4 pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+              <span>Chi tiết: <b className="font-mono text-slate-800">{formatVnd(metrics.totalRevenuePreTax)}</b></span>
+              <span className="text-[11px] text-blue-600 group-hover:underline">Bấm lọc ↓</span>
+            </div>
+          </div>
+
+          {/* Thẻ 3: Chi phí trực tiếp đã ghi nhận */}
+          <div
+            id="kpi-card-cost"
+            onClick={() => handleDrilldownFromMetric("DIRECT_COST")}
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+            title="Bấm để xem các chuyến có chi phí lớn nhất (dầu, BOT, nâng hạ...)"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                  3. Chi Phí Trực Tiếp Đã Ghi Nhận
+                </span>
+                <span className="text-[11px] text-blue-600 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                  Xem chi tiết ↓
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline space-x-2">
+                <span className="text-3xl font-bold text-slate-900 font-mono">
+                  {formatTrieuDong(metrics.totalDirectCost)}
+                </span>
+              </div>
+            </div>
+            <div className="mt-4 pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+              <span>Chi tiết: <b className="font-mono text-slate-800">{formatVnd(metrics.totalDirectCost)}</b></span>
+              <span className="text-[11px] text-blue-600 group-hover:underline">Bấm lọc ↓</span>
+            </div>
+          </div>
+
+          {/* Thẻ 4: Lãi chuyến hoàn thành (Phần đã đối soát và còn chờ nằm ngay dưới số lãi - Ưu tiên 1) */}
+          <div
+            id="kpi-card-profit"
+            onClick={() => handleDrilldownFromMetric("PROFIT")}
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+            title="Bấm để xem danh sách chuyến theo mức lãi"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                  4. Lãi Chuyến Hoàn Thành
+                </span>
+                <span className="text-[11px] text-emerald-700 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                  Xem danh sách lãi ↓
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline space-x-2">
+                <span className="text-3xl font-bold font-mono text-slate-900">
+                  {formatTrieuDong(metrics.totalProfit)}
+                </span>
+                <span className="text-xs font-mono text-slate-500 font-medium">
+                  ({metrics.totalRevenuePreTax > 0 ? ((metrics.totalProfit / metrics.totalRevenuePreTax) * 100).toFixed(1) : 0}%)
+                </span>
+              </div>
+              <div className="mt-3 space-y-1.5 pt-2 border-t border-slate-100">
+                <div
+                  id="kpi-box-reconciled"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDrilldownFromMetric("RECONCILED_PROFIT");
+                  }}
+                  className="flex items-center justify-between text-xs p-1.5 rounded-lg bg-emerald-50/80 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200 transition-colors cursor-pointer"
+                  title="Bấm để chỉ xem các chuyến Lãi đã đối soát"
+                >
+                  <span className="font-semibold text-[11px] flex items-center space-x-1">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Đã đối soát ({metrics.reconciledTripsCount} chuyến):</span>
+                  </span>
+                  <span className="font-mono font-bold text-emerald-800">
+                    {formatTrieuDong(metrics.reconciledProfit)}
+                  </span>
+                </div>
+                <div
+                  id="kpi-box-unreconciled"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDrilldownFromMetric("PROVISIONAL_PROFIT");
+                  }}
+                  className="flex items-center justify-between text-xs p-1.5 rounded-lg bg-amber-50/80 hover:bg-amber-100/90 text-amber-900 border border-amber-200 transition-colors cursor-pointer"
+                  title="Bấm để xem danh sách chuyến Chưa đối soát (gồm chuyến chờ duyệt và chuyến chưa đủ chi phí)"
+                >
+                  <span className="font-semibold text-[11px] flex items-center space-x-1">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Chưa đối soát ({metrics.provisionalTripsCount} chuyến):</span>
+                  </span>
+                  <span className="font-mono font-bold text-amber-800">
+                    +{formatVnd(metrics.provisionalProfit)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
+              <span>Đầy đủ: {formatVnd(metrics.totalProfit)}</span>
+              <span className="text-emerald-700 font-semibold group-hover:underline">Bấm xem chuyến ↓</span>
+            </div>
+          </div>
+        </div>
+
+        {/* THÔNG BÁO TIẾN ĐỘ ĐỐI SOÁT SỐ LIỆU */}
+        <div className="p-3.5 bg-white border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-bold text-slate-800">Tiến độ đối soát trong kỳ:</span>
+            <span className="px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              Đã đối soát {metrics.reconciledCount}/{metrics.totalCount} chuyến
+            </span>
+            <span className="px-2 py-0.5 rounded font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              {metrics.missingDataCount} chuyến còn thiếu chi phí
+            </span>
+            {metrics.pendingReconcileCount > 0 && (
+              <span className="px-2 py-0.5 rounded font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                {metrics.pendingReconcileCount} chuyến chờ duyệt
+              </span>
+            )}
+          </div>
+          <span className="text-slate-500 text-[11px] italic">
+            Quy tắc: Chuyến thiếu dầu hoặc BOT ghi nhận "Tạm tính", không coi là số liệu đã chốt.
+          </span>
+        </div>
+
+        {/* 3. VIỆC GIÁM ĐỐC CẦN XEM TRONG KỲ (ĐỢT B: GOM 4 NHÓM CÓ CĂN CỨ VÀ NÚT MỞ ĐÚNG DANH SÁCH) */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <span>Việc Giám Đốc Cần Xem Hôm Nay</span>
+            </h2>
+            <span className="text-[11px] text-slate-400 font-medium">
+              Căn cứ theo số liệu và ghi chú thực tế
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Nhóm 1: Chuyến lỗ (sắp xếp lỗ nhiều nhất trước) */}
+            <div
+              id="alert-loss-card"
+              onClick={() => handleActionAlert('LOSS')}
+              className="p-3.5 bg-rose-50/70 border border-rose-200 rounded-xl hover:bg-rose-100/70 cursor-pointer transition-all flex flex-col justify-between group"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-rose-900 flex items-center space-x-1.5">
+                    <AlertOctagon className="w-4 h-4 text-rose-600" />
+                    <span>1. Chuyến phát sinh lỗ</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-rose-200 text-rose-900">
+                    {metrics.lossTripsCount}
+                  </span>
+                </div>
+                <p className="text-[11px] text-rose-700 mt-2 line-clamp-2">
+                  {metrics.lossTripsCount > 0
+                    ? (lossTripInfo ? lossTripInfo.note : 'Có chi phí phát sinh vượt doanh thu.')
+                    : 'Không có chuyến nào phát sinh lỗ trong kỳ.'}
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-rose-200/60 flex items-center justify-between text-[11px] font-bold text-rose-800">
+                <span>Xem danh sách chuyến lỗ</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </div>
+
+            {/* Nhóm 2: Chuyến chưa đủ chi phí */}
+            <div
+              id="alert-missing-card"
+              onClick={() => handleActionAlert('MISSING')}
+              className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl hover:bg-amber-100/70 cursor-pointer transition-all flex flex-col justify-between group"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <span>2. Chưa đủ chi phí</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-200 text-amber-900">
+                    {metrics.missingDataCount}
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-700 mt-2 line-clamp-2">
+                  Chưa nộp hóa đơn dầu hoặc vé BOT. Lãi đang hiển thị ở dạng tạm tính.
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-amber-200/60 flex items-center justify-between text-[11px] font-bold text-amber-800">
+                <span>Xem chuyến thiếu chi phí</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </div>
+
+            {/* Nhóm 3: Chờ đối soát */}
+            <div
+              id="alert-pending-card"
+              onClick={() => handleActionAlert('PENDING')}
+              className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl hover:bg-blue-100/70 cursor-pointer transition-all flex flex-col justify-between group"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-blue-900 flex items-center space-x-1.5">
+                    <Clock className="w-4 h-4 text-blue-600" />
+                    <span>3. Chờ đối soát</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-blue-200 text-blue-900">
+                    {metrics.pendingReconcileCount}
+                  </span>
+                </div>
+                <p className="text-[11px] text-blue-700 mt-2 line-clamp-2">
+                  Đã đủ phơi và chi phí, đang chờ kế toán trưởng kiểm tra và khóa đối soát.
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-blue-200/60 flex items-center justify-between text-[11px] font-bold text-blue-800">
+                <span>Xem chuyến chờ đối soát</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </div>
+
+            {/* Nhóm 4: Tài xế chưa có chuyến */}
+            <div
+              id="alert-zero-drivers-card"
+              onClick={() => handleActionAlert('ZERO_DRIVERS')}
+              className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/80 cursor-pointer transition-all flex flex-col justify-between group"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                    <User className="w-4 h-4 text-slate-600" />
+                    <span>4. Chưa có chuyến</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-200 text-slate-800">
+                    {zeroTripDrivers.length}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-2 line-clamp-2">
+                  {zeroTripDrivers.length > 0
+                    ? `${zeroTripDrivers.map(d => d.driver_name).join(', ')} - Chưa có chuyến trong kỳ (đối chiếu trực bãi).`
+                    : 'Toàn bộ tài xế đều đã được bố trí chuyến trong kỳ.'}
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] font-bold text-slate-700">
+                <span>Xem bảng tài xế</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. BẢNG DỮ LIỆU CHUYẾN XE (TRỌNG TÂM NGHIỆP VỤ - DRILL-DOWN TỪ TỔNG QUAN) */}
+        <div id="trips-table-section" className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          {/* THÔNG BÁO GIẢI THÍCH KHI DRILL-DOWN TỪ CHỈ SỐ KPI */}
+          {drilldownNotice && (
+            <div className="m-4 mb-0 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900 animate-fade-in">
+              <div className="flex items-center space-x-2">
+                <ArrowDown className="w-4 h-4 text-blue-600 shrink-0" />
+                <span className="font-semibold">{drilldownNotice}</span>
+              </div>
+              <button
+                onClick={() => {
+                  setDrilldownNotice(null);
+                  setTripStatusTab('COMPLETED');
+                  setReconcileFilter('ALL');
+                  setSortField('trip_date');
+                  setSortDirection('desc');
+                }}
+                className="text-xs text-blue-700 hover:text-blue-900 underline font-semibold ml-2 shrink-0"
+              >
+                Đặt lại mặc định
+              </button>
+            </div>
+          )}
+          {/* Header bảng và bộ lọc */}
+          <div className="p-5 border-b border-slate-100 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                  Danh Sách Chuyến Xe & Lãi Từng Chuyến
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Bấm vào bất kỳ dòng nào để mở chi tiết bên phải (1 lần bấm).
+                </p>
+              </div>
+
+              {/* Ô tìm kiếm */}
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Tìm biển số, số cont, khách, mã chuyến..."
+                  value={tripSearch}
+                  onChange={(e) => setTripSearch(e.target.value)}
+                  className="w-full text-xs pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:bg-white focus:border-slate-900"
+                />
+              </div>
+            </div>
+
+            {/* Chuyển đổi tab Chuyến hoàn thành vs Chuyến đang chạy & Lọc trạng thái */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs">
+              {/* Tab Chuyến hoàn thành vs Chuyến đang chạy */}
+              <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5">
+                <button
+                  onClick={() => setTripStatusTab('COMPLETED')}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    tripStatusTab === 'COMPLETED'
+                      ? 'bg-white text-slate-900 font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Chuyến Hoàn Thành ({metrics.completedCount})
+                </button>
+                <button
+                  onClick={() => setTripStatusTab('RUNNING')}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    tripStatusTab === 'RUNNING'
+                      ? 'bg-blue-700 text-white font-bold shadow-xs'
+                      : 'text-blue-800 hover:text-blue-900'
+                  }`}
+                >
+                  Chuyến Đang Chạy ({metrics.runningCount} - Dự kiến)
+                </button>
+              </div>
+
+              {/* Lọc nhanh trạng thái đối soát */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-slate-500 font-medium">Lọc:</span>
+                <button
+                  onClick={() => setReconcileFilter('ALL')}
+                  className={`px-2 py-1 rounded-md transition-colors ${
+                    reconcileFilter === 'ALL'
+                      ? 'bg-slate-900 text-white font-semibold'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  Tất cả
+                </button>
+                <button
+                  onClick={() => setReconcileFilter('RECONCILED')}
+                  className={`px-2 py-1 rounded-md transition-colors ${
+                    reconcileFilter === 'RECONCILED'
+                      ? 'bg-emerald-700 text-white font-semibold'
+                      : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                  }`}
+                >
+                  Đã đối soát
+                </button>
+                <button
+                  onClick={() => setReconcileFilter('UNRECONCILED')}
+                  className={`px-2 py-1 rounded-md transition-colors ${
+                    reconcileFilter === 'UNRECONCILED'
+                      ? 'bg-amber-600 text-white font-semibold'
+                      : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                  }`}
+                >
+                  Chưa đối soát ({metrics.provisionalTripsCount})
+                </button>
+                <button
+                  onClick={() => setReconcileFilter('PENDING')}
+                  className={`px-2 py-1 rounded-md transition-colors ${
+                    reconcileFilter === 'PENDING'
+                      ? 'bg-blue-600 text-white font-semibold'
+                      : 'bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100'
+                  }`}
+                >
+                  Chờ đối soát
+                </button>
+                <button
+                  onClick={() => setReconcileFilter('MISSING')}
+                  className={`px-2 py-1 rounded-md transition-colors ${
+                    reconcileFilter === 'MISSING'
+                      ? 'bg-amber-600 text-white font-semibold'
+                      : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                  }`}
+                >
+                  Chưa đủ chi phí
+                </button>
+                <button
+                  onClick={() => setReconcileFilter('LOSS')}
+                  className={`px-2 py-1 rounded-md transition-colors ${
+                    reconcileFilter === 'LOSS'
+                      ? 'bg-rose-600 text-white font-semibold'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100'
+                  }`}
+                >
+                  Chuyến lỗ
+                </button>
+              </div>
+            </div>
+
+            {/* Chip hiển thị khi đang lọc theo tài xế / xe cụ thể */}
+            {activeEntityFilter && (
+              <div className="pt-2 flex items-center space-x-2">
+                <span className="text-xs text-slate-600">Đang lọc bảng chuyến theo:</span>
+                <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-900 text-white">
+                  <span>{activeEntityFilter.type === 'DRIVER' ? 'Tài xế' : 'Xe'}: {activeEntityFilter.name}</span>
+                  <button
+                    onClick={() => setActiveEntityFilter(null)}
+                    className="hover:text-amber-300 ml-1"
+                    title="Bỏ lọc đối tượng này"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </span>
+                <button
+                  onClick={() => setActiveEntityFilter(null)}
+                  className="text-xs text-slate-500 hover:text-slate-800 underline"
+                >
+                  Xem toàn bộ chuyến
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Bảng dữ liệu chính */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wider text-[11px]">
+                  <th
+                    onClick={() => toggleSort('trip_date')}
+                    className="py-3 px-4 font-semibold cursor-pointer hover:text-slate-900"
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Ngày</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </th>
+                  <th className="py-3 px-4 font-semibold">Mã Chuyến</th>
+                  <th className="py-3 px-4 font-semibold">Khu</th>
+                  <th className="py-3 px-4 font-semibold">Xe / Tài Xế</th>
+                  <th className="py-3 px-4 font-semibold">Khách Hàng / Tuyến</th>
+                  <th
+                    onClick={() => toggleSort('revenue_pre_tax')}
+                    className="py-3 px-4 font-semibold text-right cursor-pointer hover:text-slate-900"
+                  >
+                    <div className="flex items-center justify-end space-x-1">
+                      <span>{tripStatusTab === 'RUNNING' ? 'Doanh Thu (Dự Kiến)' : 'Doanh Thu'}</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('direct_cost')}
+                    className="py-3 px-4 font-semibold text-right cursor-pointer hover:text-slate-900"
+                  >
+                    <div className="flex items-center justify-end space-x-1">
+                      <span>{tripStatusTab === 'RUNNING' ? 'Chi Phí (Dự Kiến)' : 'Chi Phí'}</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('trip_profit')}
+                    className="py-3 px-4 font-semibold text-right cursor-pointer hover:text-slate-900"
+                  >
+                    <div className="flex items-center justify-end space-x-1">
+                      <span>{tripStatusTab === 'RUNNING' ? 'Lãi (Dự Kiến)' : 'Lãi Chuyến'}</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </th>
+                  <th className="py-3 px-4 font-semibold text-center">Trạng Thái Đối Soát</th>
+                  <th className="py-3 px-4 font-semibold text-right">Chi Tiết</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredTrips.length === 0 ? (
+                  <tr>
+                    <td colSpan="10" className="py-8 text-center text-slate-400 italic">
+                      Không tìm thấy chuyến xe nào trong phạm vi và điều kiện lọc đang chọn.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTrips.map((trip) => {
+                    const isSelected = selectedTrip?.id === trip.id;
+                    const isLoss = trip.trip_profit < 0;
+                    const isMissing = trip.reconciliation_status === 'MISSING_DATA';
+                    const isReconciled = trip.reconciliation_status === 'RECONCILED';
+
+                    return (
+                      <tr
+                        key={trip.id}
+                        onClick={() => setSelectedTrip(trip)}
+                        className={`cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'bg-slate-100 font-medium'
+                            : isLoss
+                            ? 'bg-rose-50/40 hover:bg-rose-50/70'
+                            : isMissing
+                            ? 'bg-amber-50/20 hover:bg-amber-50/50'
+                            : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <td className="py-3 px-4 text-slate-600 font-mono">
+                          {trip.trip_date}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                          {trip.trip_code}
+                          {trip.status === 'RUNNING' && (
+                            <span className="ml-1.5 text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1 py-0.2 rounded font-sans">
+                              Đang chạy
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 font-mono text-[11px]">
+                          {trip.area_id === 'TUAN' ? 'Tuân' : 'Tuấn Anh'}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-mono font-semibold text-slate-900">
+                            {trip.vehicle_plate}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {trip.driver_name}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-slate-900">
+                            {trip.customer_name}
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate max-w-xs">
+                            {trip.route_name}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                          {formatVnd(trip.revenue_pre_tax)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-700">
+                          {formatVnd(trip.direct_cost)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-bold">
+                          {isLoss ? (
+                            <span className="text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">
+                              {formatVnd(trip.trip_profit)}
+                            </span>
+                          ) : isMissing ? (
+                            <span className="text-amber-800 bg-amber-100/70 px-1.5 py-0.5 rounded" title="Chưa đủ chi phí - Lãi tạm tính">
+                              {formatVnd(trip.trip_profit)}*
+                            </span>
+                          ) : isReconciled ? (
+                            <span className="text-emerald-700">
+                              {formatVnd(trip.trip_profit)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-800">
+                              {formatVnd(trip.trip_profit)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {trip.reconciliation_status === 'RECONCILED' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              ĐÃ ĐỐI SOÁT
+                            </span>
+                          )}
+                          {trip.reconciliation_status === 'PENDING_RECONCILIATION' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                              CHỜ ĐỐI SOÁT
+                            </span>
+                          )}
+                          {trip.reconciliation_status === 'MISSING_DATA' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-900 border border-amber-300">
+                              {trip.expenses.fuel_status === 'UNENTERED' ? 'THIẾU TIỀN DẦU' : 'CHƯA ĐỦ CHI PHÍ'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-400">
+                          <ChevronRight className="w-4 h-4 ml-auto" />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+
+              {/* Hàng tổng cộng của tập dữ liệu đang lọc */}
+              <tfoot>
+                <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
+                  <td colSpan="5" className="py-3 px-4 text-slate-800">
+                    TỔNG CỘNG ({filteredTrips.length} chuyến {tripStatusTab === 'RUNNING' ? 'đang chạy' : 'hoàn thành'} đang xem):
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono text-slate-900">
+                    {formatVnd(tableTotals.revenue)}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono text-slate-900">
+                    {formatVnd(tableTotals.cost)}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono text-emerald-800 text-sm">
+                    {formatVnd(tableTotals.profit)}
+                  </td>
+                  <td colSpan="2" className="py-3 px-4 text-[11px] text-slate-500 italic text-center">
+                    (Khớp 100% các dòng đang hiển thị)
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        {/* ============================================================ */}
+        {/* MỤC 2: SO SÁNH ĐỐI ĐẦU HIỆU QUẢ (2 XE HOẶC 2 TÀI XẾ CẠNH NHAU) */}
+        {/* ============================================================ */}
+        <div id="side-by-side-comparison-section" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center shadow-xs">
+                  <Scale className="w-4 h-4 text-emerald-200" />
+                </div>
+                <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                  So Sánh Đối Đầu Hiệu Quả: Hai Xe / Hai Tài Xế Cạnh Nhau
+                </h2>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                  Mục 2 • Trải nghiệm Giám Đốc
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Đặt 2 đối tượng lên bàn cân so sánh số chuyến, tuyến đường, chi phí, lãi và bấm vào từng chuyến để xem lịch sử chi tiết.
+              </p>
+            </div>
+
+            {/* Chọn chế độ so sánh: Xe hoặc Tài xế */}
+            <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 text-xs font-semibold self-start sm:self-auto">
+              <button
+                onClick={() => {
+                  setCompareMode('VEHICLE');
+                  setCompareEntityA('15C-35981');
+                  setCompareEntityB('15C-22405');
+                }}
+                className={`px-3 py-1.5 rounded-md transition-colors ${
+                  compareMode === 'VEHICLE' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                So Sánh Theo Xe
+              </button>
+              <button
+                onClick={() => {
+                  setCompareMode('DRIVER');
+                  setCompareEntityA('Vũ Văn Liêm');
+                  setCompareEntityB('Lê Anh Sức');
+                }}
+                className={`px-3 py-1.5 rounded-md transition-colors ${
+                  compareMode === 'DRIVER' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                So Sánh Theo Tài Xế
+              </button>
+            </div>
+          </div>
+
+          {/* 3 Nút gợi ý tình huống thực tế của Giám Đốc */}
+          <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+            <span className="text-slate-500 font-semibold flex items-center space-x-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Gợi ý so sánh nhanh:</span>
+            </span>
+            <button
+              onClick={() => handleQuickCompare('VEHICLE', '15C-35981', '15C-22405')}
+              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium border border-slate-300 transition-colors"
+            >
+              ⚡ Xe lãi cao nhất (15C-35981) vs Xe chạy nhiều lãi thấp (15C-22405)
+            </button>
+            <button
+              onClick={() => handleQuickCompare('VEHICLE', 'DOLTRUCK (Xe ngoài)', '15C-99881')}
+              className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 font-medium border border-amber-200 transition-colors"
+            >
+              ⚡ Xe thuê ngoài (DOLTRUCK) vs Xe nội bộ trực bãi (15C-99881)
+            </button>
+            <button
+              onClick={() => handleQuickCompare('DRIVER', 'Vũ Văn Liêm', 'Lê Anh Sức')}
+              className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 font-medium border border-blue-200 transition-colors"
+            >
+              ⚡ Tài xế giao 2 chuyến (Vũ Văn Liêm) vs Tài xế chưa có chuyến (Lê Anh Sức)
+            </button>
+          </div>
+
+          {/* Thanh chọn 2 đối tượng từ dropdown */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+            <div className="flex items-center space-x-2">
+              <span className="font-bold text-slate-700 shrink-0">Đối tượng A (Bên trái):</span>
+              <select
+                value={compareEntityA}
+                onChange={(e) => setCompareEntityA(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold text-slate-900 focus:outline-hidden"
+              >
+                {(compareMode === 'VEHICLE' ? COMPANY_VEHICLES : COMPANY_DRIVERS).map((item, idx) => (
+                  <option key={idx} value={compareMode === 'VEHICLE' ? item.plate : item.name}>
+                    {compareMode === 'VEHICLE' ? item.plate : item.name} ({item.note})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <span className="font-bold text-slate-700 shrink-0">Đối tượng B (Bên phải):</span>
+              <select
+                value={compareEntityB}
+                onChange={(e) => setCompareEntityB(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold text-slate-900 focus:outline-hidden"
+              >
+                {(compareMode === 'VEHICLE' ? COMPANY_VEHICLES : COMPANY_DRIVERS).map((item, idx) => (
+                  <option key={idx} value={compareMode === 'VEHICLE' ? item.plate : item.name}>
+                    {compareMode === 'VEHICLE' ? item.plate : item.name} ({item.note})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* BẢNG SO SÁNH 2 CỘT TRỰC DIỆN ĐẶT CẠNH NHAU */}
+          {(() => {
+            const statsA = getEntityStats(compareMode, compareEntityA);
+            const statsB = getEntityStats(compareMode, compareEntityB);
+
+            return (
+              <div className="space-y-4">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 uppercase tracking-wider text-[11px]">
+                        <th className="py-3 px-4 font-bold w-1/4">Chỉ Số Đánh Giá</th>
+                        <th className="py-3 px-4 font-bold w-3/8 text-blue-900 bg-blue-50/60 border-r border-slate-200">
+                          {statsA.key} (Bên trái)
+                        </th>
+                        <th className="py-3 px-4 font-bold w-3/8 text-emerald-900 bg-emerald-50/60">
+                          {statsB.key} (Bên phải)
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 text-slate-800">
+                      {/* Trạng thái vận hành */}
+                      <tr>
+                        <td className="py-2.5 px-4 font-semibold text-slate-600">Trạng Thái Vận Hành</td>
+                        <td className="py-2.5 px-4 border-r border-slate-100">
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] border ${statsA.statusBadge}`}>
+                            {statsA.statusText}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] border ${statsB.statusBadge}`}>
+                            {statsB.statusText}
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* Số chuyến */}
+                      <tr>
+                        <td className="py-2.5 px-4 font-semibold text-slate-600">Số Chuyến Hoàn Thành</td>
+                        <td className="py-2.5 px-4 font-mono font-bold text-slate-900 text-sm border-r border-slate-100">
+                          {statsA.completedCount} chuyến {statsA.runningCount > 0 ? `(${statsA.runningCount} đang chạy)` : ''}
+                        </td>
+                        <td className="py-2.5 px-4 font-mono font-bold text-slate-900 text-sm">
+                          {statsB.completedCount} chuyến {statsB.runningCount > 0 ? `(${statsB.runningCount} đang chạy)` : ''}
+                        </td>
+                      </tr>
+
+                      {/* Tuyến đường đã chạy */}
+                      <tr>
+                        <td className="py-2.5 px-4 font-semibold text-slate-600">Tuyến Đường Đã Chạy</td>
+                        <td className="py-2.5 px-4 border-r border-slate-100 text-[11px]">
+                          {statsA.routes.length > 0 ? statsA.routes.join(', ') : <span className="text-slate-400 italic">Chưa phát sinh chuyến</span>}
+                        </td>
+                        <td className="py-2.5 px-4 text-[11px]">
+                          {statsB.routes.length > 0 ? statsB.routes.join(', ') : <span className="text-slate-400 italic">Chưa phát sinh chuyến</span>}
+                        </td>
+                      </tr>
+
+                      {/* Doanh thu trước thuế */}
+                      <tr>
+                        <td className="py-2.5 px-4 font-semibold text-slate-600">Tổng Doanh Thu (Trước thuế)</td>
+                        <td className="py-2.5 px-4 font-mono font-bold text-slate-900 border-r border-slate-100">
+                          {formatVnd(statsA.totalRev)}
+                        </td>
+                        <td className="py-2.5 px-4 font-mono font-bold text-slate-900">
+                          {formatVnd(statsB.totalRev)}
+                        </td>
+                      </tr>
+
+                      {/* Chi phí trực tiếp & phân rã */}
+                      <tr>
+                        <td className="py-2.5 px-4 font-semibold text-slate-600">
+                          Tổng Chi Phí Trực Tiếp
+                          <span className="block text-[10px] font-normal text-slate-400">(Dầu, BOT, Lương, Khác)</span>
+                        </td>
+                        <td className="py-2.5 px-4 border-r border-slate-100">
+                          <div className="font-mono font-bold text-slate-800">{formatVnd(statsA.totalCost)}</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            Dầu: {formatVnd(statsA.fuelCost)} • BOT: {formatVnd(statsA.tollCost)} • Lương: {formatVnd(statsA.salaryCost)}
+                            {statsA.otherCost > 0 && ` • Khác: ${formatVnd(statsA.otherCost)}`}
+                            {statsA.subCost > 0 && ` • Thuê ngoài: ${formatVnd(statsA.subCost)}`}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <div className="font-mono font-bold text-slate-800">{formatVnd(statsB.totalCost)}</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            Dầu: {formatVnd(statsB.fuelCost)} • BOT: {formatVnd(statsB.tollCost)} • Lương: {formatVnd(statsB.salaryCost)}
+                            {statsB.otherCost > 0 && ` • Khác: ${formatVnd(statsB.otherCost)}`}
+                            {statsB.subCost > 0 && ` • Thuê ngoài: ${formatVnd(statsB.subCost)}`}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* LÃI THỰC TẾ & TỶ SUẤT */}
+                      <tr className="bg-slate-50/70 font-bold">
+                        <td className="py-3 px-4 text-slate-900">Lãi Chuyến Thực Tế & Tỷ Suất</td>
+                        <td className="py-3 px-4 font-mono text-base border-r border-slate-100 text-emerald-800 bg-emerald-50/30">
+                          {formatVnd(statsA.profit)}
+                          <span className="text-xs ml-1.5 font-normal text-slate-500 font-sans">
+                            ({statsA.margin}%)
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 font-mono text-base text-emerald-800 bg-emerald-50/30">
+                          {formatVnd(statsB.profit)}
+                          <span className="text-xs ml-1.5 font-normal text-slate-500 font-sans">
+                            ({statsB.margin}%)
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* Lãi bình quân / chuyến */}
+                      <tr>
+                        <td className="py-2.5 px-4 font-semibold text-slate-600">Lãi Bình Quân / Chuyến</td>
+                        <td className="py-2.5 px-4 font-mono font-bold text-slate-900 border-r border-slate-100">
+                          {statsA.completedCount > 0 ? formatVnd(statsA.avgProfit) : '-'}
+                        </td>
+                        <td className="py-2.5 px-4 font-mono font-bold text-slate-900">
+                          {statsB.completedCount > 0 ? formatVnd(statsB.avgProfit) : '-'}
+                        </td>
+                      </tr>
+
+                      {/* Lịch sử từng chuyến xe (bấm vào mở Drawer xem chi tiết) */}
+                      <tr>
+                        <td className="py-2.5 px-4 font-semibold text-slate-600">
+                          Lịch Sử Các Chuyến
+                          <span className="block text-[10px] font-normal text-slate-400">(Bấm cuốc để xem chi tiết)</span>
+                        </td>
+                        <td className="py-2.5 px-4 border-r border-slate-100">
+                          <div className="space-y-1.5">
+                            {statsA.trips.map((t, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => setSelectedTrip(t)}
+                                className="w-full text-left p-1.5 rounded-lg bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 transition-colors flex items-center justify-between text-[11px]"
+                              >
+                                <div>
+                                  <span className="font-mono font-bold text-slate-900">{t.trip_code}</span>
+                                  <span className="text-slate-500 ml-1.5 line-clamp-1">{t.route_name}</span>
+                                </div>
+                                <span className={`font-mono font-bold ${t.trip_profit < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                                  {formatVnd(t.trip_profit)}
+                                </span>
+                              </button>
+                            ))}
+                            {statsA.trips.length === 0 && <span className="text-slate-400 italic">Không có chuyến nào</span>}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <div className="space-y-1.5">
+                            {statsB.trips.map((t, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => setSelectedTrip(t)}
+                                className="w-full text-left p-1.5 rounded-lg bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 transition-colors flex items-center justify-between text-[11px]"
+                              >
+                                <div>
+                                  <span className="font-mono font-bold text-slate-900">{t.trip_code}</span>
+                                  <span className="text-slate-500 ml-1.5 line-clamp-1">{t.route_name}</span>
+                                </div>
+                                <span className={`font-mono font-bold ${t.trip_profit < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                                  {formatVnd(t.trip_profit)}
+                                </span>
+                              </button>
+                            ))}
+                            {statsB.trips.length === 0 && <span className="text-slate-400 italic">Không có chuyến nào</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* KHỐI KẾT LUẬN & ĐỀ XUẤT ĐIỀU HÀNH CHO GIÁM ĐỐC */}
+                <div className="p-3.5 rounded-xl bg-slate-900 text-white flex items-start space-x-3 text-xs shadow-sm">
+                  <div className="w-6 h-6 rounded-md bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 mt-0.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="font-bold text-amber-300 block">
+                      Nhận định chẩn đoán quản lý: {comparisonDiagnosis.title}
+                    </span>
+                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                      {comparisonDiagnosis.desc}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* 5. BẢNG HIỆU QUẢ TÀI XẾ & ĐẦU XE (ĐỢT B: LÃI BÌNH QUÂN ĐÃ ĐỐI SOÁT & GÓC XEM NHANH) */}
+        <div id="breakdown-section" className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 tracking-tight flex items-center space-x-2">
+                <span>Hiệu Quả Kinh Doanh: Theo Tài Xế & Theo Xe</span>
+                <span className="text-[11px] font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                  Đợt B
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Chỉ số "Lãi từ các chuyến được giao" • Bấm vào bất kỳ dòng nào để lọc danh sách chuyến tương ứng.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Chuyển đổi góc xem */}
+              <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 text-xs font-medium">
+                <button
+                  onClick={() => setBreakdownView('DRIVER')}
+                  className={`px-3 py-1.5 rounded-md transition-colors ${
+                    breakdownView === 'DRIVER'
+                      ? 'bg-white text-slate-900 shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Theo Tài Xế
+                </button>
+                <button
+                  onClick={() => setBreakdownView('VEHICLE')}
+                  className={`px-3 py-1.5 rounded-md transition-colors ${
+                    breakdownView === 'VEHICLE'
+                      ? 'bg-white text-slate-900 shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Theo Đầu Xe
+                </button>
+              </div>
+
+              {/* Sắp xếp góc xem nhanh */}
+              <div className="flex items-center space-x-1.5 text-xs">
+                <span className="text-slate-500 font-medium">Góc xem:</span>
+                <select
+                  value={breakdownSort}
+                  onChange={(e) => setBreakdownSort(e.target.value)}
+                  className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:outline-hidden focus:border-slate-900"
+                >
+                  <option value="RECONCILED_PROFIT_DESC">Tổng lãi đã đối soát cao nhất (Mặc định)</option>
+                  <option value="TOTAL_PROFIT_DESC">Tổng lãi (Gồm tạm tính) cao nhất</option>
+                  <option value="PROFIT_PER_TRIP_DESC">Lãi bình quân đã đối soát cao nhất</option>
+                  <option value="TRIPS_ASC">Ít chuyến nhất (Chưa có chuyến lên đầu)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wider text-[11px]">
+                  <th className="py-2.5 px-4 font-semibold">
+                    {breakdownView === 'DRIVER' ? 'Tài Xế' : 'Biển Số Xe'}
+                  </th>
+                  <th className="py-2.5 px-4 font-semibold text-center">Chuyến Xong</th>
+                  <th className="py-2.5 px-4 font-semibold text-center">Đang Chạy</th>
+                  <th className="py-2.5 px-4 font-semibold text-right">Doanh Thu</th>
+                  <th className="py-2.5 px-4 font-semibold text-right">Chi Phí</th>
+                  <th className="py-2.5 px-4 font-semibold text-right text-emerald-800">Lãi Đã Đối Soát</th>
+                  <th className="py-2.5 px-4 font-semibold text-right text-emerald-700 bg-emerald-50/50" title="Công thức: Lãi đã đối soát / Số chuyến đã đối soát">
+                    Lãi BQ / Chuyến Đối Soát
+                  </th>
+                  <th className="py-2.5 px-4 font-semibold text-right text-amber-800">Lãi Tạm Tính</th>
+                  <th className="py-2.5 px-4 font-semibold text-center">Chưa Đối Soát</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(breakdownView === 'DRIVER' ? driverPerformance : vehiclePerformance).map((item, idx) => {
+                  const hasZeroTrips = item.completed_trips === 0 && item.running_trips === 0;
+                  const targetName = breakdownView === 'DRIVER' ? item.driver_name : item.vehicle_plate;
+
+                  return (
+                    <tr
+                      key={idx}
+                      onClick={() => handleSelectEntity(breakdownView, targetName)}
+                      className={`hover:bg-blue-50/50 cursor-pointer transition-colors ${
+                        hasZeroTrips ? 'bg-slate-50/60' : ''
+                      }`}
+                      title="Bấm để lọc danh sách các chuyến của đối tượng này"
+                    >
+                      <td className="py-2.5 px-4 font-semibold text-slate-900">
+                        <div className="flex items-center flex-wrap gap-1">
+                          <span>{targetName}</span>
+                          {item.is_subcontractor && (
+                            <span className="text-[10px] text-amber-700 bg-amber-50 px-1 rounded border border-amber-200">
+                              Xe ngoài
+                            </span>
+                          )}
+                          {hasZeroTrips && (
+                            <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded font-normal">
+                              Chưa có chuyến trong kỳ
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-4 text-center font-mono font-bold text-slate-900">
+                        {item.completed_trips}
+                      </td>
+                      <td className="py-2.5 px-4 text-center font-mono text-blue-700">
+                        {item.running_trips > 0 ? `${item.running_trips} xe` : '-'}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-900 font-semibold">
+                        {formatVnd(item.total_revenue)}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-700">
+                        {formatVnd(item.total_cost)}
+                      </td>
+                      {/* Lãi đã đối soát */}
+                      <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30">
+                        {formatVnd(item.reconciled_profit)}
+                      </td>
+                      {/* Lãi BQ đã đối soát chia cho số chuyến đã đối soát */}
+                      <td className="py-2.5 px-4 text-right font-mono font-semibold text-emerald-800 bg-emerald-50/50">
+                        {item.reconciled_trips_count > 0 ? formatVnd(item.reconciled_profit_per_trip) : '-'}
+                      </td>
+                      {/* Lãi tạm tính */}
+                      <td className="py-2.5 px-4 text-right font-mono text-amber-800">
+                        {item.provisional_profit > 0 ? `+${formatVnd(item.provisional_profit)}` : '-'}
+                      </td>
+                      {/* Số chuyến chưa đối soát */}
+                      <td className="py-2.5 px-4 text-center">
+                        {(item.unreconciled_trips + item.missing_data_trips) > 0 ? (
+                          <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-800">
+                            {item.unreconciled_trips + item.missing_data_trips}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. BẢNG CHI TIẾT CHUYẾN XE BÊN PHẢI (DETAIL DRAWER - ƯU TIÊN 3: DUYỆT TUẦN TỰ & 3 CON SỐ CỐT LÕI) */}
+      {selectedTrip && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          {/* Backdrop bấm ra ngoài để đóng */}
+          <div
+            className="fixed inset-0 bg-slate-900/50"
+            onClick={() => setSelectedTrip(null)}
+          />
+
+          {/* Ngăn kéo bên phải - Nền trắng đục 100% độc lập z-10 */}
+          <div className="fixed inset-y-0 right-0 w-full max-w-xl h-full shadow-2xl flex flex-col border-l border-slate-200 z-10" style={{ backgroundColor: '#ffffff' }}>
+            {/* Header Drawer với điều hướng tuần tự Chuyến trước / Chuyến sau */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: '#f8fafc' }}>
+              <div>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Chi Tiết Cuốc Xe & Bảng Kê Chi Phí
+                </span>
+                <h3 className="text-base font-bold text-slate-900 font-mono mt-0.5">
+                  {selectedTrip.trip_code} • {selectedTrip.trip_date}
+                </h3>
+              </div>
+
+              {/* Thanh điều hướng Chuyến trước / Chuyến tiếp theo */}
+              <div className="flex items-center space-x-1 sm:space-x-2">
+                <button
+                  disabled={!hasPrevTrip}
+                  onClick={() => setSelectedTrip(filteredTrips[currentTripIndex - 1])}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium flex items-center space-x-1 transition-colors ${
+                    hasPrevTrip
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-xs'
+                      : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
+                  }`}
+                  title="Xem chuyến trước đó (hoặc phím mũi tên ←)"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Trước</span>
+                </button>
+
+                <span className="text-[11px] font-mono text-slate-600 font-semibold px-1">
+                  {currentTripIndex + 1}/{filteredTrips.length}
+                </span>
+
+                <button
+                  disabled={!hasNextTrip}
+                  onClick={() => setSelectedTrip(filteredTrips[currentTripIndex + 1])}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium flex items-center space-x-1 transition-colors ${
+                    hasNextTrip
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-xs'
+                      : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
+                  }`}
+                  title="Xem chuyến tiếp theo (hoặc phím mũi tên →)"
+                >
+                  <span className="hidden sm:inline">Tiếp</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={() => setSelectedTrip(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors ml-1"
+                  title="Đóng bảng chi tiết (hoặc bấm phím Esc)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Nội dung chi tiết cuộn được */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs" style={{ backgroundColor: '#ffffff' }}>
+              {/* KHỐI 3 SỐ ƯU TIÊN HÀNG ĐẦU CHO GIÁM ĐỐC: CƯỚC, TỔNG CHI PHÍ, LÃI */}
+              <div className="grid grid-cols-3 gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50">
+                {/* Số 1: Cước (Doanh thu trước thuế) */}
+                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block tracking-wider">
+                    1. CƯỚC (GIÁ)
+                  </span>
+                  <div className="text-sm sm:text-base font-bold font-mono text-slate-900 mt-1">
+                    {formatVnd(selectedTrip.revenue_pre_tax)}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block mt-0.5 truncate">
+                    +VAT: {formatVnd(selectedTrip.vat_amount)}
+                  </span>
+                </div>
+
+                {/* Số 2: Tổng chi phí trực tiếp */}
+                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block tracking-wider">
+                    2. TỔNG CHI PHÍ
+                  </span>
+                  <div className="text-sm sm:text-base font-bold font-mono text-slate-900 mt-1">
+                    {formatVnd(selectedTrip.direct_cost)}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block mt-0.5 truncate">
+                    7 khoản bên dưới
+                  </span>
+                </div>
+
+                {/* Số 3: Lãi chuyến */}
+                <div className={`p-3 rounded-lg border ${
+                  selectedTrip.trip_profit < 0
+                    ? 'bg-rose-50 border-rose-200'
+                    : selectedTrip.reconciliation_status === 'RECONCILED'
+                    ? 'bg-emerald-50 border-emerald-200'
+                    : 'bg-amber-50 border-amber-200'
+                }`}>
+                  <span className={`text-[10px] font-bold uppercase block tracking-wider ${
+                    selectedTrip.trip_profit < 0
+                      ? 'text-rose-700'
+                      : selectedTrip.reconciliation_status === 'RECONCILED'
+                      ? 'text-emerald-700'
+                      : 'text-amber-800'
+                  }`}>
+                    3. LÃI CHUYẾN
+                  </span>
+                  <div className={`text-sm sm:text-base font-bold font-mono mt-1 ${
+                    selectedTrip.trip_profit < 0
+                      ? 'text-rose-700'
+                      : selectedTrip.reconciliation_status === 'RECONCILED'
+                      ? 'text-emerald-700'
+                      : 'text-amber-900'
+                  }`}>
+                    {selectedTrip.trip_profit > 0 ? '+' : ''}{formatVnd(selectedTrip.trip_profit)}
+                  </div>
+                  <span className="text-[10px] font-bold block mt-0.5 truncate">
+                    {selectedTrip.reconciliation_status === 'RECONCILED' && <span className="text-emerald-700">✓ Đã đối soát</span>}
+                    {selectedTrip.reconciliation_status === 'PENDING_RECONCILIATION' && <span className="text-blue-700">⏳ Chờ duyệt</span>}
+                    {selectedTrip.reconciliation_status === 'MISSING_DATA' && <span className="text-amber-800">⚠️ Tạm tính</span>}
+                  </span>
+                </div>
+              </div>
+
+              {/* CẢNH BÁO KHOẢN CHI PHÍ CÒN THIẾU (NẾU CÓ) */}
+              {(selectedTrip.expenses.fuel_status === 'UNENTERED' || selectedTrip.expenses.toll_status === 'UNENTERED') && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start space-x-2 text-xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Khoản chi phí còn thiếu chưa chốt:</span>
+                    <span className="text-[11px] block mt-0.5">
+                      {selectedTrip.expenses.fuel_status === 'UNENTERED' && '• Tiền dầu Diesel: Chưa nhập hóa đơn/phơi dầu (đang tính 0 đ khiến số lãi tạm tính bị cao ảo). '}
+                      {selectedTrip.expenses.toll_status === 'UNENTERED' && '• Vé cầu đường BOT: Chưa có dữ liệu VETC/ePass. '}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* CẢNH BÁO NGUYÊN NHÂN LỖ (NẾU CHUYẾN PHÁT SINH LỖ) */}
+              {selectedTrip.trip_profit < 0 && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 flex items-start space-x-2 text-xs">
+                  <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Căn cứ phát sinh lỗ của chuyến xe:</span>
+                    <span className="text-[11px] block mt-0.5">
+                      Tổng chi phí trực tiếp ({formatVnd(selectedTrip.direct_cost)}) vượt quá doanh thu cước ({formatVnd(selectedTrip.revenue_pre_tax)}).
+                      {selectedTrip.expenses.other_note ? ` Nguyên nhân ghi nhận: "${selectedTrip.expenses.other_note}".` : ' Cần kiểm tra chi phí sửa chữa hoặc sự cố dọc đường.'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Thông tin vận chuyển */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-2">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block border-b border-slate-100 pb-2">
+                  Thông Tin Vận Hành & Phương Tiện
+                </span>
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Khu vực phụ trách:</span>
+                    <span className="font-semibold text-slate-900">{selectedTrip.area_id === 'TUAN' ? 'Khu Tuân' : 'Khu Tuấn Anh'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Trạng thái chuyến:</span>
+                    <span className="font-semibold text-slate-900">{selectedTrip.status === 'COMPLETED' ? 'Hoàn thành' : 'Đang chạy trên đường'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Phương tiện:</span>
+                    <span className="font-mono font-bold text-slate-900">{selectedTrip.vehicle_plate}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Tài xế phụ trách:</span>
+                    <span className="font-semibold text-slate-900">{selectedTrip.driver_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Khách hàng / Chủ hàng:</span>
+                    <span className="font-semibold text-slate-900">{selectedTrip.customer_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Tuyến đường:</span>
+                    <span className="font-semibold text-slate-900">{selectedTrip.route_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Số Container & Kích cỡ:</span>
+                    <span className="font-mono font-bold text-slate-900">
+                      {selectedTrip.container_number} ({selectedTrip.container_size}')
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Nơi nâng / Nơi hạ:</span>
+                    <span className="text-slate-800">{selectedTrip.pickup_location} → {selectedTrip.dropoff_location}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bảng Kê Chi Tiết Tài Chính: Doanh Thu vs Chi Phí */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="bg-slate-100 px-4 py-2.5 font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                  Bảng Kê Chi Tiết Chi Phí Trực Tiếp
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {/* Doanh thu trước thuế */}
+                  <div className="p-3 flex items-center justify-between bg-blue-50/40">
+                    <div>
+                      <span className="font-bold text-slate-900">Doanh thu trước thuế (Giá cước)</span>
+                      <span className="block text-[11px] text-slate-500">Căn cứ tính lãi chuyến</span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-900 text-sm">
+                      {formatVnd(selectedTrip.revenue_pre_tax)}
+                    </span>
+                  </div>
+
+                  {/* Thuế VAT */}
+                  <div className="p-3 flex items-center justify-between text-slate-600 bg-slate-50/50">
+                    <div>
+                      <span>Thuế VAT ({selectedTrip.vat_rate}%)</span>
+                      <span className="block text-[11px] text-slate-400">Thu hộ / Nộp NSNN (Tổng cước: {formatVnd(selectedTrip.total_revenue)})</span>
+                    </div>
+                    <span className="font-mono text-slate-600">
+                      +{formatVnd(selectedTrip.vat_amount)}
+                    </span>
+                  </div>
+
+                  {/* 1. Dầu Diesel */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-800">1. Tiền dầu Diesel</span>
+                      {selectedTrip.expenses.fuel_status === 'UNENTERED' ? (
+                        <span className="block text-[11px] text-amber-700 font-bold">
+                          ⚠️ Chưa nhập hóa đơn dầu - Số tiền đang để 0 đ (Lãi đang cao ảo)
+                        </span>
+                      ) : (
+                        <span className="block text-[11px] text-slate-400">Đã chốt theo phơi/cây dầu</span>
+                      )}
+                    </div>
+                    <span className="font-mono font-bold text-slate-900">
+                      {selectedTrip.expenses.fuel_status === 'UNENTERED' ? (
+                        <span className="text-amber-700 font-bold">0 đ (Chưa nhập)</span>
+                      ) : (
+                        formatVnd(selectedTrip.expenses.fuel)
+                      )}
+                    </span>
+                  </div>
+
+                  {/* 2. Cầu đường BOT */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-800">2. Vé cầu đường (BOT)</span>
+                      {selectedTrip.expenses.toll_status === 'UNENTERED' ? (
+                        <span className="block text-[11px] text-amber-700 font-semibold">Chưa có vé BOT</span>
+                      ) : (
+                        <span className="block text-[11px] text-slate-400">Theo vé VETC/ePass</span>
+                      )}
+                    </div>
+                    <span className="font-mono font-bold text-slate-900">
+                      {selectedTrip.expenses.toll_status === 'UNENTERED' ? (
+                        <span className="text-amber-700">Chưa nhập</span>
+                      ) : (
+                        formatVnd(selectedTrip.expenses.toll)
+                      )}
+                    </span>
+                  </div>
+
+                  {/* 3. Phí nâng cont */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-800">3. Phí nâng vỏ container</span>
+                      <span className="block text-[11px] text-slate-400">Cảng nâng: {selectedTrip.pickup_location}</span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-900">
+                      {formatVnd(selectedTrip.expenses.lift_on)}
+                    </span>
+                  </div>
+
+                  {/* 4. Phí hạ cont */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-800">4. Phí hạ vỏ container</span>
+                      <span className="block text-[11px] text-slate-400">
+                        {selectedTrip.expenses.lift_off_status === 'ZERO_CONFIRMED'
+                          ? 'Đã xác nhận không phát sinh (0 đ)'
+                          : `Cảng hạ: ${selectedTrip.dropoff_location}`}
+                      </span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-900">
+                      {formatVnd(selectedTrip.expenses.lift_off)}
+                    </span>
+                  </div>
+
+                  {/* 5. Công tài xế theo chuyến */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-800">5. Lương công chuyến tài xế</span>
+                      <span className="block text-[11px] text-slate-400">Đơn giá công chuyến theo tuyến</span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-900">
+                      {formatVnd(selectedTrip.driver_salary)}
+                    </span>
+                  </div>
+
+                  {/* 6. Cước thuê ngoài (nếu có) */}
+                  {selectedTrip.is_subcontractor && (
+                    <div className="p-3 flex items-center justify-between bg-amber-50/50">
+                      <div>
+                        <span className="font-semibold text-amber-900">6. Cước trả nhà xe thuê ngoài</span>
+                        <span className="block text-[11px] text-amber-700">Đối tác: DOLTRUCK</span>
+                      </div>
+                      <span className="font-mono font-bold text-amber-900">
+                        {formatVnd(selectedTrip.subcontractor_cost)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* 7. Chi phí phát sinh khác */}
+                  {selectedTrip.expenses.other > 0 && (
+                    <div className="p-3 flex items-center justify-between">
+                      <div>
+                        <span className="font-semibold text-slate-800">7. Chi phí phát sinh khác</span>
+                        <span className="block text-[11px] text-slate-600 italic">
+                          Diễn giải: {selectedTrip.expenses.other_note}
+                        </span>
+                      </div>
+                      <span className="font-mono font-bold text-slate-900">
+                        {formatVnd(selectedTrip.expenses.other)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Tổng chi phí trực tiếp */}
+                  <div className="p-3 flex items-center justify-between bg-slate-100 font-bold text-slate-900">
+                    <span>TỔNG CHI PHÍ TRỰC TIẾP:</span>
+                    <span className="font-mono text-sm text-slate-900">
+                      {formatVnd(selectedTrip.direct_cost)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Thông tin chứng từ & Nhật ký kiểm soát (Ghi rõ minh họa) */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-2 bg-slate-50 text-[11px]">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="font-bold text-slate-700 uppercase tracking-wider">
+                    Nhật Ký Nhập Liệu & Chứng Từ
+                  </span>
+                  <span className="text-[10px] text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded font-semibold">
+                    Dữ liệu mẫu minh họa
+                  </span>
+                </div>
+                <div className="space-y-1 text-slate-600 pt-1">
+                  <div>• Người tạo: <b>{selectedTrip.audit_trail.created_by}</b> ({selectedTrip.audit_trail.created_at})</div>
+                  <div>• Lần sửa gần nhất: <b>{selectedTrip.audit_trail.last_edited_by}</b> ({selectedTrip.audit_trail.last_edited_at})</div>
+                  {selectedTrip.audit_trail.reconciled_by ? (
+                    <div>• Người đối soát & duyệt: <b className="text-emerald-700">{selectedTrip.audit_trail.reconciled_by}</b> ({selectedTrip.audit_trail.reconciled_at})</div>
+                  ) : (
+                    <div className="text-amber-700 font-semibold">• Chưa phê duyệt đối soát</div>
+                  )}
+                  <div>• Số chứng từ/phiếu phơi đính kèm: <b>{selectedTrip.audit_trail.documents_count} tài liệu minh họa</b></div>
+                  <div>• Ghi chú kế toán: <i>{selectedTrip.audit_trail.notes}</i></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Drawer: Điều hướng tuần tự và phím tắt ESC */}
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <button
+                  disabled={!hasPrevTrip}
+                  onClick={() => setSelectedTrip(filteredTrips[currentTripIndex - 1])}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center space-x-1 transition-colors ${
+                    hasPrevTrip
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-xs'
+                      : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
+                  }`}
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Chuyến trước (←)</span>
+                </button>
+                <button
+                  disabled={!hasNextTrip}
+                  onClick={() => setSelectedTrip(filteredTrips[currentTripIndex + 1])}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center space-x-1 transition-colors ${
+                    hasNextTrip
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-xs'
+                      : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
+                  }`}
+                >
+                  <span>Chuyến sau (→)</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                  ESC để đóng
+                </span>
+                <button
+                  onClick={() => setSelectedTrip(null)}
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

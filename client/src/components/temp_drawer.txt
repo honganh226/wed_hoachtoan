@@ -1,0 +1,414 @@
+BẢNG CHI TIẾT CHUYẾN XE BÊN PHẢI (DETAIL DRAWER - ƯU TIÊN 3: DUYỆT TUẦN TỰ & 3 CON SỐ CỐT LÕI) */}
+      {selectedTrip && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          {/* Backdrop bấm ra ngoài để đóng */}
+          <div
+            className="fixed inset-0 bg-slate-900/50"
+            onClick={() => setSelectedTrip(null)}
+          />
+
+          {/* Ngăn kéo bên phải - Nền trắng đục 100% độc lập z-10 */}
+          <div className="fixed inset-y-0 right-0 w-full max-w-xl h-full shadow-2xl flex flex-col border-l border-slate-200 z-10" style={{ backgroundColor: '#ffffff' }}>
+            {/* Header Drawer với điều hướng tuần tự Chuyến trước / Chuyến sau */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: '#f8fafc' }}>
+              <div>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Chi Tiết Cuốc Xe & Bảng Kê Chi Phí
+                </span>
+                <h3 className="text-base font-bold text-slate-900 font-mono mt-0.5">
+                  {selectedTrip.trip_code} • {selectedTrip.trip_date}
+                </h3>
+              </div>
+
+              {/* Thanh điều hướng Chuyến trước / Chuyến tiếp theo */}
+              <div className="flex items-center space-x-1 sm:space-x-2">
+                <button
+                  disabled={!hasPrevTrip}
+                  onClick={() => setSelectedTrip(filteredTrips[currentTripIndex - 1])}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium flex items-center space-x-1 transition-colors ${
+                    hasPrevTrip
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-xs'
+                      : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
+                  }`}
+                  title="Xem chuyến trước đó (hoặc phím mũi tên ←)"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Trước</span>
+                </button>
+
+                <span className="text-[11px] font-mono text-slate-600 font-semibold px-1">
+                  {currentTripIndex + 1}/{filteredTrips.length}
+                </span>
+
+                <button
+                  disabled={!hasNextTrip}
+                  onClick={() => setSelectedTrip(filteredTrips[currentTripIndex + 1])}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium flex items-center space-x-1 transition-colors ${
+                    hasNextTrip
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-xs'
+                      : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
+                  }`}
+                  title="Xem chuyến tiếp theo (hoặc phím mũi tên →)"
+                >
+                  <span className="hidden sm:inline">Tiếp</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={() => setSelectedTrip(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors ml-1"
+                  title="Đóng bảng chi tiết (hoặc bấm phím Esc)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Nội dung chi tiết cuộn được */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs" style={{ backgroundColor: '#ffffff' }}>
+              {/* KHỐI 3 SỐ ƯU TIÊN HÀNG ĐẦU CHO GIÁM ĐỐC: CƯỚC, TỔNG CHI PHÍ, LÃI */}
+              <div className="grid grid-cols-3 gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50">
+                {/* Số 1: Cước (Doanh thu trước thuế) */}
+                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block tracking-wider">
+                    1. CƯỚC (GIÁ)
+                  </span>
+                  <div className="text-sm sm:text-base font-bold font-mono text-slate-900 mt-1">
+                    {formatVnd(selectedTrip.revenue_pre_tax)}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block mt-0.5 truncate">
+                    +VAT: {formatVnd(selectedTrip.vat_amount)}
+                  </span>
+                </div>
+
+                {/* Số 2: Tổng chi phí trực tiếp */}
+                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block tracking-wider">
+                    2. TỔNG CHI PHÍ
+                  </span>
+                  <div className="text-sm sm:text-base font-bold font-mono text-slate-900 mt-1">
+                    {formatVnd(selectedTrip.direct_cost)}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block mt-0.5 truncate">
+                    7 khoản bên dưới
+                  </span>
+                </div>
+
+                {/* Số 3: Lãi chuyến */}
+                <div className={`p-3 rounded-lg border ${
+                  selectedTrip.trip_profit < 0
+                    ? 'bg-rose-50 border-rose-200'
+                    : selectedTrip.reconciliation_status === 'RECONCILED'
+                    ? 'bg-emerald-50 border-emerald-200'
+                    : 'bg-amber-50 border-amber-200'
+                }`}>
+                  <span className={`text-[10px] font-bold uppercase block tracking-wider ${
+                    selectedTrip.trip_profit < 0
+                      ? 'text-rose-700'
+                      : selectedTrip.reconciliation_status === 'RECONCILED'
+                      ? 'text-emerald-700'
+                      : 'text-amber-800'
+                  }`}>
+                    3. LÃI CHUYẾN
+                  </span>
+                  <div className={`text-sm sm:text-base font-bold font-mono mt-1 ${
+                    selectedTrip.trip_profit < 0
+                      ? 'text-rose-700'
+                      : selectedTrip.reconciliation_status === 'RECONCILED'
+                      ? 'text-emerald-700'
+                      : 'text-amber-900'
+                  }`}>
+                    {selectedTrip.trip_profit > 0 ? '+' : ''}{formatVnd(selectedTrip.trip_profit)}
+                  </div>
+                  <span className="text-[10px] font-bold block mt-0.5 truncate">
+                    {selectedTrip.reconciliation_status === 'RECONCILED' && <span className="text-emerald-700">✓ Đã đối soát</span>}
+                    {selectedTrip.reconciliation_status === 'PENDING_RECONCILIATION' && <span className="text-blue-700">⏳ Chờ duyệt</span>}
+                    {selectedTrip.reconciliation_status === 'MISSING_DATA' && <span className="text-amber-800">⚠️ Tạm tính</span>}
+                  </span>
+                </div>
+              </div>
+
+              {/* CẢNH BÁO KHOẢN CHI PHÍ CÒN THIẾU (NẾU CÓ) */}
+              {(selectedTrip.expenses.fuel_status === 'UNENTERED' || selectedTrip.expenses.toll_status === 'UNENTERED') && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start space-x-2 text-xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Khoản chi phí còn thiếu chưa chốt:</span>
+                    <span className="text-[11px] block mt-0.5">
+                      {selectedTrip.expenses.fuel_status === 'UNENTERED' && '• Tiền dầu Diesel: Chưa nhập hóa đơn/phơi dầu (đang tính 0 đ khiến số lãi tạm tính bị cao ảo). '}
+                      {selectedTrip.expenses.toll_status === 'UNENTERED' && '• Vé cầu đường BOT: Chưa có dữ liệu VETC/ePass. '}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* CẢNH BÁO NGUYÊN NHÂN LỖ (NẾU CHUYẾN PHÁT SINH LỖ) */}
+              {selectedTrip.trip_profit < 0 && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 flex items-start space-x-2 text-xs">
+                  <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Căn cứ phát sinh lỗ của chuyến xe:</span>
+                    <span className="text-[11px] block mt-0.5">
+                      Tổng chi phí trực tiếp ({formatVnd(selectedTrip.direct_cost)}) vượt quá doanh thu cước ({formatVnd(selectedTrip.revenue_pre_tax)}).
+                      {selectedTrip.expenses.other_note ? ` Nguyên nhân ghi nhận: "${selectedTrip.expenses.other_note}".` : ' Cần kiểm tra chi phí sửa chữa hoặc sự cố dọc đường.'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Thông tin vận chuyển */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-2">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block border-b border-slate-100 pb-2">
+                  Thông Tin Vận Hành & Phương Tiện
+                </span>
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Khu vực phụ trách:</span>
+                    <span className="font-semibold text-slate-900">{selectedTrip.area_id === 'TUAN' ? 'Khu Tuân' : 'Khu Tuấn Anh'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Trạng thái chuyến:</span>
+                    <span className="font-semibold text-slate-900">{selectedTrip.status === 'COMPLETED' ? 'Hoàn thành' : 'Đang chạy trên đường'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Phương tiện:</span>
+                    <span className="font-mono font-bold text-slate-900">{selectedTrip.vehicle_plate}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Tài xế phụ trách:</span>
+                    <span className="font-semibold text-slate-900">{selectedTrip.driver_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Khách hàng / Chủ hàng:</span>
+                    <span className="font-semibold text-slate-900">{selectedTrip.customer_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Tuyến đường:</span>
+                    <span className="font-semibold text-slate-900">{selectedTrip.route_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Số Container & Kích cỡ:</span>
+                    <span className="font-mono font-bold text-slate-900">
+                      {selectedTrip.container_number} ({selectedTrip.container_size}')
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Nơi nâng / Nơi hạ:</span>
+                    <span className="text-slate-800">{selectedTrip.pickup_location} → {selectedTrip.dropoff_location}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bảng Kê Chi Tiết Tài Chính: Doanh Thu vs Chi Phí */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="bg-slate-100 px-4 py-2.5 font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                  Bảng Kê Chi Tiết Chi Phí Trực Tiếp
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {/* Doanh thu trước thuế */}
+                  <div className="p-3 flex items-center justify-between bg-blue-50/40">
+                    <div>
+                      <span className="font-bold text-slate-900">Doanh thu trước thuế (Giá cước)</span>
+                      <span className="block text-[11px] text-slate-500">Căn cứ tính lãi chuyến</span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-900 text-sm">
+                      {formatVnd(selectedTrip.revenue_pre_tax)}
+                    </span>
+                  </div>
+
+                  {/* Thuế VAT */}
+                  <div className="p-3 flex items-center justify-between text-slate-600 bg-slate-50/50">
+                    <div>
+                      <span>Thuế VAT ({selectedTrip.vat_rate}%)</span>
+                      <span className="block text-[11px] text-slate-400">Thu hộ / Nộp NSNN (Tổng cước: {formatVnd(selectedTrip.total_revenue)})</span>
+                    </div>
+                    <span className="font-mono text-slate-600">
+                      +{formatVnd(selectedTrip.vat_amount)}
+                    </span>
+                  </div>
+
+                  {/* 1. Dầu Diesel */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-800">1. Tiền dầu Diesel</span>
+                      {selectedTrip.expenses.fuel_status === 'UNENTERED' ? (
+                        <span className="block text-[11px] text-amber-700 font-bold">
+                          ⚠️ Chưa nhập hóa đơn dầu - Số tiền đang để 0 đ (Lãi đang cao ảo)
+                        </span>
+                      ) : (
+                        <span className="block text-[11px] text-slate-400">Đã chốt theo phơi/cây dầu</span>
+                      )}
+                    </div>
+                    <span className="font-mono font-bold text-slate-900">
+                      {selectedTrip.expenses.fuel_status === 'UNENTERED' ? (
+                        <span className="text-amber-700 font-bold">0 đ (Chưa nhập)</span>
+                      ) : (
+                        formatVnd(selectedTrip.expenses.fuel)
+                      )}
+                    </span>
+                  </div>
+
+                  {/* 2. Cầu đường BOT */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-800">2. Vé cầu đường (BOT)</span>
+                      {selectedTrip.expenses.toll_status === 'UNENTERED' ? (
+                        <span className="block text-[11px] text-amber-700 font-semibold">Chưa có vé BOT</span>
+                      ) : (
+                        <span className="block text-[11px] text-slate-400">Theo vé VETC/ePass</span>
+                      )}
+                    </div>
+                    <span className="font-mono font-bold text-slate-900">
+                      {selectedTrip.expenses.toll_status === 'UNENTERED' ? (
+                        <span className="text-amber-700">Chưa nhập</span>
+                      ) : (
+                        formatVnd(selectedTrip.expenses.toll)
+                      )}
+                    </span>
+                  </div>
+
+                  {/* 3. Phí nâng cont */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-800">3. Phí nâng vỏ container</span>
+                      <span className="block text-[11px] text-slate-400">Cảng nâng: {selectedTrip.pickup_location}</span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-900">
+                      {formatVnd(selectedTrip.expenses.lift_on)}
+                    </span>
+                  </div>
+
+                  {/* 4. Phí hạ cont */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-800">4. Phí hạ vỏ container</span>
+                      <span className="block text-[11px] text-slate-400">
+                        {selectedTrip.expenses.lift_off_status === 'ZERO_CONFIRMED'
+                          ? 'Đã xác nhận không phát sinh (0 đ)'
+                          : `Cảng hạ: ${selectedTrip.dropoff_location}`}
+                      </span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-900">
+                      {formatVnd(selectedTrip.expenses.lift_off)}
+                    </span>
+                  </div>
+
+                  {/* 5. Công tài xế theo chuyến */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-800">5. Lương công chuyến tài xế</span>
+                      <span className="block text-[11px] text-slate-400">Đơn giá công chuyến theo tuyến</span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-900">
+                      {formatVnd(selectedTrip.driver_salary)}
+                    </span>
+                  </div>
+
+                  {/* 6. Cước thuê ngoài (nếu có) */}
+                  {selectedTrip.is_subcontractor && (
+                    <div className="p-3 flex items-center justify-between bg-amber-50/50">
+                      <div>
+                        <span className="font-semibold text-amber-900">6. Cước trả nhà xe thuê ngoài</span>
+                        <span className="block text-[11px] text-amber-700">Đối tác: DOLTRUCK</span>
+                      </div>
+                      <span className="font-mono font-bold text-amber-900">
+                        {formatVnd(selectedTrip.subcontractor_cost)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* 7. Chi phí phát sinh khác */}
+                  {selectedTrip.expenses.other > 0 && (
+                    <div className="p-3 flex items-center justify-between">
+                      <div>
+                        <span className="font-semibold text-slate-800">7. Chi phí phát sinh khác</span>
+                        <span className="block text-[11px] text-slate-600 italic">
+                          Diễn giải: {selectedTrip.expenses.other_note}
+                        </span>
+                      </div>
+                      <span className="font-mono font-bold text-slate-900">
+                        {formatVnd(selectedTrip.expenses.other)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Tổng chi phí trực tiếp */}
+                  <div className="p-3 flex items-center justify-between bg-slate-100 font-bold text-slate-900">
+                    <span>TỔNG CHI PHÍ TRỰC TIẾP:</span>
+                    <span className="font-mono text-sm text-slate-900">
+                      {formatVnd(selectedTrip.direct_cost)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Thông tin chứng từ & Nhật ký kiểm soát (Ghi rõ minh họa) */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-2 bg-slate-50 text-[11px]">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="font-bold text-slate-700 uppercase tracking-wider">
+                    Nhật Ký Nhập Liệu & Chứng Từ
+                  </span>
+                  <span className="text-[10px] text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded font-semibold">
+                    Dữ liệu mẫu minh họa
+                  </span>
+                </div>
+                <div className="space-y-1 text-slate-600 pt-1">
+                  <div>• Người tạo: <b>{selectedTrip.audit_trail.created_by}</b> ({selectedTrip.audit_trail.created_at})</div>
+                  <div>• Lần sửa gần nhất: <b>{selectedTrip.audit_trail.last_edited_by}</b> ({selectedTrip.audit_trail.last_edited_at})</div>
+                  {selectedTrip.audit_trail.reconciled_by ? (
+                    <div>• Người đối soát & duyệt: <b className="text-emerald-700">{selectedTrip.audit_trail.reconciled_by}</b> ({selectedTrip.audit_trail.reconciled_at})</div>
+                  ) : (
+                    <div className="text-amber-700 font-semibold">• Chưa phê duyệt đối soát</div>
+                  )}
+                  <div>• Số chứng từ/phiếu phơi đính kèm: <b>{selectedTrip.audit_trail.documents_count} tài liệu minh họa</b></div>
+                  <div>• Ghi chú kế toán: <i>{selectedTrip.audit_trail.notes}</i></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Drawer: Điều hướng tuần tự và phím tắt ESC */}
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <button
+                  disabled={!hasPrevTrip}
+                  onClick={() => setSelectedTrip(filteredTrips[currentTripIndex - 1])}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center space-x-1 transition-colors ${
+                    hasPrevTrip
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-xs'
+                      : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
+                  }`}
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Chuyến trước (←)</span>
+                </button>
+                <button
+                  disabled={!hasNextTrip}
+                  onClick={() => setSelectedTrip(filteredTrips[currentTripIndex + 1])}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center space-x-1 transition-colors ${
+                    hasNextTrip
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-xs'
+                      : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
+                  }`}
+                >
+                  <span>Chuyến sau (→)</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                  ESC để đóng
+                </span>
+                <button
+                  onClick={() => setSelectedTrip(null)}
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      

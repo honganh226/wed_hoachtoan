@@ -1,0 +1,109 @@
+/* director-overview.css - Phong cách điều hành Giám Đốc (Slate/Navy, Gọn Rõ, Chuẩn Số Học) */
+
+:root {
+  --director-bg: #f8fafc;
+  --director-card: #ffffff;
+  --director-border: #e2e8f0;
+  --director-slate: #1e293b;
+  --director-navy: #0f172a;
+  --director-rose: #be123c;
+  --director-amber: #b45309;
+  --director-emerald: #047857;
+}
+
+/* Tabular nums cho số tiền và mã cuốc */
+.font-mono,
+table td,
+table th {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Cuộn ngang mượt mà cho bảng trên màn hình điện thoại di động */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.overflow-x-auto::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Ngăn kéo Drawer trượt từ bên phải */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-drawer-slide {
+  animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Fade in mượt mà khi drill-down và mở danh sách */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Card hover tinh tế */
+.director-card-hover {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.director-card-hover:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+}
+
+/* Định dạng số tiền căn phải và nhãn căn trái */
+.col-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.col-text {
+  text-align: left;
+}
+
+/* Responsive tinh chỉnh cho màn hình di động 390px */
+@media (max-width: 640px) {
+  table th, table td {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .director-hide-mobile {
+    display: none !important;
+  }
+}

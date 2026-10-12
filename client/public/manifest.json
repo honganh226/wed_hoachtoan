@@ -1,0 +1,64 @@
+{
+  "name": "Hệ Thống Điều Vận Container - WED_HOACHTOAN",
+  "short_name": "Điều Vận Cont",
+  "description": "Ứng dụng web nội bộ điều hành vận tải container, quản lý cuốc xe, chi phí, phơi EIR và tạm ứng lái xe",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "lang": "vi",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "App Lái Xe",
+      "short_name": "Lái Xe",
+      "description": "Mở nhanh giao diện tác nghiệp cuốc xe cho Lái xe",
+      "url": "/?tab=driver_app",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Tạo Chuyến Xe Mới",
+      "short_name": "+ Chuyến Mới",
+      "description": "Tạo nhanh chuyến xe container mới",
+      "url": "/?action=create_trip",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard Giám Đốc",
+      "short_name": "Dashboard",
+      "description": "Xem P&L Real-time và dòng tiền",
+      "url": "/?tab=dashboard",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
