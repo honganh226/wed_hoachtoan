@@ -66,6 +66,7 @@ if (fs.existsSync(seedFilePath)) {
             const values = columns.map(col => row[col] !== undefined ? row[col] : null);
             stmt.run(...values);
           }
+          if(tableName === 'trips')for(const row of rows)db.prepare("UPDATE trips SET source_type='LEGACY_TEST' WHERE id=?").run(row.id);
           console.log(`[TEST] Restored ${rows.length} rows into ${tableName}`);
         }
       })();

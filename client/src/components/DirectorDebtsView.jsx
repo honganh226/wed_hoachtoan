@@ -160,7 +160,7 @@ export default function DirectorDebtsView() {
               <span>Quản Lý Công Nợ Doanh Nghiệp</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Theo dõi chi tiết phải thu khách hàng và phải trả nhà xe theo dữ liệu chuẩn hóa tháng 1/2026
+              Theo dõi chi tiết phải thu khách hàng và phải trả nhà xe theo bảng kê và các cuốc mới đã nhập
             </p>
           </div>
 
@@ -212,7 +212,7 @@ export default function DirectorDebtsView() {
               <p className="text-lg sm:text-2xl font-bold text-slate-900 mt-1 font-mono whitespace-nowrap">
                 {formatVnd(recSummary.total_receivable)}
               </p>
-              <span className="text-xs text-slate-400 mt-1 block">{recSummary.count_customers} khách hàng (Bảng kê tháng 1)</span>
+              <span className="text-xs text-slate-400 mt-1 block">{recSummary.count_customers} khách hàng (Nguồn dữ liệu chung)</span>
             </div>
 
             <div className="bg-white p-4 sm:p-5 rounded-xl border border-emerald-200 shadow-sm bg-emerald-50/20">

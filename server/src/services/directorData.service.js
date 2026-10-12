@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { db } from '../db/database.js';
 import { excelMonthService } from './excelMonthService.js';
 import { createTrip, updateTrip } from './trip.service.js';
+import { legacyDemoIds } from './demoData.service.js';
 
 db.exec(`CREATE TABLE IF NOT EXISTS director_records(entity TEXT NOT NULL, record_id TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(entity,record_id));
 CREATE TABLE IF NOT EXISTS director_history(id TEXT PRIMARY KEY,entity TEXT NOT NULL,record_id TEXT NOT NULL,before_value TEXT NOT NULL,after_value TEXT NOT NULL,actor TEXT NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL);
@@ -22,6 +23,7 @@ export const entities={
  advances:{label:'Tạm ứng',table:'trip_advances',fields:[field('driver_id','Tài xế','ref',true,'drivers'),field('trip_id','Chuyến','ref',true,'dbtrips'),field('advance_date','Ngày ứng','date',true),money('advance_amount','Tiền ứng'),money('settled_amount','Thực chi đã quyết toán'),field('status','Trạng thái'),field('notes','Ghi chú')]},
  incentives:{label:'Động viên & điều chỉnh lương',table:'driver_incentives',fields:[field('driver_id','Tài xế','ref',true,'drivers'),field('period_month','Kỳ lương','month',true),money('incentive_amount','Động viên'),money('base_salary_override','Lương cứng riêng kỳ này'),field('incentive_note','Ghi chú'),field('is_approved','Đã duyệt','boolean')]},
  maintenance:{label:'Bảo dưỡng',table:'maintenance_proposals',fields:[field('vehicle_id','Xe','ref',true,'vehicles'),field('title','Nội dung','text',true),field('description','Chi tiết'),field('proposal_type','Loại bảo dưỡng'),money('estimated_cost','Chi phí dự kiến'),money('actual_cost','Chi phí thực tế'),field('km_at_proposal','Km tại thời điểm','number'),field('status','Trạng thái'),field('completed_at','Ngày hoàn thành','date')]},
+ legacy_trips:{label:'Chuyến mẫu đội xe — riêng báo cáo tài chính',table:'trips',legacy:true,fields:[field('trip_date','Ngày chạy','date',true),field('customer_name','Khách','text',true),field('vehicle_id','Xe','ref',false,'vehicles'),field('driver_id','Tài xế','ref',false,'drivers'),field('route_name','Tuyến'),money('trip_revenue','Cước vào'),money('driver_salary','Lương chuyến'),money('subcontractor_cost','Cước ra'),field('status','Trạng thái'),field('notes','Ghi chú')]},
  containers:{label:'Container & các chặng',table:'containers',fields:[field('trip_id','Chuyến','ref',true,'dbtrips'),field('container_number','Số container'),field('container_size','Kích cỡ'),field('container_type','Loại container'),field('is_second_cont','Container thứ hai','boolean'),field('pickup_yard','Điểm lấy'),field('dropoff_yard','Điểm trả'),money('lift_on_fee','Phí nâng'),money('lift_off_fee','Phí hạ'),field('notes','Ghi chú')]}
 };
 const version=row=>createHash('sha256').update(JSON.stringify(row)).digest('hex');
@@ -46,7 +48,7 @@ export function overlayBusiness(rows){
   return r;
  });
 }
-function rowsFor(entity){const c=entities[entity];if(!c)throw Error('Danh mục không hợp lệ');return c.business?excelMonthService.getData().rows:db.prepare(`SELECT * FROM ${c.table} ORDER BY rowid DESC LIMIT 3000`).all();}
+function rowsFor(entity){const c=entities[entity];if(!c)throw Error('Danh mục không hợp lệ');if(c.business)return excelMonthService.getData().rows;const rows=db.prepare(`SELECT * FROM ${c.table} ORDER BY rowid DESC LIMIT 3000`).all();return c.legacy?rows.filter(r=>r.source_type==='LEGACY_TEST'||legacyDemoIds.has(r.id)):rows;}
 export function listEntity(entity){return rowsFor(entity).map(r=>({...r,_version:version(r)}));}
 export function metadata(){return {entities:Object.entries(entities).map(([key,value])=>({key,label:value.label,fields:value.fields})),references:{drivers:db.prepare('SELECT id,full_name as label FROM drivers').all(),vehicles:db.prepare('SELECT id,plate_number as label FROM vehicles').all(),dbtrips:db.prepare('SELECT id,trip_code as label FROM trips').all()},read_only:process.env.RENDER_READ_ONLY==='true'};}
 function validate(config,value){
@@ -80,6 +82,7 @@ export function saveEntity(entity,id,values,expectedVersion,user,reason=''){
    if(dbTrip)updateTrip({tripId:id,updateData:{trip_date:clean.trip_date,customer_name:clean.customer_name,route_name:clean.route_name,vehicle_plate:clean.vehicle_plate,driver_name:clean.driver_name,total_revenue:clean.cuoc_vao,trip_revenue:clean.cuoc_vao,subcontractor_cost:clean.cuoc_ra,toll_fee:clean.tien_duong,port_fee:clean.port_fee,parking_fee:clean.parking_fee,handling_fee:clean.handling_fee,meal_allowance:clean.meal_allowance,other_costs:clean.other_costs,fuel_liters:clean.dau_liters,customer_payment_status:clean.customer_payment_status,subcontractor_payment_status:clean.subcontractor_payment_status,notes:clean.notes_r},user,reason});
    db.prepare('INSERT INTO director_records(entity,record_id,value) VALUES(?,?,?) ON CONFLICT(entity,record_id) DO UPDATE SET value=excluded.value').run(entity,id,JSON.stringify(clean));
   }else{
+   if(entity==='legacy_trips'){clean.total_revenue=clean.trip_revenue;clean.source_type='LEGACY_TEST';if(clean.driver_id)clean.driver_name=db.prepare('SELECT full_name FROM drivers WHERE id=?').get(clean.driver_id).full_name;if(clean.vehicle_id)clean.vehicle_plate=db.prepare('SELECT plate_number FROM vehicles WHERE id=?').get(clean.vehicle_id).plate_number;}
    if(entity==='advances'){clean.balance_amount=Number(clean.advance_amount||0)-Number(clean.settled_amount||0);}
    const columns=new Set(db.prepare(`PRAGMA table_info(${c.table})`).all().map(r=>r.name));
    for(const key of Object.keys(clean))if(!columns.has(key))delete clean[key];

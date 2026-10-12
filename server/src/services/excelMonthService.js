@@ -27,6 +27,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { db } from '../db/database.js';
 import { overlayBusiness } from './directorData.service.js';
+import { legacyDemoIds } from './demoData.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -518,8 +519,8 @@ export class ExcelMonthService {
       const dbTrips = db.prepare(`
         SELECT t.*, (SELECT GROUP_CONCAT(container_number, ', ') FROM containers WHERE trip_id=t.id) AS container_number,
           (SELECT container_size FROM containers WHERE trip_id=t.id ORDER BY is_second_cont LIMIT 1) AS container_size
-        FROM trips t ORDER BY t.trip_date ASC, t.created_at ASC
-      `).all().filter(t => !(t.source_type === 'EXCEL' && base.rows.some(r => r.row_index === t.source_row && r.trip_date === t.trip_date && r.customer_name === t.customer_name && r.route_name === t.route_name && r.cuoc_vao === t.total_revenue)));
+        FROM trips t WHERE COALESCE(t.source_type,'MANUAL') != 'LEGACY_TEST' ORDER BY t.trip_date ASC, t.created_at ASC
+      `).all().filter(t => !legacyDemoIds.has(t.id) && !(t.source_type === 'EXCEL' && base.rows.some(r => r.row_index === t.source_row && r.trip_date === t.trip_date && r.customer_name === t.customer_name && r.route_name === t.route_name && r.cuoc_vao === t.total_revenue)));
 
       if (dbTrips && dbTrips.length > 0) {
         // Chuyển đổi format của dbTrips sang cấu trúc chuẩn của view

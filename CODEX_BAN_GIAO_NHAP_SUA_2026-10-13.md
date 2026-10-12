@@ -43,3 +43,6 @@ Durable store kiểm tra bằng mock localhost: mã hóa, restore và rollback k
 Kết nối Supabase theo lựa chọn của chủ dự án; đặt SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY trong Render Environment, giữ ENCRYPTION_KEY ổn định và không commit các khóa.
 Sau đó kiểm tra sửa online, restart/redeploy giữ dữ liệu, tài khoản sai vai trò không sửa được và tải bản sao lưu.
 Không chạy importExcel.js hoặc lệnh DELETE trên database vận hành để kiểm thử.
+
+## Rà soát online bổ sung
+33 chuyến demo đội xe được gắn LEGACY_TEST và tách khỏi nguồn báo cáo tài chính. Giữ nguyên phần fleet/KPI/payroll thử; có danh mục riêng để giám đốc sửa dữ liệu thử. Tổng tài chính khởi đầu đúng 77 dòng Excel, không cộng thêm 104.976.000 đồng cước mẫu.
