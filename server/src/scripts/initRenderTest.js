@@ -11,15 +11,18 @@ const __dirname = path.dirname(__filename);
 
 if (process.env.RENDER_READ_ONLY !== 'true') throw new Error('This initializer requires RENDER_READ_ONLY=true');
 const password = process.env.DIRECTOR_INIT_PASSWORD;
-if (!password || password.length < 12) throw new Error('Configure DIRECTOR_INIT_PASSWORD with at least 12 characters');
+if (!password || password.length < 6) throw new Error('Configure DIRECTOR_INIT_PASSWORD with at least 6 characters for the test account');
 
 // 1. Khởi tạo tài khoản Giám Đốc (chỉ lấy mật khẩu từ Render Environment, không tạo tài khoản mẫu)
-const existing = db.prepare('SELECT id FROM users WHERE username = ?').get('giamdoc');
+const existing = db.prepare('SELECT id, password_hash FROM users WHERE username = ?').get('giamdoc');
 if (!existing) {
   const now = new Date().toISOString();
   db.prepare('INSERT INTO users (id, username, password_hash, full_name, role, area_id, phone, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NULL, NULL, 1, ?, ?)')
     .run(randomUUID(), 'giamdoc', bcrypt.hashSync(password, 12), 'Giám đốc', 'DIRECTOR', now, now);
   console.log('[TEST] Director account initialized; password remains in environment variables.');
+} else if (!bcrypt.compareSync(password, existing.password_hash)) {
+  db.prepare('UPDATE users SET password_hash=?, updated_at=? WHERE id=?').run(bcrypt.hashSync(password, 12), new Date().toISOString(), existing.id);
+  console.log('[TEST] Director test password synchronized from environment.');
 } else {
   console.log('[TEST] Existing account preserved.');
 }
