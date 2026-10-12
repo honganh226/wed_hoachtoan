@@ -667,7 +667,7 @@ export default function App() {
             {/* ============================================================
                 THANH ĐIỀU HƯỚNG 2 TẦNG (CHUẨN DOANH NGHIỆP: TAB CON NẰM DƯỚI TAB CHA)
                 ============================================================ */}
-            <div className="space-y-2 border-b border-slate-200 pb-3">
+            <div data-navigation="two-level" className="space-y-2 border-b border-slate-200 pb-3" style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
               {/* TẦNG 1: HÀNG TAB CHÍNH NỔI BẬT */}
               <div className="flex items-center overflow-x-auto no-scrollbar py-0.5">
                 <div className="inline-flex p-1 bg-slate-100 rounded-xl space-x-1 shrink-0">

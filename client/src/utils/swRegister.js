@@ -6,7 +6,7 @@ export function registerServiceWorker(onUpdateFound) {
   if ('serviceWorker' in navigator && process.env.NODE_ENV !== 'test') {
     window.addEventListener('load', () => {
       navigator.serviceWorker
-        .register('/sw.js')
+        .register('/sw.js', { updateViaCache: 'none' })
         .then((registration) => {
           console.log('[PWA] Service Worker đăng ký thành công với scope:', registration.scope);
 
@@ -25,6 +25,7 @@ export function registerServiceWorker(onUpdateFound) {
               }
             };
           };
+          registration.update().catch(() => {});
         })
         .catch((error) => {
           console.error('[PWA] Lỗi đăng ký Service Worker:', error);

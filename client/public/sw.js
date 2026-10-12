@@ -7,7 +7,7 @@
  * - API POST/PUT: Bỏ qua SW, xử lý hàng đợi qua IndexedDB Sync Engine
  */
 
-const CACHE_NAME = 'wed-hoachtoan-cache-v1';
+const CACHE_NAME = 'wed-hoachtoan-cache-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -40,7 +40,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keyList) => {
       return Promise.all(
         keyList.map((key) => {
-          if (key !== CACHE_NAME) {
+          if (key.startsWith('wed-hoachtoan-cache-') && key !== CACHE_NAME) {
             console.log('[ServiceWorker] Xóa cache cũ:', key);
             return caches.delete(key);
           }
@@ -57,6 +57,25 @@ self.addEventListener('fetch', (event) => {
 
   // Không can thiệp các request không phải GET
   if (req.method !== 'GET') {
+    return;
+  }
+
+  if (url.origin !== self.location.origin) return;
+
+  // Always request the current HTML so a saved app shell cannot hide a deployment.
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req, { cache: 'no-store' }).then(async (response) => {
+        if (response.ok) {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put('/index.html', response.clone());
+        }
+        return response;
+      }).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        return (await cache.match('/index.html')) || new Response('Không có kết nối mạng.', { status: 503 });
+      })
+    );
     return;
   }
 
