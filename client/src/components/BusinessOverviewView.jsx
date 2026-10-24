@@ -27,7 +27,7 @@ import {
 } from '../services/api.js';
 import TripDetailDrawer from './TripDetailDrawer.jsx';
 
-export default function BusinessOverviewView({ onNavigateTab }) {
+export default function BusinessOverviewView({ onNavigateTab, onAssistantContext, assistantFocus, onAssistantFocusConsumed }) {
   // DỮ LIỆU ĐỘNG TỪ BACKEND API CÓ XÁC THỰC
   const [tripsData, setTripsData] = useState([]);
   const [groupsData, setGroupsData] = useState([]);
@@ -41,6 +41,8 @@ export default function BusinessOverviewView({ onNavigateTab }) {
   const [dateFilter, setDateFilter] = useState('month'); // 'month' | 'day_09' | 'day_08'
   const [selectedArea, setSelectedArea] = useState('ALL');
 
+
+
   // 2. PHÂN HỆ HIỆU QUẢ HOẠT ĐỘNG
   const [breakdownView, setBreakdownView] = useState('DRIVER'); // 'DRIVER' | 'VEHICLE' | 'GROUPS'
   const [breakdownSort, setBreakdownSort] = useState('PROFIT_DESC'); // 'PROFIT_DESC' | 'TRIPS_ASC'
@@ -51,6 +53,13 @@ export default function BusinessOverviewView({ onNavigateTab }) {
 
   // 4. KHUNG CHI TIẾT CHUYẾN XE BÊN PHẢI (DRAWER)
   const [selectedTrip, setSelectedTrip] = useState(null);
+
+  useEffect(() => {
+    const periods={month:{startDate:'2026-01-01',endDate:'2026-01-31',kind:'month',label:'Tháng 01/2026'},day_09:{startDate:'2026-01-09',endDate:'2026-01-09',kind:'day'},day_08:{startDate:'2026-01-08',endDate:'2026-01-08',kind:'day'},all:{all:true}};
+    const period=dateFilter==='range'&&rangeStart&&rangeEnd?{startDate:rangeStart,endDate:rangeEnd,kind:'range'}:periods[dateFilter];
+    const entity=selectedTrip?{kind:'trip',value:selectedTrip.id}:activeDrilldown?.type==='ENTITY'?{kind:activeDrilldown.entityType==='VEHICLE'?'vehicle':'driver',value:activeDrilldown.name}:null;
+    onAssistantContext?.({period,area:selectedArea,entity});
+  },[dateFilter,rangeStart,rangeEnd,selectedArea,selectedTrip,activeDrilldown,onAssistantContext]);
 
   // 5. MODAL QUẢN LÝ PHÂN BỔ CHI PHÍ NHÓM Ô GỘP
   const [selectedGroupForAllocation, setSelectedGroupForAllocation] = useState(null);
@@ -92,6 +101,12 @@ export default function BusinessOverviewView({ onNavigateTab }) {
     const timer = setInterval(refresh, 30000);
     return () => { window.removeEventListener('business-data-changed', refresh); clearInterval(timer); };
   }, [loadData]);
+
+  useEffect(() => {
+    if(!assistantFocus||!tripsData.length)return;
+    const trip=tripsData.find(r=>r.id===assistantFocus.id);
+    if(trip){const p=assistantFocus.period;if(p?.all)setDateFilter('all');else if(p?.startDate){setRangeStart(p.startDate);setRangeEnd(p.endDate);setDateFilter('range');}setSelectedTrip(trip);onAssistantFocusConsumed?.();}
+  },[assistantFocus?.nonce,tripsData]);
 
   const handleOpenAllocationModal = (group) => {
     setSelectedGroupForAllocation(group);

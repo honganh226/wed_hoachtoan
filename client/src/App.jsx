@@ -157,6 +157,10 @@ export default function App() {
     return 'business_overview';
   }); // Mặc định hiển thị Bản mẫu Tổng quan Đợt 1
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+  const [assistantContext,setAssistantContext]=useState({});
+  const [assistantFocus,setAssistantFocus]=useState(null);
+  const [businessAssistantFocus,setBusinessAssistantFocus]=useState(null);
+  const [debtAssistantFocus,setDebtAssistantFocus]=useState(null);
   const [isAiDispatchOpen, setIsAiDispatchOpen] = useState(false);
 
   // Task 4.3: State bộ lọc chu kỳ thời gian (dùng chung cho Dashboard P&L)
@@ -231,6 +235,13 @@ export default function App() {
     setMsg('Đã đăng xuất khỏi hệ thống an toàn.');
   };
 
+  const handleAssistantNavigate = target => {
+    if (!target || !['trip','trips','vehicle','driver','customer','payables','group'].includes(target.kind)) return;
+    const focus={...target,nonce:Date.now()+Math.random()};
+    if (['customer','payables'].includes(target.kind)) {setDebtAssistantFocus(focus);setActiveModule('debts');setActiveTab('debts');}
+    else if(target.kind==='trip'){setBusinessAssistantFocus(focus);setActiveModule('overview');setSubView('business_overview');setActiveTab('business_overview');}
+    else {setAssistantFocus(focus);setActiveModule('manage');setActiveTab('manage');}
+  };
   const handleNavigateTab = (tab) => {
     if (tab === 'analytics') {
       setActiveModule('analytics');
@@ -870,12 +881,15 @@ export default function App() {
               )}
             </div>
 
-            {isDirector && activeTab === 'manage' && <DataManagementView />}
+            {isDirector && activeTab === 'manage' && <DataManagementView assistantFocus={assistantFocus} onAssistantFocusConsumed={() => setAssistantFocus(null)} onAssistantContext={setAssistantContext} />}
 
             {/* PHÂN HỆ TỔNG QUAN KINH DOANH - ĐÚNG 3 PHẦN GỌN RÕ */}
             {(isDirector || isAccountant) && (activeTab === 'business_overview') && (
               <div className="space-y-5">
                 <BusinessOverviewView
+                  assistantFocus={businessAssistantFocus}
+                  onAssistantFocusConsumed={() => setBusinessAssistantFocus(null)}
+                  onAssistantContext={setAssistantContext}
                   onNavigateTab={handleNavigateTab}
                   onOpenTripCreate={() => {
                     setDuplicateTargetTrip(null);
@@ -904,7 +918,7 @@ export default function App() {
             {/* PHÂN HỆ CÔNG NỢ DOANH NGHIỆP (GIÁM ĐỐC & KẾ TOÁN) */}
             {(isDirector || isAccountant) && (activeTab === 'debts') && (
               <div className="space-y-5 animate-fade-in">
-                <DirectorDebtsView />
+                <DirectorDebtsView assistantFocus={debtAssistantFocus} onAssistantFocusConsumed={() => setDebtAssistantFocus(null)} onAssistantContext={setAssistantContext} />
               </div>
             )}
 
@@ -1104,7 +1118,7 @@ export default function App() {
         )}
 
         {/* SECTION: DỮ LIỆU ĐÃ IMPORT TỪ EXCEL */}
-        {isDirector && activeTab === 'trips' && <DataManagementView />}
+        {isDirector && activeTab === 'trips' && <DataManagementView assistantFocus={assistantFocus} onAssistantFocusConsumed={() => setAssistantFocus(null)} onAssistantContext={setAssistantContext} />}
         {!isDirector && (activeTab === 'trips' || activeTab === 'all') && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
@@ -1644,6 +1658,9 @@ export default function App() {
 
       {/* KHUNG CHAT TRỢ LÝ ẢO AI NỘI BỘ (TASK 6.3) */}
       <AiChatBox
+        key={currentUser?.id || currentUser?.username || 'guest'}
+        viewContext={['overview','trips','manage','debts'].includes(activeModule) ? assistantContext : {}}
+        onNavigate={handleAssistantNavigate}
         currentUser={currentUser}
         isOpen={isAiChatOpen}
         onClose={() => setIsAiChatOpen(false)}

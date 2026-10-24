@@ -7,9 +7,14 @@
  * ============================================================
  */
 import React, { useState, useEffect, useRef } from 'react';
+import DirectorAssistantBox from './DirectorAssistantBox.jsx';
 import { askAiChatApi, fetchAiSuggestionsApi } from '../services/api.js';
 
-export default function AiChatBox({ currentUser, isOpen, onClose }) {
+export default function AiChatBox(props) {
+  return props.currentUser?.role === 'DIRECTOR' ? <DirectorAssistantBox {...props} /> : <LegacyAiChatBox {...props} />;
+}
+
+function LegacyAiChatBox({ currentUser, isOpen, onClose }) {
   const [messages, setMessages] = useState([
     {
       id: 'welcome',

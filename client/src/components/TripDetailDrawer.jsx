@@ -66,17 +66,13 @@ export default function TripDetailDrawer({
     ? selectedTrip.cuoc_vao 
     : (selectedTrip.revenue_pre_tax || 0);
 
-  const directCost = selectedTrip.cuoc_ra !== undefined
-    ? ((selectedTrip.tien_duong || 0) + (selectedTrip.cuoc_ra || 0) + (selectedTrip.phat_sinh || 0))
-    : (selectedTrip.direct_cost || 0);
-
-  const tripProfit = selectedTrip.cuoc_vao !== undefined
-    ? (revenue - directCost)
-    : (selectedTrip.trip_profit || 0);
+  const directCost = selectedTrip.direct_cost ?? ((selectedTrip.tien_duong || 0) + (selectedTrip.cuoc_ra || 0) + (selectedTrip.phat_sinh || 0));
+  const tripProfit = selectedTrip.trip_profit !== undefined ? selectedTrip.trip_profit : revenue - directCost;
 
   const fuelLiters = selectedTrip.dau_liters || selectedTrip.dau_lit || 0;
   const isMergedGroup = selectedTrip.is_merged_group || Boolean(selectedTrip.group_id);
   const groupId = selectedTrip.group_id || 'Chung';
+  const pendingAllocation=isMergedGroup&&selectedTrip.allocation_status!=='MANUAL';
 
   return (
     <div id="trip-detail-drawer" role="dialog" aria-modal="true" aria-label={"Chi tiết cuốc xe " + tripCode} className="fixed inset-0 z-50 overflow-hidden">
@@ -170,14 +166,14 @@ export default function TripDetailDrawer({
               <span className="text-sm sm:text-base font-bold font-mono text-slate-700 block mt-0.5">
                 {formatVnd(directCost)}
               </span>
-              <span className="text-[10px] text-slate-400">Cước ra + phát sinh</span>
+              <span className="text-[10px] text-slate-400">Tiền đường, cước ra và phát sinh</span>
             </div>
 
             <div className="p-2 bg-white rounded-lg border border-slate-200 shadow-2xs">
               <span className="text-[11px] text-slate-500 block">
-                {isMergedGroup ? 'Chênh Lệch Cấp Nhóm' : 'Lãi Từ Chuyến'}
+                {pendingAllocation ? 'Chênh Lệch Cấp Nhóm' : 'Lãi Tạm Tính'}
               </span>
-              {isMergedGroup ? (
+              {pendingAllocation ? (
                 <div className="mt-0.5">
                   <span className="text-xs sm:text-sm font-bold font-mono text-indigo-700 block">
                     Theo nhóm ô gộp
@@ -193,10 +189,10 @@ export default function TripDetailDrawer({
                       tripProfit < 0 ? 'text-rose-700' : 'text-emerald-800'
                     }`}
                   >
-                    {formatVnd(tripProfit)}
+                    {tripProfit === null ? 'Chưa đủ cơ sở' : formatVnd(tripProfit)}
                   </span>
                   <span className="text-[10px] text-slate-500 block">
-                    Chưa trừ lương
+                    Chưa trừ lương và tiền dầu
                   </span>
                 </div>
               )}

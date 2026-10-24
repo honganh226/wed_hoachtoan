@@ -858,11 +858,13 @@ export async function updateVehicleKmApi(id, kmData = {}) {
  * @param {string} message - Nội dung câu hỏi
  * @param {Array} [conversationHistory]
  */
-export async function askAiChatApi(message, conversationHistory = []) {
+export async function askAiChatApi(message, conversationHistory = [], options = {}) {
+  const {signal,...context}=options;
   const res = await fetch(`${API_BASE}/ai/chat`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ message, conversationHistory })
+    signal,
+    body: JSON.stringify({ message, conversationHistory,...context })
   });
   return res.json();
 }
@@ -1039,8 +1041,9 @@ export async function saveBusinessGroupAllocationApi(groupKey, mode, allocations
 /**
  * Lấy Dữ liệu Công nợ Phải thu khách hàng và Phải trả nhà xe
  */
-export async function fetchBusinessDebtsApi() {
-  const res = await fetch(`${API_BASE}/business/debts`, {
+export async function fetchBusinessDebtsApi(params = {}) {
+  const query=new URLSearchParams(params).toString();
+  const res = await fetch(`${API_BASE}/business/debts${query ? '?'+query : ''}`, {
     headers: authHeaders()
   });
   return res.json();

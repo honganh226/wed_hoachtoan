@@ -1,6 +1,7 @@
 import { createCipheriv,createDecipheriv,randomBytes } from 'node:crypto';
 import { db } from '../db/database.js';
 import { excelMonthService } from './excelMonthService.js';
+import { authenticateToken } from '../middlewares/auth.middleware.js';
 let revision=null;
 let ready=false;
 let queue=Promise.resolve();
@@ -15,6 +16,10 @@ export async function initializeDurableState(){if(!configured())return false;con
 async function flushState(){const next=revision+1;const rows=await remote('PATCH',`?id=eq.main&revision=eq.${revision}`,{revision:next,payload:encrypt(captureState()),updated_at:new Date().toISOString()});if(rows.length!==1){ready=false;throw Error('Database đã được cập nhật bởi phiên khác. Cần khởi động lại để nhận bản mới.');}revision=next;}
 export function durabilityStatus(){return {configured:configured(),ready,revision};}
 export function durableWrites(req,res,next){
+ if(req.method==='POST'&&req.path==='/ai/chat'){
+   if(!req.user)return authenticateToken(req,res,()=>durableWrites(req,res,next));
+   if(req.user.role==='DIRECTOR')return next();
+ }
  if(!configured()||['GET','HEAD','OPTIONS'].includes(req.method)||['/auth/login','/auth/logout','/excel/preview'].includes(req.path))return next();
  const run=async()=>{
   if(!ready){res.status(503).json({success:false,error:'Database bền vững chưa sẵn sàng. Chưa lưu thay đổi.'});return;}

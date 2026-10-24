@@ -10,6 +10,7 @@ import { chatWithAiAssistant } from '../services/aiAssistant.service.js';
 import { getRoleSuggestions } from '../services/aiGuard.service.js';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 import { successResponse, errorResponse } from '../utils/response.js';
+import { chatWithDirectorAssistant,directorSuggestions } from '../services/directorAssistant.service.js';
 
 const router = Router();
 
@@ -22,12 +23,16 @@ router.use(authenticateToken);
  */
 router.post('/chat', async (req, res) => {
   try {
+    if(req.user.role!=='DIRECTOR'&&('viewContext' in req.body||'contextToken' in req.body||'choice' in req.body))return errorResponse(res,'Chỉ giám đốc được dùng truy vấn trợ lý tài chính.',403);
     const { message, conversationHistory } = req.body;
-    const result = await chatWithAiAssistant({ message, conversationHistory }, req.user);
+    const result = req.user.role === 'DIRECTOR'
+      ? chatWithDirectorAssistant(req.body,req.user)
+      : await chatWithAiAssistant({ message, conversationHistory }, req.user);
     return successResponse(res, result, 'Phản hồi từ Trợ lý ảo AI');
   } catch (error) {
     console.error('[AI_CHAT_ERROR]', error);
-    return errorResponse(res, error.message || 'Lỗi khi xử lý câu hỏi với Trợ lý AI', 500);
+    if(error.status===429)res.setHeader('Retry-After','60');
+    return errorResponse(res, error.message || 'Lỗi khi xử lý câu hỏi với Trợ lý AI', error.status || 500);
   }
 });
 
@@ -37,7 +42,7 @@ router.post('/chat', async (req, res) => {
  */
 router.get('/suggestions', async (req, res) => {
   try {
-    const suggestions = getRoleSuggestions(req.user.role);
+    const suggestions = req.user.role === 'DIRECTOR' ? directorSuggestions : getRoleSuggestions(req.user.role);
     return successResponse(res, suggestions, 'Lấy danh sách gợi ý thành công');
   } catch (error) {
     console.error('[AI_SUGGESTIONS_ERROR]', error);

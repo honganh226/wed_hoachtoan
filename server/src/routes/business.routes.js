@@ -115,7 +115,9 @@ router.post('/group/:groupKey/allocate', requireRole(USER_ROLES.DIRECTOR), (req,
  */
 router.get('/debts', (req, res) => {
   try {
-    const debts = excelMonthService.getDebtsData();
+    const {start_date,end_date}=req.query;
+    if((start_date||end_date)&&(!/^\d{4}-\d{2}-\d{2}$/.test(start_date||'')||!/^\d{4}-\d{2}-\d{2}$/.test(end_date||'')||start_date>end_date))return errorResponse(res,'Khoảng ngày công nợ không hợp lệ',400);
+    const debts = excelMonthService.getDebtsData({start_date,end_date});
     return successResponse(res, debts, 'Lấy dữ liệu công nợ thành công');
   } catch (err) {
     return errorResponse(res, err.message, 500);

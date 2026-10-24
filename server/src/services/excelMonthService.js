@@ -685,9 +685,9 @@ export class ExcelMonthService {
    * Tính toán dữ liệu Công nợ (Phải thu khách hàng & Phải trả nhà xe)
    * TUYỆT ĐỐI KHÔNG TỰ THÊM GIAO DỊCH NGOÀI EXCEL THÁNG 1
    */
-  getDebtsData() {
+  getDebtsData(filter = {}) {
     const data = this.getData();
-    const { rows } = data;
+    const rows = data.rows.filter(r => (!filter.start_date || r.trip_date >= filter.start_date) && (!filter.end_date || r.trip_date <= filter.end_date));
 
     // 1. Phải thu theo khách hàng từ đúng 77 dòng Excel
     const customerMap = new Map();

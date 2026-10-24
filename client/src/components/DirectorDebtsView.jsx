@@ -17,7 +17,8 @@ import {
 import { formatVnd } from '../data/unifiedBusinessData';
 import { fetchBusinessDebtsApi } from '../services/api.js';
 
-export default function DirectorDebtsView() {
+export default function DirectorDebtsView({assistantFocus,onAssistantFocusConsumed,onAssistantContext}) {
+  const [assistantPeriod,setAssistantPeriod]=useState(null);
   const [activeTab, setActiveTab] = useState('receivables'); // 'receivables' | 'payables'
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL' | 'UNPAID' | 'PAID' | 'OFFSET'
@@ -32,7 +33,7 @@ export default function DirectorDebtsView() {
     try {
       setLoading(true);
       setLoadError(null);
-      const res = await fetchBusinessDebtsApi();
+      const res = await fetchBusinessDebtsApi(assistantPeriod&&!assistantPeriod.all?{start_date:assistantPeriod.startDate,end_date:assistantPeriod.endDate}:{});
       if (res.success) {
         setDebts(res.data);
       } else {
@@ -43,7 +44,7 @@ export default function DirectorDebtsView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [assistantPeriod]);
 
   useEffect(() => {
     loadDebts();
@@ -57,6 +58,14 @@ export default function DirectorDebtsView() {
 
   const receivables = debts?.receivables || {};
   const payables = debts?.payables || {};
+
+  useEffect(()=>{if(!assistantFocus)return;setActiveTab(assistantFocus.kind==='payables'?'payables':'receivables');setSearchQuery(assistantFocus.query||'');setFilterStatus('ALL');setAssistantPeriod(assistantFocus.period||null);onAssistantFocusConsumed?.();},[assistantFocus?.nonce]);
+  useEffect(()=>{
+    const query=searchQuery.trim().toLocaleLowerCase('vi');
+    const party=activeTab==='payables'?(debts?.payables?.subcontractors||[]).find(r=>r.subcontractor_name.toLocaleLowerCase('vi')===query):(debts?.receivables?.customers||[]).find(r=>r.customer_name.toLocaleLowerCase('vi')===query);
+    const entity=party?{kind:activeTab==='payables'?'supplier':'customer',value:party.subcontractor_name||party.customer_name}:null;
+    onAssistantContext?.({period:assistantPeriod||{all:true},entity});
+  },[assistantPeriod,searchQuery,activeTab,debts,onAssistantContext]);
 
   // Chuẩn hóa danh sách khách hàng
   const normalizedCustomers = useMemo(() => {
@@ -151,6 +160,7 @@ export default function DirectorDebtsView() {
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in text-slate-800">
+      {assistantPeriod&&!assistantPeriod.all&&<div className="text-xs bg-blue-50 p-3 rounded-lg">Cuốc phát sinh từ {assistantPeriod.startDate} đến {assistantPeriod.endDate}, theo thanh toán hiện tại. <button className="underline" onClick={()=>{setAssistantPeriod(null);setSearchQuery('');}}>Xem toàn bộ</button></div>}
       {/* 1. Header & Điều hướng 2 tab công nợ */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
         <div className="flex flex-col gap-4 min-w-0">
