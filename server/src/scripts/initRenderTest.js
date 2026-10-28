@@ -27,6 +27,22 @@ if (!existing) {
   console.log('[TEST] Existing account preserved.');
 }
 
+// Đồng bộ riêng tài khoản thư ký của bản test, không phụ thuộc hash mặc định
+// được initDatabase tạo trước khi tài khoản giám đốc tồn tại.
+const secretaryPassword = process.env.SECRETARY_INIT_PASSWORD || password;
+if (secretaryPassword.length < 6) throw new Error('Configure SECRETARY_INIT_PASSWORD with at least 6 characters');
+const secretary = db.prepare('SELECT id, role, password_hash FROM users WHERE username = ?').get('thuky');
+if (secretary && secretary.role !== 'SECRETARY') throw new Error('Test secretary username is already assigned to a different role');
+if (!secretary) {
+  const now = new Date().toISOString();
+  db.prepare('INSERT INTO users (id, username, password_hash, full_name, role, area_id, phone, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NULL, NULL, 1, ?, ?)')
+    .run(randomUUID(), 'thuky', bcrypt.hashSync(secretaryPassword, 12), 'Thư ký', 'SECRETARY', now, now);
+} else if (!bcrypt.compareSync(secretaryPassword, secretary.password_hash)) {
+  db.prepare('UPDATE users SET password_hash=?, updated_at=? WHERE id=?')
+    .run(bcrypt.hashSync(secretaryPassword, 12), new Date().toISOString(), secretary.id);
+}
+console.log('[TEST] Secretary test account synchronized from environment.');
+
 // 2. Dựng lại dữ liệu thử cho Đội xe, KPI và Bảng lương (4 xe, 4 tài xế, 33 chuyến, v.v.)
 // Khi Render ngủ, restart hoặc redeploy, dữ liệu thử được tự động khôi phục.
 const seedFilePath = path.resolve(__dirname, '../data/fleet_payroll_seed.json');
