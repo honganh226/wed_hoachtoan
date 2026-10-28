@@ -83,6 +83,7 @@ import {
   CreditCard,
   BookOpen,
   Sparkles,
+  MessageSquare,
   ChevronDown,
   Check,
   Menu,
@@ -439,20 +440,20 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/60 text-slate-800">
+    <div className="ha-app min-h-screen text-slate-800">
       {/* ============================================================
           ENTERPRISE MINIMALIST HEADER (CHUẨN DOANH NGHIỆP LỚN)
           ============================================================ */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2 sm:py-0 min-h-16 lg:h-16 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-2">
+      <header className="ha-app-header sticky top-0 z-40">
+        <div className="ha-header-inner">
           {/* Logo & Brand */}
-          <div className="flex items-center space-x-3">
+          <div className="ha-brand flex items-center space-x-3">
             <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm">
               <Truck className="w-5 h-5 text-slate-100" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-bold text-slate-900 text-sm tracking-tight">WED_HOACHTOAN</span>
+                <span className="font-bold text-slate-900 text-sm tracking-tight">HỒNG ANH</span>
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
                   isDriver
                     ? 'bg-purple-50 text-purple-700 border-purple-200'
@@ -462,18 +463,18 @@ export default function App() {
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     : 'bg-slate-100 text-slate-600 border-slate-200'
                 }`}>
-                  {isDriver ? '📱 App Lái Xe' : isAreaManager ? `📍 Khu Vực (${currentUser?.area_id || 'Tuân'})` : isSecretary ? '📋 Thư Ký (Phơi & Công nợ)' : isAccountant ? '💼 Kế Toán P&L' : '👑 Giám Đốc'}
+                  {isDriver ? 'Lái xe' : isAreaManager ? `Quản lý khu (${currentUser?.area_id || 'Tuân'})` : isSecretary ? 'Thư ký' : isAccountant ? 'Kế toán' : 'Giám đốc'}
                 </span>
               </div>
               <div className="text-[11px] text-slate-400 flex items-center space-x-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>{isDriver ? 'Sẵn sàng nhận lệnh cuốc xe' : 'Hệ thống trực tuyến'}</span>
+                <span>{isDriver ? 'Sẵn sàng nhận chuyến' : 'Quản trị vận tải'}</span>
               </div>
             </div>
           </div>
 
           {/* Action Buttons & Profile Controls */}
-          <div className="flex w-full lg:w-auto flex-wrap gap-2 items-center justify-end">
+          <div className="ha-header-actions">
             {/* Menu Dropdown Thao Tác Nghiệp Vụ Nhanh (ẨN ĐỐI VỚI LÁI XE) */}
             {!isDriver && (
               <div className="relative">
@@ -483,7 +484,7 @@ export default function App() {
                   title="Mở menu các thao tác nghiệp vụ"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-                  <span className="hidden sm:inline">Tác Nghiệp Nhanh</span>
+                  <span className="hidden sm:inline">Tác nghiệp</span>
                   <ChevronDown className="w-3 h-3 text-slate-400" />
                 </button>
 
@@ -499,21 +500,21 @@ export default function App() {
                         className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
                       >
                         <Table className="w-4 h-4 text-indigo-600" />
-                        <span>Nhập Nhiều Cuốc (Bảng Grid)</span>
+                        <span>Nhập nhiều cuốc</span>
                       </button>
                       <button
                         onClick={() => { setIsExcelImportOpen(true); setIsActionsMenuOpen(false); }}
                         className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
                       >
                         <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                        <span>Nhập Bảng Kê Từ Excel</span>
+                        <span>Nhập bảng kê Excel</span>
                       </button>
                       <button
                         onClick={() => { setIsAiDispatchOpen(true); setIsActionsMenuOpen(false); }}
                         className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
                       >
                         <Sparkles className="w-4 h-4 text-purple-600" />
-                        <span>🤖 AI Gợi Ý Phân Bổ Xe</span>
+                        <span>Gợi ý phân bổ xe</span>
                       </button>
                       <button
                         onClick={() => { setTargetTripForAdvance(null); setIsAdvanceModalOpen(true); setIsActionsMenuOpen(false); }}
@@ -548,7 +549,7 @@ export default function App() {
                             className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
                           >
                             <Lock className="w-4 h-4 text-slate-600" />
-                            <span>Khóa Sổ Kỳ & Audit Log</span>
+                            <span>Khóa sổ & lịch sử</span>
                           </button>
                         </>
                       )}
@@ -568,7 +569,7 @@ export default function App() {
                 className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
-                <span>+ Tạo Chuyến</span>
+                <span>Tạo chuyến</span>
               </button>
             )}
 
@@ -578,8 +579,8 @@ export default function App() {
               className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-all"
               title="Mở Trợ lý ảo AI nội bộ"
             >
-              <span>🤖</span>
-              <span className="hidden md:inline">Trợ Lý AI</span>
+              <MessageSquare size={16} />
+              <span className="hidden md:inline">Trợ lý</span>
             </button>
 
             {/* User Profile & Role Switcher Popup */}
@@ -617,11 +618,11 @@ export default function App() {
                       <div className="text-[11px] text-slate-500 flex items-center space-x-1">
                         <span>Vai trò:</span>
                         <strong className="text-slate-700">
-                          {currentUser.role === 'DIRECTOR' && '👑 Giám Đốc'}
-                          {currentUser.role === 'ACCOUNTANT' && '💼 Kế Toán'}
-                          {currentUser.role === 'SECRETARY' && '📋 Thư Ký'}
-                          {currentUser.role === 'AREA_MANAGER' && `📍 QL Khu (${currentUser.area_id || 'Tuân'})`}
-                          {currentUser.role === 'DRIVER' && '🚛 Lái Xe'}
+                          {currentUser.role === 'DIRECTOR' && 'Giám đốc'}
+                          {currentUser.role === 'ACCOUNTANT' && 'Kế toán'}
+                          {currentUser.role === 'SECRETARY' && 'Thư ký'}
+                          {currentUser.role === 'AREA_MANAGER' && `Quản lý khu (${currentUser.area_id || 'Tuân'})`}
+                          {currentUser.role === 'DRIVER' && 'Lái xe'}
                         </strong>
                       </div>
                     </div>
@@ -654,7 +655,7 @@ export default function App() {
       </header>
 
       {/* Main Container */}
-      <main className="max-w-6xl mx-auto p-4 sm:p-6 space-y-5">
+      <main className="ha-main space-y-5">
         {/* PWA Mobile Offline & Sync Banner (Chỉ hiện khi ngoại tuyến hoặc có hàng đợi chờ) */}
         <PwaOfflineBanner onDataSynced={loadData} />
 
@@ -687,7 +688,7 @@ export default function App() {
               <Lock className="w-8 h-8 text-amber-400" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Bảo Mật Quản Trị Doanh Nghiệp</h2>
+              <h2 className="text-xl font-bold text-slate-900">Đăng nhập quản trị</h2>
               <p className="text-xs text-slate-500 mt-1">
                 Bản trực tuyến dành cho Giám Đốc và Quản lý. Vui lòng đăng nhập để truy cập dữ liệu và báo cáo tài chính.
               </p>
@@ -712,17 +713,17 @@ export default function App() {
             {/* ============================================================
                 THANH ĐIỀU HƯỚNG 2 TẦNG (CHUẨN DOANH NGHIỆP: TAB CON NẰM DƯỚI TAB CHA)
                 ============================================================ */}
-            <div data-navigation="two-level" className="space-y-2 border-b border-slate-200 pb-3" style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+            <div data-navigation="two-level" role="navigation" aria-label="Điều hướng chính" className="ha-main-navigation" style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
               {/* TẦNG 1: HÀNG TAB CHÍNH NỔI BẬT */}
               <div className="flex items-center overflow-x-auto no-scrollbar py-0.5">
-                <div className="inline-flex p-1 bg-slate-100 rounded-xl space-x-1 shrink-0">
+                <div className="ha-primary-tabs">
                   {/* Tab Tổng Quan Kinh Doanh (Giám Đốc, Kế Toán) */}
                   {(isDirector || isAccountant) && (
                     <button
                       onClick={() => { setActiveModule('overview'); setSubView('business_overview'); setActiveTab('business_overview'); }}
                       className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                         activeModule === 'overview'
-                          ? 'bg-white text-slate-900 shadow-sm'
+                          ? 'ha-nav-active'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
@@ -737,7 +738,7 @@ export default function App() {
                     onClick={() => { setActiveModule('trips'); setActiveTab('trips'); }}
                     className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                       activeModule === 'trips'
-                        ? 'bg-white text-slate-900 shadow-sm'
+                        ? 'ha-nav-active'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -753,7 +754,7 @@ export default function App() {
                       onClick={() => { setActiveModule('debts'); setActiveTab('debts'); }}
                       className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                         activeModule === 'debts'
-                          ? 'bg-white text-slate-900 shadow-sm'
+                          ? 'ha-nav-active'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
@@ -773,7 +774,7 @@ export default function App() {
                     }}
                     className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                       activeModule === 'fleet'
-                        ? 'bg-white text-slate-900 shadow-sm'
+                        ? 'ha-nav-active'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -783,7 +784,7 @@ export default function App() {
                     </span>
                   </button>
 
-                  {isDirector && <button onClick={() => { setActiveModule('manage'); setActiveTab('manage'); }} className={`px-3.5 py-2 rounded-lg text-xs font-bold shrink-0 ${activeModule === 'manage' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}>Dữ liệu & chỉnh sửa</button>}
+                  {isDirector && <button onClick={() => { setActiveModule('manage'); setActiveTab('manage'); }} className={`px-3.5 py-2 rounded-lg text-xs font-bold shrink-0 ${activeModule === 'manage' ? 'ha-nav-active' : 'text-slate-600'}`}>Dữ liệu & chỉnh sửa</button>}
                   {/* Tab Cẩm Nang & Quản Trị */}
                   <button
                     onClick={() => {
@@ -794,7 +795,7 @@ export default function App() {
                     }}
                     className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                       activeModule === 'system'
-                        ? 'bg-white text-slate-900 shadow-sm'
+                        ? 'ha-nav-active'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -1523,7 +1524,7 @@ export default function App() {
         currentUser={currentUser}
       />
 
-      {/* Modal Khóa Sổ Kỳ & Audit Log (Task 2.3) */}
+      {/* Modal Khóa sổ & lịch sử (Task 2.3) */}
       <PeriodLockModal
         isOpen={isPeriodLockOpen}
         onClose={() => setIsPeriodLockOpen(false)}
@@ -1577,7 +1578,7 @@ export default function App() {
         }}
       />
 
-      {/* Modal Nhập Bảng Kê Từ Excel (5 bước theo chuẩn tháng 1) */}
+      {/* Modal Nhập bảng kê Excel (5 bước theo chuẩn tháng 1) */}
       <ExcelImportModal
         isOpen={isExcelImportOpen}
         onClose={() => setIsExcelImportOpen(false)}
@@ -1663,11 +1664,11 @@ export default function App() {
       {!isAiChatOpen && (
         <button
           onClick={() => setIsAiChatOpen(true)}
-          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30 px-3 py-2 sm:px-3.5 sm:py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-full shadow-lg border border-slate-700 flex items-center space-x-1.5 sm:space-x-2 transition-all hover:scale-105 active:scale-95 group cursor-pointer"
+          className="ha-assistant-launcher fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30"
           title="Trợ lý ảo AI nội bộ"
         >
-          <Sparkles className="w-4 h-4 text-purple-400 group-hover:rotate-12 transition-transform" />
-          <span className="text-xs font-semibold pr-1">Trợ Lý AI</span>
+          <MessageSquare size={16} />
+          <span>Trợ lý</span>
         </button>
       )}
 

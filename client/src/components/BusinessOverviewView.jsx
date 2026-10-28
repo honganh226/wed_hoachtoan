@@ -50,7 +50,7 @@ export default function BusinessOverviewView({
   const [selectedArea, setSelectedArea] = useState('ALL');
 
   // 2. PHÂN HỆ HIỆU QUẢ HOẠT ĐỘNG
-  const [breakdownView, setBreakdownView] = useState('DRIVER'); // 'DRIVER' | 'VEHICLE' | 'GROUPS'
+  const [breakdownView, setBreakdownView] = useState('VEHICLE'); // 'DRIVER' | 'VEHICLE' | 'GROUPS'
   const [breakdownSort, setBreakdownSort] = useState('PROFIT_DESC'); // 'PROFIT_DESC' | 'TRIPS_ASC'
 
   // 3. DRILL-DOWN DANH SÁCH CHUYẾN LIÊN QUAN
@@ -253,13 +253,13 @@ export default function BusinessOverviewView({
       totalChiPhiCongTy += f.chi_phi_cong_ty;
       totalChenhLechSauTru17 += f.chenh_lech_sau_tru_17;
       totalChenhLechTruocTru += f.chenh_lech_truoc_tru_goc;
-      totalFuelLiters += f.dau_lit;
-      totalTienDau += f.tien_dau;
+      totalFuelLiters += f.fuel_liters;
+      totalTienDau += f.fuel_cost;
       if (f.is_fuel_price_missing) missingFuelPriceTrips += 1;
       totalPhiNang += f.phi_nang;
       totalPhiHa += f.phi_ha;
-      totalPhoiTraHo += f.phoi_tra_ho;
-      totalPhoiConPhaiThu += f.phoi_con_phai_thu;
+      totalPhoiTraHo += Number(t.phoi_total_advance ?? t.phoi_tra_ho ?? t.phoi_advance_amount ?? 0);
+      totalPhoiConPhaiThu += Number(t.phoi_balance_due ?? t.phoi_con_phai_thu ?? 0);
     });
 
     let journeys = 0;
@@ -338,8 +338,8 @@ export default function BusinessOverviewView({
       item.total_cost += f.chi_phi_cong_ty;
       item.total_profit_after_17 += f.chenh_lech_sau_tru_17;
       item.total_profit_pre_deduction += f.chenh_lech_truoc_tru_goc;
-      item.fuel_liters += f.dau_lit;
-      item.fuel_cost += f.tien_dau;
+      item.fuel_liters += f.fuel_liters;
+      item.fuel_cost += f.fuel_cost;
     });
 
     const list = Array.from(map.values()).map((item) => {
@@ -395,8 +395,8 @@ export default function BusinessOverviewView({
       item.total_cost += f.chi_phi_cong_ty;
       item.total_profit_after_17 += f.chenh_lech_sau_tru_17;
       item.total_profit_pre_deduction += f.chenh_lech_truoc_tru_goc;
-      item.fuel_liters += f.dau_lit;
-      item.fuel_cost += f.tien_dau;
+      item.fuel_liters += f.fuel_liters;
+      item.fuel_cost += f.fuel_cost;
     });
 
     const list = Array.from(map.values()).map((item) => {
@@ -415,7 +415,7 @@ export default function BusinessOverviewView({
     return [
       {
         id: 'GROUP_63_64',
-        title: 'Chênh lệch nhóm ô gộp kết hợp 63–64 (HÀ PHƯƠNG)',
+        title: 'Chi phí chung cần đối chiếu — Hà Phương',
         desc: 'Cước gốc 5.6M (2.2M + 3.4M), Cước ra gộp chung 4.8M → Chênh lệch gốc cấp nhóm 800.000 đ (Chưa khẳng định lãi từng cuốc)',
         impact: 'Chênh lệch nhóm 800.000 đ',
         severity: 'high',
@@ -428,11 +428,11 @@ export default function BusinessOverviewView({
       },
       {
         id: 'OFFSET_P22',
-        title: 'Khoản đối trừ P22 (VẠN ĐẠT THÁI BÌNH)',
+        title: 'Đối trừ công nợ — Vạn Đạt Thái Bình',
         desc: 'Cuốc hàng 22 ghi chú ĐỐI TRỪ XONG: 3.600.000 đ giảm nợ khách nhưng không tăng tiền mặt thực thu',
         impact: 'Đối trừ 3.600.000 đ',
         severity: 'medium',
-        btnText: 'Xem Công Nợ',
+        btnText: 'Xem công nợ',
         onAction: () => {
           if (onNavigateTab) onNavigateTab('debts');
         }
@@ -446,7 +446,7 @@ export default function BusinessOverviewView({
         desc: `Tổng cộng ${metrics.totalFuelLiters} lít dầu cấp trong kỳ • Tiền dầu đã quy đổi: ${formatVnd(metrics.totalTienDau)}`,
         impact: `${metrics.totalFuelLiters} Lít • ${formatVnd(metrics.totalTienDau)}`,
         severity: metrics.missingFuelPriceTrips > 0 ? 'high' : 'medium',
-        btnText: 'Nhập Giá Dầu Theo Ngày',
+        btnText: 'Xem giá dầu',
         onAction: () => {
           setFuelModalOpen(true);
         }
@@ -575,275 +575,105 @@ export default function BusinessOverviewView({
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-6 py-5 space-y-6 bg-slate-50/60 min-h-screen text-slate-800">
+    <div className="ha-overview space-y-5">
       {/* ============================================================ */}
       {/* PHẦN A — 7 CHỈ TIÊU KẾT QUẢ KINH DOANH CHUẨN MỚI */}
       {/* ============================================================ */}
-      <section aria-label="Kết quả kinh doanh" className="space-y-4">
-        {/* Hàng tiêu đề và bộ lọc */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <section aria-label="Kết quả kinh doanh" className="ha-overview-summary">
+        <div className="ha-page-heading">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex flex-wrap items-center gap-2">
-              <span>Tổng Quan Kinh Doanh</span>
-              <span className="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full font-semibold">
-                Chuẩn Mới: Cước Gốc Chưa VAT • ×1,08 Có VAT • ×0,83 Sau Trừ 17%
-              </span>
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Phạm vi: <span className="font-medium text-slate-800">{scopeLabel}</span>
-            </p>
+            <p className="ha-eyebrow">Báo cáo điều hành</p>
+            <h1>Tổng quan kinh doanh</h1>
+            <p className="ha-page-description">Kết quả vận hành, tài chính và những việc cần theo dõi.</p>
           </div>
+          <div className="ha-page-actions">
+            <button type="button" onClick={() => setFuelModalOpen(true)} className="ha-button">
+              <Fuel size={15} /><span>Giá dầu theo ngày</span>
+            </button>
+            <button type="button" onClick={loadData} className="ha-icon-button" aria-label="Làm mới dữ liệu" title="Làm mới dữ liệu">
+              <RefreshCw size={16} />
+            </button>
+          </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <div className="flex flex-wrap rounded-lg border border-slate-300 bg-white p-0.5 font-medium shadow-2xs">
-              <button
-                type="button"
-                onClick={() => setDateFilter('month')}
-                className={`px-3 py-1.5 rounded-md transition-colors ${
-                  dateFilter === 'month' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Tháng 01/2026 ({tripsData.filter((t) => t.trip_date.startsWith('2026-01')).length} cuốc)
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateFilter('all')}
-                className={`px-3 py-1.5 rounded-md transition-colors ${
-                  dateFilter === 'all' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Tất cả ({tripsData.length} cuốc)
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateFilter('day_09')}
-                className={`px-3 py-1.5 rounded-md transition-colors ${
-                  dateFilter === 'day_09' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Ngày 09/01
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateFilter('day_08')}
-                className={`px-3 py-1.5 rounded-md transition-colors ${
-                  dateFilter === 'day_08' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Ngày 08/01
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-2 items-center">
-              <label>
-                Từ ngày{' '}
-                <input
-                  aria-label="Từ ngày báo cáo"
-                  type="date"
-                  className="border rounded p-1.5 max-w-full bg-white"
-                  value={rangeStart}
-                  onChange={(e) => {
-                    setRangeStart(e.target.value);
-                    setDateFilter('range');
-                  }}
-                />
-              </label>
-              <label>
-                Đến ngày{' '}
-                <input
-                  aria-label="Đến ngày báo cáo"
-                  type="date"
-                  className="border rounded p-1.5 max-w-full bg-white"
-                  value={rangeEnd}
-                  onChange={(e) => {
-                    setRangeEnd(e.target.value);
-                    setDateFilter('range');
-                  }}
-                />
-              </label>
-            </div>
-
-            <select
-              value={selectedArea}
-              onChange={(e) => setSelectedArea(e.target.value)}
-              className="border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white font-medium text-slate-800 shadow-2xs"
-            >
+        <div className="ha-report-toolbar">
+          <label className="ha-filter-field">
+            <span>Kỳ báo cáo</span>
+            <select aria-label="Kỳ báo cáo" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
+              <option value="month">Tháng 01/2026</option>
+              <option value="all">Tất cả dữ liệu</option>
+              <option value="day_09">Ngày 09/01/2026</option>
+              <option value="day_08">Ngày 08/01/2026</option>
+              <option value="range">Khoảng ngày tùy chọn</option>
+            </select>
+          </label>
+          {dateFilter === 'range' && <div className="ha-date-range">
+            <label className="ha-filter-field"><span>Từ ngày</span><input aria-label="Từ ngày báo cáo" type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} /></label>
+            <label className="ha-filter-field"><span>Đến ngày</span><input aria-label="Đến ngày báo cáo" type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} /></label>
+          </div>}
+          <label className="ha-filter-field">
+            <span>Phạm vi</span>
+            <select aria-label="Phạm vi báo cáo" value={selectedArea} onChange={(e) => setSelectedArea(e.target.value)}>
               <option value="ALL">Toàn công ty</option>
               <option value="TUAN">Khu vực Tuân (Xe nhà)</option>
             </select>
-
-            <button
-              type="button"
-              onClick={() => setFuelModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
-            >
-              <Fuel className="w-3.5 h-3.5" />
-              <span>Giá Dầu Theo Ngày</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={loadData}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
-              <span>Làm mới</span>
-            </button>
-          </div>
+          </label>
+          <span className="ha-scope-caption">{scopeLabel}</span>
         </div>
 
-        {/* 4 THẺ KPI CHÍNH + DẢI 7 CHỈ TIÊU CHUẨN HÓA */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {/* 1. Cuốc hoàn thành */}
-          <button
-            type="button"
-            id="kpi-card-completed_trips"
-            onClick={() => handleDrilldownFromMetric('ALL')}
-            className="p-4 bg-white rounded-xl border border-slate-200 text-left hover:border-slate-300 hover:bg-slate-50/50 transition-all flex flex-col justify-between cursor-pointer shadow-sm"
-          >
-            <span className="text-xs font-medium text-slate-500">Cuốc hoàn thành</span>
-            <div className="my-1.5">
-              <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900">
-                {metrics.completedCount}
-              </span>
-              <span className="text-xs text-slate-500 font-normal ml-1">cuốc</span>
-            </div>
-            <span className="text-[11px] text-indigo-600 font-medium">
-              {metrics.journeyCount} hành trình • {metrics.groupsCount} nhóm ô gộp
-            </span>
+        <div className="ha-kpi-grid">
+          <button type="button" id="kpi-card-completed_trips" onClick={() => handleDrilldownFromMetric('ALL')} className="ha-kpi">
+            <span className="ha-kpi-label">Cuốc đã ghi nhận</span>
+            <span className="ha-kpi-value">{metrics.completedCount}<small>cuốc</small></span>
+            <span className="ha-kpi-foot">Xem danh sách chuyến <span aria-hidden="true">↗</span></span>
           </button>
-
-          {/* 2. Tổng cước vào gốc (Chưa VAT) & Có VAT */}
-          <button
-            type="button"
-            id="kpi-card-revenue"
-            onClick={() => handleDrilldownFromMetric('REVENUE')}
-            className="p-4 bg-white rounded-xl border border-emerald-200 text-left hover:border-emerald-300 hover:bg-emerald-50/30 transition-all flex flex-col justify-between cursor-pointer shadow-sm"
-          >
-            <span className="text-xs font-bold text-emerald-800">
-              Tổng Cước Có VAT (×1,08)
-            </span>
-            <div className="my-1.5">
-              <span className="text-xl sm:text-2xl font-extrabold font-mono text-emerald-700 whitespace-nowrap">
-                {formatVnd(metrics.totalCuocCoVat)}
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-600">
-              Cước gốc chưa VAT: <b>{formatVnd(metrics.totalCuocGoc)}</b> (+VAT 8%: {formatVnd(metrics.totalVat8)})
-            </span>
+          <button type="button" id="kpi-card-revenue" onClick={() => handleDrilldownFromMetric('REVENUE')} className="ha-kpi">
+            <span className="ha-kpi-label">Tổng cước có VAT</span>
+            <span className="ha-kpi-value">{formatVnd(metrics.totalCuocCoVat)}</span>
+            <span className="ha-kpi-foot">Đã bao gồm VAT 8% <span aria-hidden="true">↗</span></span>
           </button>
-
-          {/* 3. Cước sau khoản trừ 17% nội bộ */}
-          <button
-            type="button"
-            id="kpi-card-direct_cost"
-            onClick={() => handleDrilldownFromMetric('DIRECT_COST')}
-            className="p-4 bg-white rounded-xl border border-blue-200 text-left hover:border-blue-300 hover:bg-blue-50/30 transition-all flex flex-col justify-between cursor-pointer shadow-sm"
-          >
-            <span className="text-xs font-bold text-blue-800">
-              Cước Sau Khoản Trừ 17% (×0,83)
-            </span>
-            <div className="my-1.5">
-              <span className="text-xl sm:text-2xl font-extrabold font-mono text-blue-700 whitespace-nowrap">
-                {formatVnd(metrics.totalCuocSauTru17)}
-              </span>
-            </div>
-            <span className="text-[11px] text-amber-700 font-semibold">
-              Trừ 17% nội bộ: −{formatVnd(metrics.totalKhoanTru17)} • Chi phí Cty: {formatVnd(metrics.totalChiPhiCongTy)}
-            </span>
+          <button type="button" id="kpi-card-direct_cost" onClick={() => handleDrilldownFromMetric('DIRECT_COST')} className="ha-kpi">
+            <span className="ha-kpi-label">Chi phí đã ghi nhận</span>
+            <span className="ha-kpi-value">{formatVnd(metrics.totalChiPhiCongTy)}</span>
+            <span className="ha-kpi-foot">Các khoản công ty chịu <span aria-hidden="true">↗</span></span>
           </button>
-
-          {/* 4. Chênh lệch tạm tính sau khoản trừ 17% & chi phí */}
-          <button
-            type="button"
-            id="kpi-card-profit"
-            onClick={() => handleDrilldownFromMetric('PROFIT')}
-            className="p-4 bg-white rounded-xl border border-amber-300 text-left hover:border-amber-400 hover:bg-amber-50/30 transition-all flex flex-col justify-between cursor-pointer shadow-sm"
-          >
-            <span className="text-xs font-bold text-amber-900">
-              Chênh Lệch Tạm Tính (Sau Trừ 17% & Chi Phí)
-            </span>
-            <div className="my-1.5">
-              <span className="text-xl sm:text-2xl font-extrabold font-mono text-amber-700 whitespace-nowrap">
-                {formatVnd(metrics.totalChenhLechSauTru17)}
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-600">
-              Chưa trừ lương • Trước trừ 17%: <b>{formatVnd(metrics.totalChenhLechTruocTru)}</b>
-            </span>
+          <button type="button" id="kpi-card-profit" onClick={() => handleDrilldownFromMetric('PROFIT')} className="ha-kpi ha-kpi-result">
+            <span className="ha-kpi-label">Chênh lệch tạm tính</span>
+            <span className="ha-kpi-value">{formatVnd(metrics.totalChenhLechSauTru17)}</span>
+            <span className="ha-kpi-foot">Sau khoản trừ 17% và chi phí <span aria-hidden="true">↗</span></span>
           </button>
         </div>
 
-        {/* BẢNG CHI TIẾT 7 CHỈ TIÊU TÀI CHÍNH + DẦU + NÂNG HẠ + PHƠI TRẢ HỘ (Mục 3.A & 15) */}
-        <div className="bg-slate-900 text-white rounded-xl p-4 shadow-sm space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 pb-2 text-xs">
-            <div className="font-bold text-amber-300 flex items-center gap-1.5">
-              <Coins className="w-4 h-4" />
-              <span>7 Chỉ Tiêu Tài Chính Chuẩn Hóa Toàn Kỳ & Công Nợ Phơi Trả Hộ</span>
-            </div>
-            <span className="text-[11px] text-slate-300">
-              * Khoản trừ 17% là quy tắc tính nội bộ Giám đốc; tiền phơi trả hộ không tính vào doanh thu hay chi phí chuyến
-            </span>
-          </div>
+        <p className="ha-calculation-note"><Info size={14} /><span>Chênh lệch chưa trừ lương{metrics.missingFuelPriceTrips > 0 ? `; còn ${metrics.missingFuelPriceTrips} cuốc chưa có giá dầu ngày chạy` : ''}. Tiền phơi trả hộ được theo dõi riêng.</span></p>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 text-center text-xs">
-            <div className="p-2.5 bg-slate-800 rounded-lg border border-slate-700">
-              <div className="text-[10px] text-slate-400">1. Cước vào chưa VAT</div>
-              <div className="font-mono font-bold text-white mt-0.5">{formatVnd(metrics.totalCuocGoc)}</div>
-            </div>
-            <div className="p-2.5 bg-slate-800 rounded-lg border border-slate-700">
-              <div className="text-[10px] text-slate-400">2. VAT 8%</div>
-              <div className="font-mono font-bold text-teal-300 mt-0.5">+{formatVnd(metrics.totalVat8)}</div>
-            </div>
-            <div className="p-2.5 bg-slate-800 rounded-lg border border-emerald-600/60">
-              <div className="text-[10px] text-emerald-300 font-semibold">3. Cước vào có VAT</div>
-              <div className="font-mono font-extrabold text-emerald-400 mt-0.5">{formatVnd(metrics.totalCuocCoVat)}</div>
-            </div>
-            <div className="p-2.5 bg-slate-800 rounded-lg border border-amber-600/60">
-              <div className="text-[10px] text-amber-300">4. Khoản trừ 17%</div>
-              <div className="font-mono font-bold text-amber-300 mt-0.5">−{formatVnd(metrics.totalKhoanTru17)}</div>
-            </div>
-            <div className="p-2.5 bg-slate-800 rounded-lg border border-blue-500/60">
-              <div className="text-[10px] text-blue-300 font-semibold">5. Cước sau trừ 17%</div>
-              <div className="font-mono font-extrabold text-blue-300 mt-0.5">{formatVnd(metrics.totalCuocSauTru17)}</div>
-            </div>
-            <div className="p-2.5 bg-slate-800 rounded-lg border border-rose-500/60">
-              <div className="text-[10px] text-rose-300">6. Chi phí Cty chịu</div>
-              <div className="font-mono font-bold text-rose-300 mt-0.5">{formatVnd(metrics.totalChiPhiCongTy)}</div>
-            </div>
-            <div className="p-2.5 bg-amber-500/20 rounded-lg border border-amber-400/70 col-span-2 sm:col-span-1">
-              <div className="text-[10px] text-amber-200 font-bold">7. Chênh lệch sau trừ</div>
-              <div className="font-mono font-extrabold text-amber-300 mt-0.5">
-                {formatVnd(metrics.totalChenhLechSauTru17)}
-              </div>
+        <details className="ha-finance-disclosure">
+          <summary><span>Đối chiếu tiền cước và chi phí</span><span className="ha-disclosure-caption">VAT 8% · Khoản trừ nội bộ 17%</span><span className="ha-disclosure-arrow" aria-hidden="true">⌄</span></summary>
+          <div className="ha-finance-content">
+            <dl className="ha-ledger">
+              <div><dt>Cước gốc chưa VAT</dt><dd>{formatVnd(metrics.totalCuocGoc)}</dd></div>
+              <div><dt>VAT 8%</dt><dd>{formatVnd(metrics.totalVat8)}</dd></div>
+              <div className="ha-ledger-total"><dt>Cước có VAT</dt><dd>{formatVnd(metrics.totalCuocCoVat)}</dd></div>
+              <div><dt>Khoản trừ nội bộ 17%</dt><dd>−{formatVnd(metrics.totalKhoanTru17)}</dd></div>
+              <div className="ha-ledger-total"><dt>Cước sau khoản trừ</dt><dd>{formatVnd(metrics.totalCuocSauTru17)}</dd></div>
+              <div><dt>Chi phí công ty chịu</dt><dd>−{formatVnd(metrics.totalChiPhiCongTy)}</dd></div>
+              <div className="ha-ledger-result"><dt>Chênh lệch tạm tính</dt><dd>{formatVnd(metrics.totalChenhLechSauTru17)}</dd></div>
+            </dl>
+            <div className="ha-finance-aside">
+              <h3>Chi tiết trong kỳ</h3>
+              <dl className="ha-ledger">
+                <div><dt>Phí nâng và hạ</dt><dd>{formatVnd(metrics.totalPhiNang + metrics.totalPhiHa)}</dd></div>
+                <div><dt>Dầu đã cấp</dt><dd>{metrics.totalFuelLiters.toLocaleString('vi-VN')} lít</dd></div>
+                <div><dt>Tiền dầu đã xác định</dt><dd>{formatVnd(metrics.totalTienDau)}</dd></div>
+                <div><dt>Phơi đã trả hộ</dt><dd>{formatVnd(metrics.totalPhoiTraHo)}</dd></div>
+                <div><dt>Phơi còn phải thu</dt><dd>{formatVnd(metrics.totalPhoiConPhaiThu)}</dd></div>
+                <div><dt>Chênh lệch trước khoản trừ</dt><dd>{formatVnd(metrics.totalChenhLechTruocTru)}</dd></div>
+              </dl>
+              <p>Khoản trừ 17% là quy tắc nội bộ. Kết quả hiện tại chưa phải lợi nhuận ròng; chi phí chung chưa phân bổ được xem ở cấp nhóm.</p>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-slate-700/80 text-xs">
-            <div className="flex items-center justify-between bg-slate-800/70 px-3 py-2 rounded-lg">
-              <span className="text-slate-300">Phí nâng + Phí hạ (Công ty chịu):</span>
-              <strong className="font-mono text-indigo-300">
-                {formatVnd(metrics.totalPhiNang + metrics.totalPhiHa)}
-              </strong>
-            </div>
-            <div className="flex items-center justify-between bg-slate-800/70 px-3 py-2 rounded-lg">
-              <span className="text-slate-300">Dầu cấp ({metrics.totalFuelLiters} Lít) → Tiền dầu:</span>
-              <strong className="font-mono text-sky-300">
-                {formatVnd(metrics.totalTienDau)}{' '}
-                {metrics.missingFuelPriceTrips > 0 && (
-                  <span className="text-[10px] text-amber-300">({metrics.missingFuelPriceTrips} cuốc thiếu giá)</span>
-                )}
-              </strong>
-            </div>
-            <div className="flex items-center justify-between bg-slate-800/70 px-3 py-2 rounded-lg">
-              <span className="text-slate-300">Tiền phơi trả hộ / Còn phải thu:</span>
-              <strong className="font-mono text-purple-300">
-                {formatVnd(metrics.totalPhoiTraHo)} / Nợ: {formatVnd(metrics.totalPhoiConPhaiThu)}
-              </strong>
-            </div>
-          </div>
-        </div>
+        </details>
       </section>
+
 
       {/* ============================================================ */}
       {/* MỤC NHẮC ĐÒI TIỀN PHƠI ĐẾN HẠN / QUÁ HẠN / CHƯA ĐẶT NGÀY NHẮC (Mục 8 & 9) */}
@@ -913,7 +743,7 @@ export default function BusinessOverviewView({
                     }
                     className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs cursor-pointer"
                   >
-                    ✓ Thu Hoàn Tiền
+                    Ghi nhận hoàn tiền
                   </button>
                   <button
                     type="button"
@@ -926,7 +756,7 @@ export default function BusinessOverviewView({
                     }
                     className="px-2.5 py-1 bg-white hover:bg-purple-100 text-purple-800 border border-purple-300 rounded-lg font-semibold text-xs cursor-pointer"
                   >
-                    📅 Đổi Ngày Hẹn
+                    Đổi ngày hẹn
                   </button>
                 </div>
               </div>
@@ -942,9 +772,9 @@ export default function BusinessOverviewView({
         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-1.5">
             <AlertCircle className="w-4 h-4 text-amber-600" />
-            <span>Cần Chú Ý (Ưu tiên theo số liệu thực tế)</span>
+            <span>Cần theo dõi</span>
           </h2>
-          <span className="text-[11px] text-slate-400">3 vấn đề cốt lõi cần giám đốc xử lý</span>
+          <span className="text-[11px] text-slate-400">Thông tin cần kiểm tra trong kỳ</span>
         </div>
 
         <div className="divide-y divide-slate-100">
@@ -989,7 +819,7 @@ export default function BusinessOverviewView({
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-sm font-bold text-slate-900 tracking-tight">Hiệu Quả Hoạt Động</h2>
+            <h2 className="text-sm font-bold text-slate-900 tracking-tight">Hiệu quả hoạt động</h2>
 
             <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium">
               <button
@@ -1023,7 +853,7 @@ export default function BusinessOverviewView({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                7 Nhóm Ô Gộp (Chia lãi)
+                Nhóm chi phí chung
               </button>
             </div>
           </div>
@@ -1122,7 +952,7 @@ export default function BusinessOverviewView({
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-2">
               <Layers className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <div>
-                <b>Nguyên tắc chia lãi nhóm theo quy định:</b> Trong Excel tháng 1, có 7 nhóm hành trình (như hàng 63-64, 65-66, 71-72, 74-75, 8-9, 36-37, 57-58) có ô chi phí gộp chung. Hệ thống giữ nguyên chênh lệch ở cấp nhóm (UNALLOCATED), không tự chia hoặc gán hết vào một cuốc.
+                <b>Chi phí dùng chung:</b> Trong Excel tháng 1, có các nhóm cuốc có ô chi phí gộp chung. Hệ thống giữ nguyên chênh lệch ở cấp nhóm (UNALLOCATED), không tự chia hoặc gán hết vào một cuốc.
               </div>
             </div>
 
@@ -1256,8 +1086,8 @@ export default function BusinessOverviewView({
                     phoi_refunded_amount: trip.phoi_da_hoan ?? trip.phoi_refunded_amount ?? 0
                   });
 
-                  const phoiAdv = f.phoi_tra_ho;
-                  const phoiRem = f.phoi_con_phai_thu;
+                  const phoiAdv = Number(trip.phoi_total_advance ?? trip.phoi_tra_ho ?? trip.phoi_advance_amount ?? 0);
+                  const phoiRem = Number(trip.phoi_balance_due ?? trip.phoi_con_phai_thu ?? 0);
                   const isPhoiDone = phoiAdv > 0 && phoiRem === 0;
 
                   return (
@@ -1267,16 +1097,16 @@ export default function BusinessOverviewView({
                       className="hover:bg-slate-50 cursor-pointer transition-colors"
                       title="Bấm để xem chi tiết cuốc xe"
                     >
-                      <td className="py-2 px-2.5 font-mono font-bold text-slate-900">{trip.trip_code}</td>
+                      <td className="py-2 px-2.5 font-mono font-bold text-slate-900">{trip.trip_code || trip.id}</td>
                       <td className="py-2 px-2.5 font-mono text-slate-500">{trip.trip_date}</td>
                       <td className="py-2 px-2.5 text-slate-800">
-                        {trip.so_xe || '-'} • {trip.lai_xe || 'Xe ngoài'}
+                        {trip.vehicle_plate || trip.so_xe || 'Chưa gán xe'} • {trip.driver_name || trip.lai_xe || 'Chưa xác nhận tài xế'}
                       </td>
                       <td className="py-2 px-2.5 text-slate-800">
-                        <span className="font-semibold">{trip.ten_khach}</span> • {trip.tuyen_duong}
+                        <span className="font-semibold">{trip.customer_name || trip.ten_khach}</span> • {trip.route_name || trip.tuyen_duong}
                       </td>
                       <td className="py-2 px-2.5 font-mono text-[11px]">
-                        <span className="font-bold text-slate-800">{trip.so_cont || '-'}</span>{' '}
+                        <span className="font-bold text-slate-800">{trip.container_number || trip.so_cont || '-'}</span>{' '}
                         {trip.loai_cont && (
                           <span className="px-1 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px]">
                             {trip.loai_cont}

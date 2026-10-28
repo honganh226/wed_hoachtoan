@@ -243,7 +243,7 @@ export default function DirectorDebtsView({
   ];
 
   return (
-    <div className="space-y-6 pb-20 animate-fade-in text-slate-800">
+    <div className="ha-debts space-y-5 pb-20 text-slate-800">
       {assistantPeriod && !assistantPeriod.all && (
         <div className="text-xs bg-blue-50 p-3 rounded-lg">
           Cuốc phát sinh từ {assistantPeriod.startDate} đến {assistantPeriod.endDate}, theo thanh toán hiện tại.{' '}
@@ -260,19 +260,18 @@ export default function DirectorDebtsView({
       )}
 
       {/* 1. Header & Điều hướng 3 tab công nợ */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+      <div className="ha-debts-heading">
         <div className="flex flex-col gap-4 min-w-0">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <CreditCard className="w-7 h-7 text-indigo-600" />
-              <span>Quản Lý Công Nợ (Tiền Cước • Tiền Phơi Trả Hộ • Nhà Xe)</span>
-            </h1>
+            <div className="ha-page-heading"><div>
+              <span className="ha-eyebrow">Theo dõi thanh toán</span>
+              <h1>Công nợ</h1></div></div>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Tách biệt rõ Công nợ tiền cước, Công nợ tiền phơi trả hộ chủ hàng và Tổng phải thu khách hàng
+              Theo dõi các khoản phải thu, tiền phơi trả hộ và thanh toán nhà xe.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl w-full border border-slate-200">
+          <div className="ha-debt-tabs">
             <button
               onClick={() => {
                 setActiveTab('receivables');
@@ -285,7 +284,7 @@ export default function DirectorDebtsView({
               }`}
             >
               <Building2 className="w-4 h-4" />
-              <span>Phải Thu Khách Hàng ({normalizedCustomers.length})</span>
+              <span>Phải thu khách hàng ({normalizedCustomers.length})</span>
             </button>
 
             <button
@@ -300,7 +299,7 @@ export default function DirectorDebtsView({
               }`}
             >
               <Clock className="w-4 h-4" />
-              <span>Công Nợ & Nhắc Đòi Tiền Phơi ({allReminderItems.length})</span>
+              <span>Tiền phơi trả hộ ({allReminderItems.length})</span>
             </button>
 
             <button
@@ -315,26 +314,21 @@ export default function DirectorDebtsView({
               }`}
             >
               <Truck className="w-4 h-4" />
-              <span>Phải Trả Nhà Xe ({normalizedSubcontractors.length})</span>
+              <span>Phải trả nhà xe ({normalizedSubcontractors.length})</span>
             </button>
           </div>
         </div>
 
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2 text-xs text-blue-900">
-          <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <span className="font-semibold">Chuẩn đối soát công nợ mới (28/10/2026):</span> Cước vào gốc là <b>chưa VAT</b> (Cước có VAT = Cước gốc × 1,08). Các cuốc lịch sử đã đánh dấu thu (X/TƯƠI) giữ nguyên trạng thái đã thu cước gốc và hiển thị riêng phần <b>chênh lệch VAT 8% ({formatVnd(recSummary.total_vat_reconciliation_diff)})</b> để đối soát, không tự mở lại nợ cũ. <b>Tiền phơi trả hộ</b> được theo dõi công nợ riêng biệt với tiền cước.
-          </div>
-        </div>
+        <details className="ha-finance-disclosure ha-debt-reconciliation"><summary><span>Đối soát VAT và công nợ lịch sử</span><span className="ha-disclosure-arrow" aria-hidden="true">⌄</span></summary><p className="ha-reconciliation-copy">Cước có VAT bao gồm 8% trên cước gốc. Tiền đã thu lịch sử được giữ nguyên; chênh lệch VAT cần đối soát: <strong>{formatVnd(recSummary.total_vat_reconciliation_diff)}</strong>. Tiền phơi trả hộ được theo dõi riêng với tiền cước.</p></details>
       </div>
 
-      {/* 2. Tab Phải Thu Khách Hàng (Cước + Phơi + Tổng phải thu) */}
+      {/* 2. Tab Phải thu khách hàng (Cước + Phơi + Tổng phải thu) */}
       {activeTab === 'receivables' && (
         <div className="space-y-6">
           {/* 5 Thẻ chỉ số tổng hợp Phải thu */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="ha-debt-summary grid grid-cols-2 lg:grid-cols-5 gap-3">
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-xs font-medium text-slate-500">1. Cước Gốc / Có VAT</span>
+              <span className="text-xs font-medium text-slate-500">Cước gốc / có VAT</span>
               <p className="text-base sm:text-lg font-extrabold text-slate-900 mt-1 font-mono">
                 {formatVnd(recSummary.total_cuoc_goc)}
               </p>
@@ -344,17 +338,17 @@ export default function DirectorDebtsView({
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-sm bg-emerald-50/20">
-              <span className="text-xs font-medium text-emerald-700">2. Đã Thu & Đối Trừ Cước</span>
+              <span className="text-xs font-medium text-emerald-700">Đã thu tiền cước</span>
               <p className="text-base sm:text-lg font-extrabold text-emerald-700 mt-1 font-mono">
                 {formatVnd(recSummary.total_received)}
               </p>
               <span className="text-[11px] text-amber-700 mt-0.5 block">
-                Đối trừ P22: {formatVnd(recSummary.total_offset)}
+                Đã đối trừ: {formatVnd(recSummary.total_offset)}
               </span>
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-sm bg-rose-50/20">
-              <span className="text-xs font-medium text-rose-700">3. Còn Nợ Tiền Cước</span>
+              <span className="text-xs font-medium text-rose-700">Cước còn phải thu</span>
               <p className="text-base sm:text-lg font-extrabold text-rose-700 mt-1 font-mono">
                 {formatVnd(recSummary.fare_remaining)}
               </p>
@@ -364,7 +358,7 @@ export default function DirectorDebtsView({
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-purple-200 shadow-sm bg-purple-50/20">
-              <span className="text-xs font-medium text-purple-800">4. Còn Nợ Tiền Phơi Trả Hộ</span>
+              <span className="text-xs font-medium text-purple-800">Phơi còn phải thu</span>
               <p className="text-base sm:text-lg font-extrabold text-purple-800 mt-1 font-mono">
                 {formatVnd(recSummary.total_phoi_due)}
               </p>
@@ -374,7 +368,7 @@ export default function DirectorDebtsView({
             </div>
 
             <div className="bg-slate-900 text-white p-4 rounded-xl border border-slate-800 shadow-sm col-span-2 lg:col-span-1">
-              <span className="text-xs font-bold text-amber-300">5. TỔNG PHẢI THU KHÁCH</span>
+              <span className="text-xs font-bold text-amber-300">Tổng phải thu</span>
               <p className="text-base sm:text-lg font-extrabold text-amber-300 mt-1 font-mono">
                 {formatVnd(recSummary.total_customer_receivable_due)}
               </p>
@@ -640,7 +634,7 @@ export default function DirectorDebtsView({
         </div>
       )}
 
-      {/* 3. Tab Công Nợ & Nhắc Đòi Tiền Phơi Trả Hộ */}
+      {/* 3. Tab Tiền phơi trả hộ Trả Hộ */}
       {activeTab === 'phoi_advances' && (
         <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
@@ -714,7 +708,7 @@ export default function DirectorDebtsView({
                             }
                             className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] cursor-pointer"
                           >
-                            ✓ Tích Đã Hoàn
+                            Ghi nhận hoàn tiền
                           </button>
                           <button
                             type="button"
@@ -727,7 +721,7 @@ export default function DirectorDebtsView({
                             }
                             className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-[11px] cursor-pointer"
                           >
-                            📅 Hẹn Ngày
+                            Đặt ngày hẹn
                           </button>
                         </div>
                       </td>
@@ -740,12 +734,12 @@ export default function DirectorDebtsView({
         </div>
       )}
 
-      {/* 4. Tab Phải Trả Nhà Xe */}
+      {/* 4. Tab Phải trả nhà xe */}
       {activeTab === 'payables' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="ha-payables-summary grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-xs sm:text-sm font-medium text-slate-500">Tổng Cước Thuê Ngoài (Cước Ra)</span>
+              <span className="text-xs sm:text-sm font-medium text-slate-500">Tổng cước thuê ngoài</span>
               <p className="text-lg sm:text-2xl font-bold text-slate-900 mt-1">
                 {formatVnd(paySummary.total_payable)}
               </p>
@@ -753,7 +747,7 @@ export default function DirectorDebtsView({
             </div>
 
             <div className="bg-white p-4 sm:p-5 rounded-xl border border-emerald-200 shadow-sm bg-emerald-50/20">
-              <span className="text-xs sm:text-sm font-medium text-emerald-700">Đã Thanh Toán Cho Nhà Xe</span>
+              <span className="text-xs sm:text-sm font-medium text-emerald-700">Đã thanh toán nhà xe</span>
               <p className="text-lg sm:text-2xl font-bold text-emerald-700 mt-1">
                 {formatVnd(paySummary.total_paid)}
               </p>
@@ -761,7 +755,7 @@ export default function DirectorDebtsView({
             </div>
 
             <div className="bg-white p-4 sm:p-5 rounded-xl border border-rose-200 shadow-sm bg-rose-50/20">
-              <span className="text-xs sm:text-sm font-medium text-rose-700">Còn Phải Trả Nhà Xe</span>
+              <span className="text-xs sm:text-sm font-medium text-rose-700">Còn phải trả nhà xe</span>
               <p className="text-lg sm:text-2xl font-bold text-rose-700 mt-1">
                 {formatVnd(paySummary.total_remaining)}
               </p>

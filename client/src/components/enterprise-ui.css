@@ -1,0 +1,187 @@
+/* Presentation layer for the director workspace. Financial rules stay in services. */
+.ha-app {
+  --ha-ink: #172d40;
+  --ha-muted: #697888;
+  --ha-line: #dfe5eb;
+  --ha-accent: #214b68;
+  background: #f4f6f8;
+  color: var(--ha-ink);
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+.ha-app button, .ha-app input, .ha-app select { font-family: inherit; }
+.ha-app button { touch-action: manipulation; }
+.ha-app button:focus-visible, .ha-app summary:focus-visible,
+.ha-app input:focus-visible, .ha-app select:focus-visible {
+  outline: 2px solid #517b98;
+  outline-offset: 3px;
+}
+.ha-app-header { background: #fff; border-bottom: 1px solid var(--ha-line); }
+.ha-header-inner { max-width: 1360px; margin: auto; min-height: 76px; padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.ha-brand > div:first-child { width: 36px; height: 36px; border-radius: 7px; background: var(--ha-ink); box-shadow: none; }
+.ha-brand > div:last-child > div:first-child > span:first-child { font-size: 15px; letter-spacing: .055em; }
+.ha-brand > div:last-child > div:last-child { margin-top: 2px; color: var(--ha-muted); }
+.ha-brand .animate-pulse { animation: none; background: #648879; }
+.ha-header-actions { display: flex; align-items: center; gap: 10px; }
+.ha-header-actions > button { min-height: 36px; border-radius: 6px; box-shadow: none; }
+.ha-header-actions > .relative > button { min-height: 36px; border-radius: 6px; box-shadow: none; }
+.ha-main { max-width: 1360px; margin: auto; padding: 0 32px 56px; }
+.ha-main-navigation { gap: 0; margin-bottom: 32px; border-bottom: 1px solid var(--ha-line); }
+.ha-primary-tabs { display: flex; gap: 24px; min-width: max-content; }
+.ha-primary-tabs > button { position: relative; display: inline-flex; align-items: center; min-height: 58px; padding: 0 0; gap: 7px; border-radius: 0; border: 0; background: transparent; color: #687787; font-size: 13px; font-weight: 500; box-shadow: none; white-space: nowrap; }
+.ha-primary-tabs > button:hover { color: var(--ha-ink); }
+.ha-primary-tabs > .ha-nav-active { color: var(--ha-ink); font-weight: 650; }
+.ha-primary-tabs > .ha-nav-active::after { content: ''; position: absolute; height: 2px; bottom: 0; left: 0; right: 0; background: var(--ha-accent); }
+.ha-primary-tabs > button > span:last-child.rounded-full { display: none; }
+.ha-main-navigation > div:not(:first-child) { padding: 10px 0; }
+.ha-main-navigation > div:not(:first-child) > div { background: transparent; }
+.ha-primary-tabs svg { width: 15px; height: 15px; color: inherit; }
+.ha-page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.ha-eyebrow { display: block; color: #768697; font-size: 10px; font-weight: 650; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 7px; }
+.ha-page-heading h1 { color: var(--ha-ink); font-size: 25px; line-height: 1.3; font-weight: 650; letter-spacing: -.035em; margin: 0; }
+.ha-page-description { color: var(--ha-muted); font-size: 13px; line-height: 1.6; margin-top: 6px; }
+.ha-page-actions { display: flex; gap: 8px; align-items: center; padding-top: 12px; }
+.ha-button, .ha-icon-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; border: 1px solid #d5dde5; background: #fff; border-radius: 6px; color: #40566a; padding: 8px 12px; font-size: 12px !important; font-weight: 550 !important; cursor: pointer; }
+.ha-button:hover, .ha-icon-button:hover { border-color: #9caebd; background: #f8fafb; }
+.ha-icon-button { width: 36px; padding: 8px; }
+.ha-overview-summary { display: flex; flex-direction: column; gap: 18px; }
+.ha-report-toolbar { display: flex; align-items: center; gap: 18px; padding: 15px 18px; background: #fff; border: 1px solid var(--ha-line); border-radius: 8px; flex-wrap: wrap; }
+.ha-filter-field { display: flex; align-items: center; gap: 10px; color: var(--ha-muted); font-size: 12px; min-width: 0; }
+.ha-filter-field select, .ha-filter-field input { color: #294357; font-size: 12px; background: #fff; border: 1px solid #d7dfe6; border-radius: 5px; padding: 7px 9px; min-height: 34px; max-width: 100%; min-width: 0; }
+.ha-date-range { display: flex; gap: 14px; flex-wrap: wrap; }
+.ha-scope-caption { color: #7a8794; font-size: 11px; margin-left: auto; }
+.ha-kpi-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; }
+.ha-kpi { display: flex; flex-direction: column; gap: 18px; background: #fff; border: 1px solid var(--ha-line); border-radius: 8px; padding: 20px; text-align: left; min-width: 0; cursor: pointer; }
+.ha-kpi:hover { border-color: #91a7b8; }
+.ha-kpi-label { color: #657586; font-size: 12px; font-weight: 500; line-height: 1.5; }
+.ha-kpi-value { display: block; color: #1d354a; font-size: clamp(17px,1.9vw,29px); line-height: 1.2; font-weight: 650; letter-spacing: -.035em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ha-kpi-value small { color: #7c8996; font-size: 11px; font-weight: 400; margin-left: 7px; letter-spacing: normal; }
+.ha-kpi-foot { color: #81909d; font-size: 10px; display: flex; justify-content: space-between; gap: 8px; line-height: 1.5; margin-top: auto; }
+.ha-kpi-result { border-top: 3px solid #315d79; padding-top: 18px; background: #fafcfd; }
+.ha-kpi-result .ha-kpi-value { color: #204e6b; }
+.ha-calculation-note { display: flex; align-items: flex-start; gap: 7px; color: #7a8793; font-size: 11px; line-height: 1.6; margin: -5px 0 0; }
+.ha-calculation-note svg { flex-shrink: 0; margin-top: 2px; }
+.ha-finance-disclosure { border: 1px solid var(--ha-line); border-radius: 8px; background: #fff; }
+.ha-finance-disclosure summary { display: flex; align-items: center; gap: 12px; padding: 14px 18px; font-size: 12px; color: #3e5568; font-weight: 550; cursor: pointer; list-style: none; }
+.ha-finance-disclosure summary::-webkit-details-marker { display: none; }
+.ha-disclosure-caption { font-size: 11px; color: #87949f; font-weight: 400; margin-left: auto; }
+.ha-disclosure-arrow { font-size: 17px; color: #8493a0; margin-left: auto; }
+.ha-disclosure-caption + .ha-disclosure-arrow { margin-left: 0; }
+.ha-finance-disclosure[open] .ha-disclosure-arrow { transform: rotate(180deg); }
+.ha-finance-content { display: grid; grid-template-columns: 1.1fr 1fr; gap: 36px; padding: 10px 22px 20px; border-top: 1px solid #edf0f3; }
+.ha-ledger { margin: 0; min-width: 0; }
+.ha-ledger > div { display: flex; justify-content: space-between; gap: 18px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid #eff2f5; font-size: 12px; }
+.ha-ledger dt { color: #758391; }
+.ha-ledger dd { color: #344c60; font-weight: 550; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ha-ledger-total dt, .ha-ledger-result dt { color: #344c60; font-weight: 600; }
+.ha-ledger-result dd { font-weight: 700; color: #214b68; }
+.ha-finance-aside { padding-top: 9px; }
+.ha-finance-aside h3 { font-size: 11px; font-weight: 600; color: #40576a; margin-bottom: 6px; }
+.ha-finance-aside > p { font-size: 11px; line-height: 1.7; color: #86929e; margin-top: 12px; }
+.ha-overview section:not(:first-child) { border-radius: 8px; border-color: var(--ha-line); box-shadow: none; background: #fff; padding: 20px; }
+.ha-overview section h2 { font-size: 14px; line-height: 1.5; text-transform: none; letter-spacing: -.01em; font-weight: 600; color: #294257; }
+.ha-overview section h2 svg { color: #8292a0; }
+.ha-overview .font-mono, .ha-debts .font-mono { font-family: inherit; font-variant-numeric: tabular-nums; }
+.ha-overview :is(.text-indigo-600,.text-indigo-700,.text-blue-700,.text-blue-800,.text-amber-800,.text-sky-700) { color: #365771; }
+.ha-overview :is(.text-emerald-700,.text-emerald-800) { color: #3e6c5c; }
+.ha-overview .text-amber-700 { color: #8a6e46; }
+.ha-overview .bg-indigo-50 { background: #f0f4f7; }
+.ha-overview .bg-amber-50 { background: #faf8f3; }
+.ha-overview table, .ha-debts table { font-size: 12px; }
+.ha-overview th, .ha-debts th { font-size: 11px; text-transform: none; font-weight: 550; color: #7a8794; background: #f8fafb; border-bottom: 1px solid var(--ha-line); }
+.ha-overview td, .ha-debts td { border-color: #edf0f3; padding-top: 13px; padding-bottom: 13px; }
+.ha-overview :is(table .text-slate-900,table .text-slate-800), .ha-debts :is(table .text-slate-900,table .text-slate-800) { color: #405568; }
+.ha-overview table tbody tr:hover, .ha-debts table tbody tr:hover { background: #f7f9fb; }
+.ha-overview .overflow-x-auto, .ha-debts .overflow-x-auto { max-width: 100%; }
+.ha-debts-heading { display: flex; flex-direction: column; gap: 16px; }
+.ha-debts-heading > div:first-child > div:first-child > p { color: var(--ha-muted); font-size: 13px; }
+.ha-debt-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--ha-line); background: #edf1f5; border-radius: 7px; flex-wrap: wrap; }
+.ha-debt-tabs > button { flex: 1; white-space: nowrap; font-size: 12px; border-radius: 5px; color: #607486; min-height: 38px; padding: 9px 14px; box-shadow: none; }
+.ha-debt-tabs > .bg-white { color: #243f54; background: #fff; box-shadow: 0 1px 2px #102d4310; }
+.ha-debt-reconciliation { border-style: dashed; }
+.ha-debt-reconciliation summary { color: #7b8996; font-size: 11px; padding: 11px 15px; }
+.ha-reconciliation-copy { color: #7a8794; font-size: 12px; line-height: 1.8; padding: 0 15px 15px; }
+.ha-debt-summary > div { border: 1px solid var(--ha-line); border-radius: 8px; background: #fff; box-shadow: none; padding: 18px; }
+.ha-debt-summary > div > span { color: #788794; font-size: 11px; font-weight: 400; }
+.ha-debt-summary > div > p { color: #284256; font-size: clamp(16px,1.5vw,22px); font-weight: 650; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.ha-debt-summary > div:last-child { background: #f7fafc; border-top: 3px solid #315d79; padding-top: 16px; }
+.ha-debt-summary > div:last-child > p { color: #214b68; }
+.ha-payables-summary > div { background: #fff; border-color: var(--ha-line); border-radius: 8px; box-shadow: none; }
+.ha-payables-summary > div > span { color: #7a8794; font-size: 11px; }
+.ha-payables-summary > div > p { color: #29465d; font-size: 24px; letter-spacing: -.03em; }
+.ha-debts .bg-amber-100 { background: #eff3f6; color: #536b7e; }
+.ha-debts h4 { font-size: 13px; font-weight: 600; }
+.ha-debts .rounded-xl { border-radius: 8px; box-shadow: none; }
+.ha-debts :is(.text-indigo-600,.text-indigo-700,.text-purple-600,.text-purple-700,.text-purple-800) { color: #496477; }
+.ha-debts :is(.bg-purple-50,.bg-purple-50\/20) { background: #f5f7f9; }
+.ha-debts .border-purple-200 { border-color: var(--ha-line); }
+.ha-data-management > div:first-child { padding: 22px; border-radius: 8px; box-shadow: none; }
+.ha-data-management h1 { color: #172d40; font-size: 24px; font-weight: 650; letter-spacing: -.03em; }
+.ha-data-management table { font-size: 12px; }
+.ha-assistant-launcher { display: flex; align-items: center; gap: 8px; background: #fff; color: #486276; border: 1px solid #cdd8e1; border-radius: 7px; padding: 11px 15px; font-size: 12px !important; box-shadow: 0 3px 12px #233d5010; }
+.ha-assistant-launcher:hover { background: #f4f7f9; border-color: #95aabc; }
+@media (max-width: 1050px) {
+  .ha-header-inner { padding-left: 24px; padding-right: 24px; }
+  .ha-main { padding-left: 24px; padding-right: 24px; }
+  .ha-primary-tabs { gap: 22px; }
+  .ha-scope-caption { width: 100%; margin: 0; }
+  .ha-kpi { padding: 16px; }
+  .ha-kpi-result { padding-top: 14px; }
+  .ha-kpi-grid { gap: 10px; }
+}
+@media (max-width: 720px) {
+  .ha-header-inner { padding: 12px 18px; gap: 12px; min-height: 64px; }
+  .ha-main { padding: 0 18px 70px; }
+  .ha-main-navigation { margin-bottom: 24px; }
+  .ha-primary-tabs { gap: 24px; padding-right: 18px; }
+  .ha-primary-tabs > button { min-height: 50px; font-size: 12px; }
+  .ha-brand { gap: 8px; }
+  .ha-brand > div:first-child { width: 30px; height: 30px; }
+  .ha-brand > div:first-child svg { width: 17px; height: 17px; }
+  .ha-brand > div:last-child > div:first-child > span:first-child { font-size: 12px; white-space: nowrap; }
+  .ha-brand > div:last-child > div:first-child > span:nth-child(2), .ha-brand > div:last-child > div:last-child { display: none; }
+  .ha-header-actions { gap: 6px; }
+  .ha-header-actions > .relative:first-child > button { padding: 7px; width: 32px; }
+  .ha-header-actions > .relative:first-child > button > svg:last-child { display: none; }
+  .ha-header-actions > .relative:last-child > button { padding: 5px; }
+  .ha-header-actions > .relative:last-child > button > svg { display: none; }
+  .ha-header-actions > button { padding-left: 8px; padding-right: 8px; font-size: 11px; min-height: 32px; }
+  .ha-header-actions > button > svg { width: 14px; height: 14px; }
+  .ha-page-heading { gap: 10px; flex-wrap: wrap; }
+  .ha-page-heading h1 { font-size: 23px; }
+  .ha-page-description { font-size: 12px; max-width: 300px; }
+  .ha-page-actions { padding-top: 0; margin-top: 3px; }
+  .ha-report-toolbar { padding: 13px; gap: 11px; align-items: flex-start; }
+  .ha-filter-field { flex: 1; flex-direction: column; align-items: stretch; gap: 5px; font-size: 10px; }
+  .ha-filter-field select, .ha-filter-field input { width: 100%; font-size: 11px; padding: 7px; }
+  .ha-date-range { width: 100%; order: 2; }
+  .ha-scope-caption { font-size: 10px; line-height: 1.6; order: 3; }
+  .ha-kpi-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ha-kpi { padding: 15px 13px; gap: 15px; }
+  .ha-kpi-result { padding-top: 13px; }
+  .ha-kpi-value { font-size: 18px; letter-spacing: -.045em; }
+  .ha-kpi-label { font-size: 11px; }
+  .ha-kpi-foot { font-size: 9px; line-height: 1.6; }
+  .ha-calculation-note { font-size: 10px; }
+  .ha-finance-disclosure summary { font-size: 11px; padding: 13px; gap: 8px; }
+  .ha-disclosure-caption { display: none; }
+  .ha-finance-content { grid-template-columns: 1fr; gap: 16px; padding: 8px 14px 16px; }
+  .ha-overview section:not(:first-child) { padding: 15px; }
+  .ha-overview section h2 { font-size: 13px; }
+  .ha-overview section[aria-label="Cần chú ý"] > div:first-child > span { display: none; }
+  .ha-overview section[aria-label="Cần chú ý"] .text-\[11px\] { line-height: 1.65; }
+  .ha-debt-tabs { display: grid; grid-template-columns: 1fr; gap: 3px; }
+  .ha-debt-tabs > button { justify-content: flex-start; font-size: 12px; }
+  .ha-debt-summary > div { padding: 14px; }
+  .ha-debt-summary > div:last-child { padding-top: 12px; }
+  .ha-debt-summary > div > p { font-size: 17px; }
+}
+@media (max-width: 360px) {
+  .ha-header-inner, .ha-main { padding-left: 12px; padding-right: 12px; }
+  .ha-brand > div:first-child { display: none; }
+  .ha-kpi-value { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ha-app *, .ha-app *::before, .ha-app *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
