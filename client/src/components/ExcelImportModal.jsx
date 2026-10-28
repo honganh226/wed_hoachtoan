@@ -1,34 +1,50 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  FileSpreadsheet, 
-  Upload, 
-  CheckCircle2, 
-  AlertCircle, 
-  AlertTriangle, 
-  X, 
-  ArrowRight, 
-  ChevronRight, 
-  RefreshCw, 
-  RotateCcw, 
-  Clock, 
-  Database, 
-  Eye, 
-  Check, 
-  Layers, 
-  Calendar,
-  Fuel,
-  Receipt,
-  Truck,
-  PlusCircle,
-  Table
+import {
+  FileSpreadsheet,
+  Upload,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  X,
+  ChevronRight,
+  RefreshCw,
+  RotateCcw,
+  Clock,
+  Check,
+  Table,
+  SlidersHorizontal
 } from 'lucide-react';
-import { 
-  previewExcelImportApi, 
-  commitExcelImportApi, 
-  fetchExcelBatchesApi, 
-  rollbackExcelBatchApi 
+import {
+  previewExcelImportApi,
+  commitExcelImportApi,
+  fetchExcelBatchesApi,
+  rollbackExcelBatchApi
 } from '../services/api.js';
 import { formatVnd } from '../data/unifiedBusinessData.js';
+
+const FIELD_LABELS = {
+  stt: 'STT',
+  trip_date: 'NGÀY CHẠY',
+  customer_name: 'KHÁCH HÀNG',
+  route_name: 'LỊCH TRÌNH / TUYẾN',
+  container_number: 'SỐ CONT',
+  vehicle_plate: 'BIỂN SỐ XE',
+  cont_40: 'LOẠI CONT 40 (40DC/HC/RF/FR)',
+  cont_20: 'LOẠI CONT 20 (20DC)',
+  lift_on: 'NÂNG (Nơi nâng / Phí nâng)',
+  lift_off: 'HẠ (Nơi hạ / Phí hạ)',
+  phoi_nang_ha: 'PHƠI NÂNG HẠ (Trả hộ)',
+  fuel_liters: 'DẦU (Lít)',
+  toll_fee: 'TIỀN ĐƯỜNG',
+  lach_huyen: 'LẠCH HUYỆN',
+  subcontractor_name: 'NX NGOÀI',
+  other_costs: 'PHÁT SINH',
+  subcontractor_cost: 'CƯỚC RA',
+  base_revenue: 'CƯỚC VÀO (Gốc chưa VAT)',
+  paid_status: 'ĐÃ TT',
+  payment_timing: 'CÔNG NỢ / TƯƠI / X',
+  notes: 'GHI CHÚ (Cột R)'
+};
 
 export default function ExcelImportModal({
   isOpen,
@@ -38,8 +54,6 @@ export default function ExcelImportModal({
   onSwitchToOneTrip,
   onSwitchToBatch
 }) {
-  // 5 BƯỚC CỦA LUỒNG NHẬP EXCEL
-  // 1: Tải file -> 2: Xem trước -> 3: Kiểm tra / Ghép cột -> 4: Xác nhận nhập -> 5: Hoàn tất & Lịch sử
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -48,15 +62,17 @@ export default function ExcelImportModal({
   const [err, setErr] = useState(null);
   const [msg, setMsg] = useState(null);
 
-  // Kết quả parse & preview từ server
-  const [mappingEnabled,setMappingEnabled]=useState(false);
-  const [columnMapping,setColumnMapping]=useState(() => {try{return JSON.parse(localStorage.getItem('hoachtoan_excel_mapping'))||{"A": "A", "B": "B", "C": "C", "D": "D", "E": "E", "F": "F", "G": "G", "H": "H", "I": "I", "J": "J", "K": "K", "L": "L", "M": "M", "N": "N", "O": "O", "P": "P", "Q": "Q", "R": "R"};}catch{return {"A": "A", "B": "B", "C": "C", "D": "D", "E": "E", "F": "F", "G": "G", "H": "H", "I": "I", "J": "J", "K": "K", "L": "L", "M": "M", "N": "N", "O": "O", "P": "P", "Q": "Q", "R": "R"};}});
-  const columnLabels={"A": "STT", "B": "Ngày chạy", "C": "Khách hàng", "D": "Tuyến", "E": "Container", "F": "Biển số", "G": "Cont 40", "H": "Cont 20", "I": "Dầu cấp", "J": "Tiền đường", "K": "Đánh dấu cảng", "L": "Nhà xe", "M": "Phát sinh", "N": "Cước ra", "O": "Cước vào", "P": "Đã thanh toán", "Q": "Tươi / X", "R": "Ghi chú"};
+  const [mappingEnabled, setMappingEnabled] = useState(false);
+  const [columnMapping, setColumnMapping] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('hoachtoan_excel_mapping_v2')) || {};
+    } catch {
+      return {};
+    }
+  });
   const [previewData, setPreviewData] = useState(null);
-  // Kết quả commit
   const [commitResult, setCommitResult] = useState(null);
 
-  // Lịch sử các đợt nhập
   const [batches, setBatches] = useState([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [rollingBackId, setRollingBackId] = useState(null);
@@ -103,32 +119,37 @@ export default function ExcelImportModal({
     setIsDragging(false);
     const droppedFile = e.dataTransfer.files?.[0];
     if (droppedFile) {
-      processSelectedFile(droppedFile);
+      processSelectedFile(droppedFile, mappingEnabled ? columnMapping : null);
     }
   };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      processSelectedFile(selectedFile);
+      processSelectedFile(selectedFile, mappingEnabled ? columnMapping : null);
     }
   };
 
-  const processSelectedFile = async (selectedFile) => {
+  const processSelectedFile = async (selectedFile, customMap = null) => {
     if (!selectedFile.name.match(/\.(xlsx|xls)$/i)) {
       setErr('Vui lòng chọn đúng tệp Excel định dạng .xlsx hoặc .xls');
       return;
     }
-    if(mappingEnabled)localStorage.setItem('hoachtoan_excel_mapping',JSON.stringify(columnMapping));
+    if (customMap && Object.keys(customMap).length > 0) {
+      localStorage.setItem('hoachtoan_excel_mapping_v2', JSON.stringify(customMap));
+    }
     setFile(selectedFile);
     setErr(null);
     setLoading(true);
 
     try {
-      const res = await previewExcelImportApi(selectedFile,mappingEnabled?columnMapping:null);
+      const res = await previewExcelImportApi(selectedFile, customMap);
       if (res.success) {
         setPreviewData(res.data);
-        setStep(2); // Chuyển sang Bước 2: Xem trước
+        if (res.data?.header_mapping) {
+          setColumnMapping(res.data.header_mapping);
+        }
+        setStep(2);
       } else {
         setErr(res.error || 'Không thể đọc tệp Excel. Vui lòng kiểm tra lại cấu trúc file.');
       }
@@ -137,6 +158,13 @@ export default function ExcelImportModal({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRePreviewWithMapping = async () => {
+    if (!file) return;
+    await processSelectedFile(file, columnMapping);
+    setMsg('Đã áp dụng cách ghép cột mới và đọc lại dữ liệu xem trước!');
+    setTimeout(() => setMsg(null), 2500);
   };
 
   const handleConfirmCommit = async () => {
@@ -158,7 +186,7 @@ export default function ExcelImportModal({
 
       if (res.success) {
         setCommitResult(res.data);
-        setStep(5); // Chuyển sang Bước 5: Hoàn tất
+        setStep(5);
         loadBatches();
         if (onImportSuccess) {
           onImportSuccess(res.data);
@@ -174,7 +202,11 @@ export default function ExcelImportModal({
   };
 
   const handleRollbackBatch = async (batchId) => {
-    if (!window.confirm('Bạn có chắc chắn muốn hoàn tác toàn bộ cuốc xe thuộc đợt nhập này? Các cuốc xe đã nhập sẽ bị xóa khỏi cơ sở dữ liệu.')) {
+    if (
+      !window.confirm(
+        'Bạn có chắc chắn muốn hoàn tác toàn bộ cuốc xe thuộc đợt nhập này? Các cuốc xe đã nhập sẽ bị xóa khỏi cơ sở dữ liệu.'
+      )
+    ) {
       return;
     }
 
@@ -203,61 +235,62 @@ export default function ExcelImportModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div className="bg-white rounded-2xl max-w-6xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh]">
-        
-        {/* HEADER VỚI BỘ 3 LỰA CHỌN CẠNH NHAU */}
-        <div className="px-5 py-3.5 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+        {/* HEADER */}
+        <div className="px-4 sm:px-5 py-3.5 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-emerald-600 rounded-xl text-white">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
               <h3 className="font-bold text-sm sm:text-base flex items-center space-x-2">
-                <span>Nhập Dữ Liệu Từ Excel</span>
+                <span>Nhập Dữ Liệu Từ Excel (Nhận Diện Tiêu Đề Cột & Ghép Cột)</span>
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">
-                  Chuẩn tháng 1.xlsx
+                  Mẫu tháng 1 & Mẫu mới (NÂNG • HẠ • PHƠI)
                 </span>
               </h3>
               <p className="text-[11px] text-slate-400">
-                Luồng 5 bước: Tải file → Xem trước → Đối chiếu trùng lặp → Xác nhận nhập → Cập nhật báo cáo tức thì
+                Cước gốc chưa VAT (×1,08 có VAT • ×0,83 sau trừ 17%) • Nhận diện NÂNG, HẠ, PHƠI NÂNG HẠ, DẦU, TIỀN ĐƯỜNG, CÔNG NỢ
               </p>
             </div>
           </div>
 
-          {/* BỘ 3 LỰA CHỌN CẠNH NHAU (ĐÚNG YÊU CẦU MỤC 3) */}
-          <div className="flex items-center space-x-1.5 bg-slate-800 p-1 rounded-xl self-start sm:self-auto text-xs">
+          <div className="flex items-center justify-between sm:justify-end gap-2">
+            <div className="flex items-center space-x-1 bg-slate-800 p-1 rounded-xl text-xs">
+              <button
+                type="button"
+                onClick={() => { onClose(); if (onSwitchToOneTrip) onSwitchToOneTrip(); }}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-700/60 transition-all"
+              >
+                Tạo một cuốc
+              </button>
+              <button
+                type="button"
+                onClick={() => { onClose(); if (onSwitchToBatch) onSwitchToBatch(); }}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-700/60 transition-all"
+              >
+                Nhập nhiều cuốc
+              </button>
+              <button
+                type="button"
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white shadow-xs flex items-center space-x-1"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Nhập Excel</span>
+              </button>
+            </div>
+
             <button
-              type="button"
-              onClick={() => { onClose(); if (onSwitchToOneTrip) onSwitchToOneTrip(); }}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-700/60 transition-all"
+              onClick={onClose}
+              aria-label="Đóng cửa sổ"
+              className="shrink-0 p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
             >
-              Tạo một cuốc
-            </button>
-            <button
-              type="button"
-              onClick={() => { onClose(); if (onSwitchToBatch) onSwitchToBatch(); }}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-700/60 transition-all"
-            >
-              Nhập nhiều cuốc
-            </button>
-            <button
-              type="button"
-              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white shadow-xs flex items-center space-x-1"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Nhập từ Excel</span>
+              <X className="w-5 h-5" />
             </button>
           </div>
-
-          <button 
-            onClick={onClose}
-            aria-label="Đóng cửa sổ" className="shrink-0 self-end p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
-        {/* BĂNG TIẾN TRÌNH 5 BƯỚC */}
-        <div className="bg-slate-50 border-b border-slate-200 px-5 py-2.5 flex items-center justify-between text-xs overflow-x-auto shrink-0">
+        {/* BĂNG TIẾN TRÌNH */}
+        <div className="bg-slate-50 border-b border-slate-200 px-4 sm:px-5 py-2.5 flex items-center justify-between text-xs overflow-x-auto shrink-0">
           <div className="flex items-center space-x-2 sm:space-x-4 min-w-max">
             <div className={`flex items-center space-x-1.5 font-bold ${step >= 1 ? 'text-emerald-700' : 'text-slate-400'}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step >= 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>1</span>
@@ -267,63 +300,49 @@ export default function ExcelImportModal({
 
             <div className={`flex items-center space-x-1.5 font-bold ${step >= 2 ? 'text-emerald-700' : 'text-slate-400'}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step >= 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>2</span>
-              <span>Xem trước số liệu</span>
-            </div>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-
-            <div className={`flex items-center space-x-1.5 font-bold ${step >= 3 ? 'text-emerald-700' : 'text-slate-400'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step >= 3 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>3</span>
-              <span>Đối chiếu & Trùng lặp</span>
-            </div>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-
-            <div className={`flex items-center space-x-1.5 font-bold ${step >= 4 ? 'text-emerald-700' : 'text-slate-400'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step >= 4 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>4</span>
-              <span>Xác nhận nhập</span>
+              <span>Ghép cột & Xem trước</span>
             </div>
             <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
 
             <div className={`flex items-center space-x-1.5 font-bold ${step === 5 ? 'text-emerald-700' : 'text-slate-400'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step === 5 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>5</span>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step === 5 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>3</span>
               <span>Hoàn tất & Lịch sử</span>
             </div>
           </div>
 
           <div className="hidden sm:flex items-center space-x-2 text-[11px] text-slate-500">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>Bảo toàn ô gộp & truy vết nguồn</span>
+            <span>Không đọc lệch cột khi thêm trường • Bảo toàn ô gộp</span>
           </div>
         </div>
 
-        {/* THÔNG BÁO LỖI / THÀNH CÔNG */}
+        {/* THÔNG BÁO */}
         {err && (
-          <div className="mx-5 mt-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center space-x-2 shrink-0">
+          <div className="mx-4 sm:mx-5 mt-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center space-x-2 shrink-0">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
             <span className="font-medium">{err}</span>
           </div>
         )}
         {msg && (
-          <div className="mx-5 mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-center space-x-2 shrink-0">
+          <div className="mx-4 sm:mx-5 mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-center space-x-2 shrink-0">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
             <span className="font-medium">{msg}</span>
           </div>
         )}
 
-        {/* NỘI DUNG CHÍNH THEO BƯỚC */}
-        <div className="p-5 flex-1 overflow-y-auto space-y-4">
-          
-          {/* ================= BƯỚC 1: TẢI FILE ================= */}
+        {/* NỘI DUNG CHÍNH */}
+        <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4">
+          {/* BƯỚC 1: TẢI FILE */}
           {step === 1 && (
             <div className="space-y-6">
-              <div className="border rounded-xl p-3 space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mappingEnabled} onChange={e=>setMappingEnabled(e.target.checked)}/>File khác thứ tự cột — chọn cách ghép cột</label><p className="text-xs text-slate-500">Mẫu mặc định theo bảng tháng 1. Với file khác, nhập chữ cột tương ứng (A, B, C…). Dòng tiêu đề ở hàng 2; dữ liệu từ hàng 3. Mẫu ghép được lưu trên thiết bị.</p>{mappingEnabled&&<div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{Object.entries(columnLabels).map(([key,label])=><label key={key} className="text-xs">{label}<input aria-label={'Cột '+label} value={columnMapping[key]||''} onChange={e=>setColumnMapping(m=>({...m,[key]:e.target.value.toUpperCase()}))} className="block w-full border rounded p-2 mt-1"/></label>)}</div>}</div>
               <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all ${
-                  isDragging 
-                    ? 'border-emerald-500 bg-emerald-50/50 scale-[0.99]' 
+                className={`border-2 border-dashed rounded-2xl p-8 sm:p-10 text-center cursor-pointer transition-all ${
+                  isDragging
+                    ? 'border-emerald-500 bg-emerald-50/50 scale-[0.99]'
                     : 'border-slate-300 hover:border-emerald-400 bg-slate-50/50 hover:bg-white'
                 }`}
               >
@@ -334,42 +353,38 @@ export default function ExcelImportModal({
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4 shadow-sm">
-                  <Upload className="w-8 h-8" />
+                <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3 shadow-sm">
+                  <Upload className="w-7 h-7" />
                 </div>
                 <h4 className="text-sm sm:text-base font-bold text-slate-800 mb-1">
                   Kéo thả file Excel bảng kê vào đây hoặc <span className="text-emerald-600 underline">bấm để chọn file</span>
                 </h4>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Hỗ trợ file bảng kê chuẩn <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-mono">tháng 1.xlsx</code> hoặc các định dạng bảng kê vận tải container tương đương (.xlsx, .xls).
+                <p className="text-xs text-slate-500 max-w-lg mx-auto">
+                  Tự động nhận diện tiêu đề cột cho cả mẫu <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-mono">tháng 1.xlsx</code> (18 cột A–R) và mẫu mới có tách <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-mono">NÂNG, HẠ, PHƠI NÂNG HẠ</code>.
                 </p>
 
-                <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-[11px] text-slate-500">
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-3 text-[11px] text-slate-600">
                   <span className="flex items-center space-x-1">
                     <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Tự bỏ qua dòng format trống (hàng 80 - 889)</span>
+                    <span>Cước vào gốc chưa VAT → ×1,08 có VAT → ×0,83 sau trừ 17%</span>
+                  </span>
+                  <span className="flex items-center space-x-1">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Giữ nguyên loại cont (40FR, 40RF, 20DC...)</span>
                   </span>
                   <span className="flex items-center space-x-1">
                     <Check className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Chuẩn hóa lỗi gõ năm 2025 → 2026</span>
                   </span>
-                  <span className="flex items-center space-x-1">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Cước vào đã gồm VAT</span>
-                  </span>
-                  <span className="flex items-center space-x-1">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Nhận diện ô gộp thông minh</span>
-                  </span>
                 </div>
               </div>
 
-              {/* LỊCH SỬ CÁC ĐỢT NHẬP GẦN ĐÂY */}
+              {/* LỊCH SỬ CÁC ĐỢT NHẬP */}
               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
                 <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                   <div className="flex items-center space-x-2 text-xs font-bold text-slate-700">
                     <Clock className="w-4 h-4 text-slate-500" />
-                    <span>Lịch Sử Các Đợt Nhập & Khả Năng Hoàn Tác (Rollback)</span>
+                    <span>Lịch Sử Các Đợt Nhập & Hoàn Tác (Rollback)</span>
                   </div>
                   <button
                     onClick={loadBatches}
@@ -387,25 +402,30 @@ export default function ExcelImportModal({
                 ) : (
                   <div className="divide-y divide-slate-100">
                     {batches.map((b) => (
-                      <div key={b.id} className="p-3 sm:px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-50/60 transition-colors">
+                      <div
+                        key={b.id}
+                        className="p-3 sm:px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-50/60 transition-colors"
+                      >
                         <div className="space-y-1">
                           <div className="flex items-center space-x-2">
                             <span className="font-bold text-xs text-slate-800">{b.filename}</span>
                             <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">
                               {b.total_trips} cuốc
                             </span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                              b.status === 'ROLLED_BACK' 
-                                ? 'bg-rose-100 text-rose-700' 
-                                : 'bg-emerald-100 text-emerald-700'
-                            }`}>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                                b.status === 'ROLLED_BACK'
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : 'bg-emerald-100 text-emerald-700'
+                              }`}
+                            >
                               {b.status === 'ROLLED_BACK' ? 'Đã hoàn tác' : 'Đã nhập'}
                             </span>
                           </div>
                           <div className="text-[11px] text-slate-500 flex items-center space-x-3">
                             <span>Thời điểm: {b.imported_at ? new Date(b.imported_at).toLocaleString('vi-VN') : '-'}</span>
                             <span>Người nhập: <strong>{b.created_by || 'DIRECTOR'}</strong></span>
-                            <span>Doanh thu: <strong>{formatVnd(b.total_revenue)}</strong></span>
+                            <span>Cước gốc: <strong>{formatVnd(b.total_revenue)}</strong></span>
                           </div>
                         </div>
 
@@ -428,58 +448,120 @@ export default function ExcelImportModal({
             </div>
           )}
 
-          {/* ================= BƯỚC 2 & 3 & 4: XEM TRƯỚC VÀ ĐỐI CHIẾU ================= */}
-          {(step === 2 || step === 3 || step === 4) && previewData && (
+          {/* BƯỚC 2: XEM TRƯỚC, GHÉP CỘT & ĐỐI CHIẾU */}
+          {step >= 2 && step <= 4 && previewData && (
             <div className="space-y-4">
-              
-              {/* TỔNG QUAN TẬP DỮ LIỆU ĐỌC ĐƯỢC */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                  <div className="text-[11px] font-medium text-slate-500">Tổng Số Cuốc Đọc Được</div>
-                  <div className="text-xl font-bold text-slate-900 mt-0.5">{previewData.total_rows}</div>
-                  <div className="text-[10px] text-slate-400 mt-1">Hàng 3 đến hàng 79 (STT 1-77)</div>
-                </div>
-
-                <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3">
-                  <div className="text-[11px] font-medium text-emerald-700">Tổng Cước Vào (Gồm VAT)</div>
-                  <div className="text-xl font-bold text-emerald-800 mt-0.5">
-                    {formatVnd(previewData.summary?.total_cuoc_vao)}
-                  </div>
-                  <div className="text-[10px] text-emerald-600 mt-1">Doanh thu chuẩn bảng kê</div>
-                </div>
-
-                <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-3">
-                  <div className="text-[11px] font-medium text-amber-700">Chi Phí Trực Tiếp Đã Biết</div>
-                  <div className="text-xl font-bold text-amber-800 mt-0.5">
-                    {formatVnd(previewData.summary?.total_direct_cost)}
-                  </div>
-                  <div className="text-[10px] text-amber-600 mt-1">
-                    Đường {formatVnd(previewData.summary?.total_tien_duong)} • Cước ra {formatVnd(previewData.summary?.total_cuoc_ra)}
+              {/* TỔNG QUAN SỐ LIỆU ĐỌC ĐƯỢC THEO CHUẨN MỚI */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase">Số Cuốc Đọc Được</div>
+                  <div className="text-lg font-extrabold text-slate-900 mt-0.5">{previewData.total_rows} cuốc</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Dầu cấp: <strong>{previewData.summary?.total_dau_lit || 0} Lít</strong>
                   </div>
                 </div>
 
-                <div className="bg-blue-50/60 border border-blue-200 rounded-xl p-3">
-                  <div className="text-[11px] font-medium text-blue-700">Lãi Tạm Tính (Chưa Trừ Lương)</div>
-                  <div className="text-xl font-bold text-blue-800 mt-0.5">
-                    {formatVnd(previewData.summary?.temp_profit)}
+                <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase">1. Cước Gốc (Chưa VAT)</div>
+                  <div className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">
+                    {formatVnd(previewData.summary?.total_cuoc_goc ?? previewData.summary?.total_cuoc_vao)}
                   </div>
-                  <div className="text-[10px] text-blue-600 mt-1">
-                    Cấp {previewData.summary?.total_dau_lit} lít dầu (chưa tính tiền)
+                  <div className="text-[10px] text-teal-700 mt-0.5">
+                    + VAT 8%: {formatVnd(previewData.summary?.total_vat_8)}
                   </div>
+                </div>
+
+                <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-2.5">
+                  <div className="text-[10px] font-bold text-emerald-800 uppercase">2. Cước Có VAT (×1,08)</div>
+                  <div className="text-sm sm:text-base font-extrabold text-emerald-800 mt-0.5">
+                    {formatVnd(previewData.summary?.total_cuoc_co_vat)}
+                  </div>
+                  <div className="text-[10px] text-amber-700 mt-0.5">
+                    − Trừ 17%: {formatVnd(previewData.summary?.total_khoan_tru_17)}
+                  </div>
+                </div>
+
+                <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-2.5">
+                  <div className="text-[10px] font-bold text-blue-800 uppercase">3. Sau Trừ 17% (×0,83)</div>
+                  <div className="text-sm sm:text-base font-extrabold text-blue-800 mt-0.5">
+                    {formatVnd(previewData.summary?.total_cuoc_sau_tru_17)}
+                  </div>
+                  <div className="text-[10px] text-blue-600 mt-0.5">Quy tắc tính nội bộ</div>
+                </div>
+
+                <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-2.5">
+                  <div className="text-[10px] font-bold text-indigo-800 uppercase">4. Phí Nâng/Hạ & Phơi</div>
+                  <div className="text-xs font-extrabold text-indigo-900 mt-0.5">
+                    Nâng/Hạ: {formatVnd((previewData.summary?.total_phi_nang || 0) + (previewData.summary?.total_phi_ha || 0))}
+                  </div>
+                  <div className="text-[10px] text-purple-700 font-bold mt-0.5">
+                    Phơi trả hộ: {formatVnd(previewData.summary?.total_phoi_tra_ho || 0)}
+                  </div>
+                </div>
+
+                <div className="bg-amber-50/80 border border-amber-300 rounded-xl p-2.5">
+                  <div className="text-[10px] font-bold text-amber-900 uppercase">5. Chênh Lệch Sau Trừ</div>
+                  <div className="text-sm sm:text-base font-extrabold text-amber-800 mt-0.5">
+                    {formatVnd(previewData.summary?.temp_profit_after_17 ?? previewData.summary?.temp_profit)}
+                  </div>
+                  <div className="text-[10px] text-amber-700 mt-0.5">Chưa trừ lương</div>
                 </div>
               </div>
 
-              {/* BẢNG CẢNH BÁO TRÙNG LẶP */}
+              {/* CHỈNH SỬA CÁCH GHÉP CỘT TRƯỚC KHI XÁC NHẬN NHẬP (Mục 14) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMappingEnabled(!mappingEnabled)}
+                    className="text-xs font-bold text-slate-800 flex items-center space-x-1.5 hover:text-emerald-700"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>
+                      {mappingEnabled ? '▼ Ẩn bảng ghép cột Excel' : '▶ Kiểm tra / Sửa cách ghép cột Excel (NÂNG, HẠ, PHƠI NÂNG HẠ, CƯỚC VÀO...)'}
+                    </span>
+                  </button>
+                  {mappingEnabled && (
+                    <button
+                      type="button"
+                      onClick={handleRePreviewWithMapping}
+                      disabled={loading}
+                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs"
+                    >
+                      {loading ? 'Đang đọc lại...' : 'Áp dụng ghép cột & Xem trước lại'}
+                    </button>
+                  )}
+                </div>
+
+                {mappingEnabled && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-2 border-t border-slate-200">
+                    {Object.entries(FIELD_LABELS).map(([fieldKey, label]) => (
+                      <label key={fieldKey} className="text-[10px] font-semibold text-slate-700">
+                        <span className="block truncate" title={label}>{label}</span>
+                        <input
+                          type="text"
+                          placeholder="Cột (A,B..)"
+                          value={columnMapping[fieldKey] || ''}
+                          onChange={(e) =>
+                            setColumnMapping((prev) => ({
+                              ...prev,
+                              [fieldKey]: e.target.value.toUpperCase().trim()
+                            }))
+                          }
+                          className="mt-0.5 w-full px-2 py-1 text-xs font-mono font-bold uppercase border border-slate-300 rounded bg-white"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* CẢNH BÁO TRÙNG LẶP */}
               {previewData.duplicate_count > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-start space-x-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                  <div className="space-y-1 text-xs">
-                    <h5 className="font-bold text-amber-900">
-                      Phát hiện {previewData.duplicate_count} cuốc có khả năng trùng. Mặc định chỉ nhập dòng mới, giữ các dòng này để đối chiếu.
-                    </h5>
-                    <p className="text-amber-700">
-                      Hệ thống sẽ giữ lại cả hai hoặc chỉ nhập các cuốc xe mới tùy bạn lựa chọn. Theo quy tắc đối chiếu, trùng số cont không tự xóa chuyến nếu ngày hoặc khách hàng khác nhau.
-                    </p>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start space-x-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-800">
+                    <strong>Phát hiện {previewData.duplicate_count} dòng có khả năng trùng ngày + khách + cont + cước.</strong> Hệ thống giữ nguyên các cuốc khác ngày hoặc khác tuyến, không tự xóa chuyến chỉ vì trùng số container.
                   </div>
                 </div>
               )}
@@ -497,31 +579,35 @@ export default function ExcelImportModal({
                 </div>
 
                 <div className="overflow-x-auto max-h-80">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-100 text-slate-600 font-semibold sticky top-0 border-b border-slate-200">
+                  <table className="w-full text-left text-xs border-collapse min-w-[1150px]">
+                    <thead className="bg-slate-100 text-slate-600 font-semibold sticky top-0 border-b border-slate-200 text-[11px]">
                       <tr>
-                        <th className="py-2 px-2.5 w-12 text-center">STT</th>
-                        <th className="py-2 px-2.5">Ngày Chạy</th>
-                        <th className="py-2 px-2.5">Chủ Hàng</th>
-                        <th className="py-2 px-2.5">Tuyến Đường</th>
-                        <th className="py-2 px-2.5">Số Container</th>
-                        <th className="py-2 px-2.5">BKS / Nhà Xe</th>
-                        <th className="py-2 px-2.5 text-right">Cước Vào</th>
-                        <th className="py-2 px-2.5 text-right">Cước Ra</th>
-                        <th className="py-2 px-2.5 text-right">Tiền Đường</th>
-                        <th className="py-2 px-2.5 text-center">Dầu Cấp</th>
-                        <th className="py-2 px-2.5">Ô Gộp</th>
+                        <th className="py-2 px-2 w-10 text-center">STT</th>
+                        <th className="py-2 px-2">Ngày Chạy</th>
+                        <th className="py-2 px-2">Chủ Hàng</th>
+                        <th className="py-2 px-2">Tuyến Đường</th>
+                        <th className="py-2 px-2">Số Cont</th>
+                        <th className="py-2 px-2">Loại Cont</th>
+                        <th className="py-2 px-2">BKS / Nhà Xe</th>
+                        <th className="py-2 px-2 text-right">Cước Gốc (Chưa VAT)</th>
+                        <th className="py-2 px-2 text-right">Có VAT (×1,08)</th>
+                        <th className="py-2 px-2 text-right">Sau Trừ 17%</th>
+                        <th className="py-2 px-2 text-right">Phí Nâng/Hạ</th>
+                        <th className="py-2 px-2 text-right">Phơi Trả Hộ</th>
+                        <th className="py-2 px-2 text-center">Dầu</th>
+                        <th className="py-2 px-2">TT / Công Nợ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                      {previewData.rows.slice(0, 30).map((r, idx) => (
+                      {previewData.rows.slice(0, 40).map((r, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/80">
-                          <td className="py-1.5 px-2.5 text-center text-slate-400">{r.stt || idx + 1}</td>
-                          <td className="py-1.5 px-2.5 text-slate-700">{r.trip_date}</td>
-                          <td className="py-1.5 px-2.5 font-bold text-slate-800 font-sans">{r.customer_name}</td>
-                          <td className="py-1.5 px-2.5 text-slate-600 font-sans">{r.route_name || '-'}</td>
-                          <td className="py-1.5 px-2.5 text-slate-800 font-bold">{r.container_number || '-'}</td>
-                          <td className="py-1.5 px-2.5 font-sans">
+                          <td className="py-1.5 px-2 text-center text-slate-400">{r.stt || idx + 1}</td>
+                          <td className="py-1.5 px-2 text-slate-700">{r.trip_date}</td>
+                          <td className="py-1.5 px-2 font-bold text-slate-800 font-sans">{r.customer_name}</td>
+                          <td className="py-1.5 px-2 text-slate-600 font-sans">{r.route_name || '-'}</td>
+                          <td className="py-1.5 px-2 text-slate-800 font-bold">{r.container_number || '-'}</td>
+                          <td className="py-1.5 px-2 text-indigo-700 font-bold">{r.container_size || '-'}</td>
+                          <td className="py-1.5 px-2 font-sans">
                             {r.is_subcontractor ? (
                               <span className="text-amber-700 bg-amber-50 px-1 py-0.5 rounded text-[10px]">
                                 {r.subcontractor_name || 'Xe ngoài'}
@@ -530,54 +616,50 @@ export default function ExcelImportModal({
                               <span className="text-blue-700 font-bold">{r.vehicle_plate}</span>
                             )}
                           </td>
-                          <td className="py-1.5 px-2.5 text-right font-bold text-emerald-700">
-                            {formatVnd(r.trip_revenue)}
+                          <td className="py-1.5 px-2 text-right font-bold text-slate-900">
+                            {formatVnd(r.base_revenue ?? r.trip_revenue)}
                           </td>
-                          <td className="py-1.5 px-2.5 text-right text-amber-700">
-                            {r.subcontractor_cost > 0 ? formatVnd(r.subcontractor_cost) : '-'}
+                          <td className="py-1.5 px-2 text-right font-bold text-emerald-700">
+                            {formatVnd(r.cuoc_co_vat ?? Math.round((r.base_revenue || r.trip_revenue || 0) * 1.08))}
                           </td>
-                          <td className="py-1.5 px-2.5 text-right text-slate-700">
-                            {r.toll_fee > 0 ? formatVnd(r.toll_fee) : '-'}
+                          <td className="py-1.5 px-2 text-right font-bold text-blue-700">
+                            {formatVnd(r.cuoc_sau_tru_17 ?? Math.round((r.base_revenue || r.trip_revenue || 0) * 1.08 * 0.83))}
                           </td>
-                          <td className="py-1.5 px-2.5 text-center text-indigo-700 font-bold">
-                            {r.fuel_liters > 0 ? `${r.fuel_liters} L` : '-'}
+                          <td className="py-1.5 px-2 text-right text-indigo-700 font-sans">
+                            {(r.lift_on_fee > 0 || r.lift_off_fee > 0)
+                              ? formatVnd((r.lift_on_fee || 0) + (r.lift_off_fee || 0))
+                              : (r.lift_on_location || r.lift_off_location || '-')}
                           </td>
-                          <td className="py-1.5 px-2.5 font-sans">
-                            {r.group_id ? (
-                              <span className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded">
-                                {r.group_id}
-                              </span>
-                            ) : (
-                              <span className="text-slate-300">-</span>
-                            )}
+                          <td className="py-1.5 px-2 text-right text-purple-700 font-sans">
+                            {r.phoi_advance_amount > 0
+                              ? formatVnd(r.phoi_advance_amount)
+                              : (r.phoi_source_note || '-')}
+                          </td>
+                          <td className="py-1.5 px-2 text-center text-sky-700 font-bold">
+                            {r.fuel_liters > 0 ? `${r.fuel_liters}L` : '-'}
+                          </td>
+                          <td className="py-1.5 px-2 font-sans text-[10px]">
+                            {r.customer_payment_status || r.payment_terms || '-'}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-
-                {previewData.rows.length > 30 && (
-                  <div className="p-2.5 bg-slate-50 text-center text-[11px] text-slate-500 border-t border-slate-200">
-                    Đang hiển thị 30 / {previewData.rows.length} dòng. Toàn bộ {previewData.rows.length} dòng sẽ được nhập vào cơ sở dữ liệu.
-                  </div>
-                )}
               </div>
             </div>
           )}
 
-          {/* ================= BƯỚC 5: HOÀN TẤT VÀ KẾT QUẢ ================= */}
+          {/* BƯỚC 5: HOÀN TẤT */}
           {step === 5 && commitResult && (
             <div className="space-y-6 py-6 text-center max-w-xl mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
               <div className="space-y-2">
-                <h4 className="text-lg font-bold text-slate-900">
-                  Nhập Dữ Liệu Excel Thành Công!
-                </h4>
+                <h4 className="text-lg font-bold text-slate-900">Nhập Dữ Liệu Excel Thành Công!</h4>
                 <p className="text-xs text-slate-600">
-                  Đã thêm thành công <strong>{commitResult.inserted_count}</strong> cuốc xe vào cơ sở dữ liệu. Các báo cáo Tổng quan kinh doanh, Hiệu quả đội xe và Công nợ đã được cập nhật đồng bộ.
+                  Đã thêm thành công <strong>{commitResult.inserted_count}</strong> cuốc xe vào cơ sở dữ liệu theo chuẩn Cước gốc chưa VAT, VAT 8%, Trừ 17%, Nâng/Hạ và Tiền phơi trả hộ.
                 </p>
               </div>
 
@@ -591,8 +673,8 @@ export default function ExcelImportModal({
                   <span className="font-bold text-slate-800">{commitResult.filename}</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Tổng cước vào (Doanh thu gồm VAT):</span>
-                  <span className="font-bold text-emerald-700">{formatVnd(commitResult.total_revenue)}</span>
+                  <span>Tổng cước vào gốc (Chưa VAT):</span>
+                  <span className="font-bold text-slate-900">{formatVnd(commitResult.total_revenue)}</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>Số cuốc xe mới nạp:</span>
@@ -623,20 +705,19 @@ export default function ExcelImportModal({
               </div>
             </div>
           )}
-
         </div>
 
-        {/* FOOTER ACTIONS CHO CÁC BƯỚC 1 -> 4 */}
+        {/* FOOTER ACTIONS */}
         {step < 5 && (
-          <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+          <div className="px-4 sm:px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
             <div>
               {step > 1 && (
                 <button
                   type="button"
-                  onClick={() => setStep(prev => Math.max(1, prev - 1))}
+                  onClick={() => setStep(1)}
                   className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
                 >
-                  ← Quay lại bước trước
+                  ← Chọn lại tệp Excel
                 </button>
               )}
             </div>
@@ -673,7 +754,6 @@ export default function ExcelImportModal({
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

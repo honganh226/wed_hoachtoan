@@ -222,7 +222,7 @@ export async function createTripApi(tripData, requestId) {
     headers: {...authHeaders(), ...(requestId ? {'Idempotency-Key':requestId} : {})},
     body: JSON.stringify(tripData)
   });
-  const result=await res.json();
+  const result=await safeJson(res);
   if(result.success&&!result.data?.failed)window.dispatchEvent(new Event('business-data-changed'));
   return result;
 }
@@ -233,7 +233,7 @@ export async function createBatchTripsApi(trips, requestId) {
     headers: {...authHeaders(), ...(requestId ? {'Idempotency-Key':requestId} : {})},
     body: JSON.stringify({ trips })
   });
-  const result=await res.json();
+  const result=await safeJson(res);
   if(result.success&&!result.data?.failed)window.dispatchEvent(new Event('business-data-changed'));
   return result;
 }
@@ -297,22 +297,42 @@ export async function createRouteApi(data) {
   return res.json();
 }
 
+export async function fetchPortsApi() {
+  const res = await fetch(`${API_BASE}/data/ports`, {
+    headers: authHeaders()
+  });
+  return res.json();
+}
+
+export async function createPortApi(data) {
+  const res = await fetch(`${API_BASE}/data/ports`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
 export async function duplicateTripApi(tripId, targetDate) {
   const res = await fetch(`${API_BASE}/trips/${tripId}/duplicate`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ target_date: targetDate })
   });
-  return res.json();
+  const result = await res.json();
+  if (result.success) window.dispatchEvent(new Event('business-data-changed'));
+  return result;
 }
 
-export async function updateTripApi(tripId, updateData, reason = '') {
+export async function updateTripApi(tripId, updateData, reason = '', requestId = null) {
   const res = await fetch(`${API_BASE}/trips/${tripId}`, {
     method: 'PUT',
-    headers: authHeaders(),
+    headers: { ...authHeaders(), ...(requestId ? { 'Idempotency-Key': requestId } : {}) },
     body: JSON.stringify({ ...updateData, reason })
   });
-  return res.json();
+  const result = await safeJson(res);
+  if (result.success) window.dispatchEvent(new Event('business-data-changed'));
+  return result;
 }
 
 // ================= CONTAINER & ISO 6346 APIS (TASK 3.2) =================
@@ -1049,6 +1069,162 @@ export async function fetchBusinessDebtsApi(params = {}) {
   return res.json();
 }
 
+async function safeJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return {
+      success: false,
+      status: res.status,
+      error: `Máy chủ trả về phản hồi không hợp lệ (HTTP ${res.status}).`,
+      message: `Máy chủ trả về phản hồi không hợp lệ (HTTP ${res.status}).`
+    };
+  }
+}
+
+/**
+ * Lấy danh sách bảng giá dầu theo ngày
+ */
+export async function fetchFuelPricesApi(month = '') {
+  const url = month
+    ? `${API_BASE}/business/fuel-prices?month=${encodeURIComponent(month)}`
+    : `${API_BASE}/business/fuel-prices`;
+  const res = await fetch(url, {
+    headers: authHeaders()
+  });
+  return safeJson(res);
+}
+
+/**
+ * Lưu / cập nhật giá dầu theo ngày
+ */
+export async function saveFuelPriceApi(payload, requestId = null) {
+  const res = await fetch(`${API_BASE}/business/fuel-prices`, {
+    method: 'POST',
+    headers: { ...authHeaders(), ...(requestId ? { 'Idempotency-Key': requestId } : {}) },
+    body: JSON.stringify(payload)
+  });
+  const result = await safeJson(res);
+  if (result.success) window.dispatchEvent(new Event('business-data-changed'));
+  return result;
+}
+
+/**
+ * Xóa giá dầu theo ngày
+ */
+export async function deleteFuelPriceApi(applyDate, reason = '', requestId = null) {
+  const res = await fetch(`${API_BASE}/business/fuel-prices/${encodeURIComponent(applyDate)}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders(), ...(requestId ? { 'Idempotency-Key': requestId } : {}) },
+    body: JSON.stringify({ reason })
+  });
+  const result = await safeJson(res);
+  if (result.success) window.dispatchEvent(new Event('business-data-changed'));
+  return result;
+}
+
+/**
+ * Lấy danh sách nhắc đòi tiền phơi đến hạn / quá hạn / chưa đặt ngày nhắc
+ */
+export async function fetchEirRemindersApi(date = '') {
+  const url = date
+    ? `${API_BASE}/business/eir-reminders?date=${encodeURIComponent(date)}`
+    : `${API_BASE}/business/eir-reminders`;
+  const res = await fetch(url, {
+    headers: authHeaders()
+  });
+  return safeJson(res);
+}
+
+/**
+ * Lấy danh sách tiền phơi trả hộ
+ */
+export async function fetchEirAdvancesApi(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  const url = query ? `${API_BASE}/business/eir-advances?${query}` : `${API_BASE}/business/eir-advances`;
+  const res = await fetch(url, {
+    headers: authHeaders()
+  });
+  return safeJson(res);
+}
+
+/**
+ * Lấy chi tiết 1 khoản tiền phơi trả hộ kèm lịch sử hoàn tiền
+ */
+export async function fetchEirAdvanceDetailApi(id) {
+  const res = await fetch(`${API_BASE}/business/eir-advances/${encodeURIComponent(id)}`, {
+    headers: authHeaders()
+  });
+  return safeJson(res);
+}
+
+/**
+ * Tạo mới khoản tiền phơi trả hộ
+ */
+export async function createEirAdvanceApi(payload, requestId = null) {
+  const res = await fetch(`${API_BASE}/business/eir-advances`, {
+    method: 'POST',
+    headers: { ...authHeaders(), ...(requestId ? { 'Idempotency-Key': requestId } : {}) },
+    body: JSON.stringify(payload)
+  });
+  const result = await safeJson(res);
+  if (result.success) window.dispatchEvent(new Event('business-data-changed'));
+  return result;
+}
+
+/**
+ * Cập nhật khoản tiền phơi trả hộ (số tiền, ngày hẹn hoàn, ghi chú...)
+ */
+export async function updateEirAdvanceApi(id, payload, requestId = null) {
+  const res = await fetch(`${API_BASE}/business/eir-advances/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), ...(requestId ? { 'Idempotency-Key': requestId } : {}) },
+    body: JSON.stringify(payload)
+  });
+  const result = await safeJson(res);
+  if (result.success) window.dispatchEvent(new Event('business-data-changed'));
+  return result;
+}
+
+/**
+ * Ghi nhận hoàn tiền phơi (một phần hoặc toàn bộ)
+ */
+export async function recordEirRefundApi(advanceId, payload, requestId = null) {
+  const res = await fetch(`${API_BASE}/business/eir-advances/${encodeURIComponent(advanceId)}/refund`, {
+    method: 'POST',
+    headers: { ...authHeaders(), ...(requestId ? { 'Idempotency-Key': requestId } : {}) },
+    body: JSON.stringify(payload)
+  });
+  const result = await safeJson(res);
+  if (result.success) window.dispatchEvent(new Event('business-data-changed'));
+  return result;
+}
+
+/**
+ * Hủy giao dịch hoàn tiền phơi
+ */
+export async function cancelEirRefundApi(refundId, payload = {}, requestId = null) {
+  const res = await fetch(`${API_BASE}/business/eir-refunds/${encodeURIComponent(refundId)}/cancel`, {
+    method: 'POST',
+    headers: { ...authHeaders(), ...(requestId ? { 'Idempotency-Key': requestId } : {}) },
+    body: JSON.stringify(payload)
+  });
+  const result = await safeJson(res);
+  if (result.success) window.dispatchEvent(new Event('business-data-changed'));
+  return result;
+}
+
+/**
+ * Lấy danh sách các khoản lịch sử chưa phân loại rõ (port_fee cũ, ghi chú K MẤT...)
+ */
+export async function fetchUnclassifiedItemsApi() {
+  const res = await fetch(`${API_BASE}/business/unclassified-items`, {
+    headers: authHeaders()
+  });
+  return safeJson(res);
+}
+
 // ================= EXCEL IMPORT APIS =================
 
 /**
@@ -1068,19 +1244,19 @@ export async function previewExcelImportApi(file, mapping) {
     headers,
     body: formData
   });
-  return res.json();
+  return safeJson(res);
 }
 
 /**
  * Xác nhận nhập các dòng đã kiểm tra vào cơ sở dữ liệu
  */
-export async function commitExcelImportApi(payload) {
+export async function commitExcelImportApi(payload, requestId = null) {
   const res = await fetch(`${API_BASE}/excel/commit`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: { ...authHeaders(), ...(requestId ? { 'Idempotency-Key': requestId } : {}) },
     body: JSON.stringify(payload)
   });
-  const result=await res.json();
+  const result=await safeJson(res);
   if(result.success&&!result.data?.failed)window.dispatchEvent(new Event('business-data-changed'));
   return result;
 }
@@ -1092,16 +1268,16 @@ export async function fetchExcelBatchesApi() {
   const res = await fetch(`${API_BASE}/excel/batches`, {
     headers: authHeaders()
   });
-  return res.json();
+  return safeJson(res);
 }
 
 /**
  * Hoàn tác một đợt nhập
  */
-export async function rollbackExcelBatchApi(batchId) {
+export async function rollbackExcelBatchApi(batchId, requestId = null) {
   const res = await fetch(`${API_BASE}/excel/batches/${encodeURIComponent(batchId)}/rollback`, {
     method: 'POST',
-    headers: authHeaders()
+    headers: { ...authHeaders(), ...(requestId ? { 'Idempotency-Key': requestId } : {}) }
   });
-  return res.json();
+  return safeJson(res);
 }

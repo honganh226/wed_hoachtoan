@@ -306,6 +306,97 @@ export function initDatabase() {
       created_at TEXT NOT NULL
     );
 
+    -- 18. BẢNG SCHEMA_MIGRATIONS (Quản lý phiên bản migration)
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version TEXT PRIMARY KEY,
+      description TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
+
+    -- 19. BẢNG FUEL_PRICES (Giá dầu theo ngày chạy YYYY-MM-DD)
+    CREATE TABLE IF NOT EXISTS fuel_prices (
+      apply_date TEXT PRIMARY KEY,
+      price_per_liter INTEGER NOT NULL,
+      note TEXT,
+      created_by TEXT,
+      updated_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    -- 20. BẢNG FUEL_PRICE_HISTORY (Lịch sử chỉnh sửa giá dầu theo ngày)
+    CREATE TABLE IF NOT EXISTS fuel_price_history (
+      id TEXT PRIMARY KEY,
+      apply_date TEXT NOT NULL,
+      old_price INTEGER,
+      new_price INTEGER NOT NULL,
+      affected_trips_count INTEGER NOT NULL DEFAULT 0,
+      note TEXT,
+      actor TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- 21. BẢNG EIR_ADVANCES (Tiền phơi trả hộ chủ hàng)
+    CREATE TABLE IF NOT EXISTS eir_advances (
+      id TEXT PRIMARY KEY,
+      trip_id TEXT NOT NULL,
+      customer_name TEXT NOT NULL,
+      advance_amount INTEGER NOT NULL DEFAULT 0,
+      advance_date TEXT NOT NULL,
+      reference_code TEXT,
+      raw_source_value TEXT,
+      is_non_financial_note INTEGER NOT NULL DEFAULT 0,
+      refunded_amount INTEGER NOT NULL DEFAULT 0,
+      refund_status TEXT NOT NULL DEFAULT 'CHUA_HOAN',
+      payment_term_type TEXT DEFAULT 'CHUA_DAT',
+      due_date TEXT,
+      completed_date TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    -- 22. BẢNG EIR_REFUNDS (Giao dịch hoàn tiền phơi trả hộ)
+    CREATE TABLE IF NOT EXISTS eir_refunds (
+      id TEXT PRIMARY KEY,
+      advance_id TEXT NOT NULL,
+      trip_id TEXT NOT NULL,
+      refund_amount INTEGER NOT NULL,
+      refund_date TEXT NOT NULL,
+      is_tuoi INTEGER NOT NULL DEFAULT 0,
+      note TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      actor TEXT NOT NULL,
+      cancelled_by TEXT,
+      cancelled_reason TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (advance_id) REFERENCES eir_advances(id) ON DELETE CASCADE
+    );
+
+    -- 23. BẢNG EIR_ADVANCE_HISTORY (Lịch sử thay đổi khoản phơi & ngày hẹn)
+    CREATE TABLE IF NOT EXISTS eir_advance_history (
+      id TEXT PRIMARY KEY,
+      advance_id TEXT NOT NULL,
+      trip_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      old_values TEXT,
+      new_values TEXT,
+      note TEXT,
+      actor TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- 24. BẢNG WRITE_REQUESTS (Idempotency store chống gửi trùng yêu cầu ghi)
+    CREATE TABLE IF NOT EXISTS write_requests (
+      id TEXT PRIMARY KEY,
+      body_hash TEXT NOT NULL,
+      status INTEGER NOT NULL,
+      response TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT ''
+    );
+
     -- CÁC CHỈ MỤC TỐI ƯU TRUY VẤN
     CREATE INDEX IF NOT EXISTS idx_trips_trip_date ON trips(trip_date);
     CREATE INDEX IF NOT EXISTS idx_trips_vehicle_id ON trips(vehicle_id);
@@ -326,6 +417,10 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_maint_vehicle_id ON maintenance_proposals(vehicle_id);
     CREATE INDEX IF NOT EXISTS idx_maint_status ON maintenance_proposals(status);
     CREATE INDEX IF NOT EXISTS idx_maint_created_at ON maintenance_proposals(created_at);
+    CREATE INDEX IF NOT EXISTS idx_eir_advances_trip_id ON eir_advances(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_eir_advances_customer ON eir_advances(customer_name);
+    CREATE INDEX IF NOT EXISTS idx_eir_advances_due_date ON eir_advances(due_date);
+    CREATE INDEX IF NOT EXISTS idx_eir_refunds_advance_id ON eir_refunds(advance_id);
   `;
 
   db.exec(ddl);
@@ -334,6 +429,9 @@ export function initDatabase() {
   try {
     const existingCols = db.prepare("PRAGMA table_info(trips)").all().map(c => c.name);
     const newTripCols = [
+      { name: 'driver_name', def: 'TEXT' },
+      { name: 'vehicle_plate', def: 'TEXT' },
+      { name: 'route_name', def: 'TEXT' },
       { name: 'subcontractor_name', def: 'TEXT' },
       { name: 'toll_fee', def: 'INTEGER NOT NULL DEFAULT 0' },
       { name: 'port_fee', def: 'INTEGER NOT NULL DEFAULT 0' },
@@ -349,7 +447,23 @@ export function initDatabase() {
       { name: 'source_file', def: 'TEXT' },
       { name: 'source_sheet', def: 'TEXT' },
       { name: 'source_row', def: 'INTEGER' },
-      { name: 'raw_data', def: 'TEXT' }
+      { name: 'raw_data', def: 'TEXT' },
+      // Các cột chuẩn hóa ngày 28/10/2026:
+      { name: 'base_revenue', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'vat_rate', def: 'REAL NOT NULL DEFAULT 0.08' },
+      { name: 'deduction_rate', def: 'REAL NOT NULL DEFAULT 0.17' },
+      { name: 'deduction_amount', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'revenue_after_deduction', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'lift_on_location', def: 'TEXT' },
+      { name: 'lift_on_fee', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'lift_off_location', def: 'TEXT' },
+      { name: 'lift_off_fee', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'port_fee_classification_status', def: "TEXT NOT NULL DEFAULT 'NONE'" },
+      { name: 'fuel_unit_price', def: 'INTEGER' },
+      { name: 'fuel_cost', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'container_type_raw', def: 'TEXT' },
+      { name: 'payment_terms', def: 'TEXT' },
+      { name: 'stt_source', def: 'INTEGER' }
     ];
 
     for (const col of newTripCols) {
@@ -363,11 +477,92 @@ export function initDatabase() {
     if (!hasBatchNotes) {
       db.prepare('ALTER TABLE import_batches ADD COLUMN notes TEXT;').run();
     }
+
+    // Chạy migration dữ liệu chuẩn hóa 20261028_01_codex_standardization
+    const migrationVersion = '20261028_01_codex_standardization';
+    const hasMigrated = db.prepare('SELECT version FROM schema_migrations WHERE version = ?').get(migrationVersion);
+    if (!hasMigrated) {
+      const nowIso = new Date().toISOString();
+      const allTrips = db.prepare('SELECT id, trip_revenue, total_revenue, port_fee, lift_on_fee, lift_off_fee, pickup_location, dropoff_location FROM trips').all();
+      const updateStmt = db.prepare(`
+        UPDATE trips
+        SET base_revenue = ?,
+            trip_revenue = ?,
+            vat_rate = 0.08,
+            vat_amount = ?,
+            total_revenue = ?,
+            deduction_rate = 0.17,
+            deduction_amount = ?,
+            revenue_after_deduction = ?,
+            lift_on_location = COALESCE(lift_on_location, pickup_location),
+            lift_off_location = COALESCE(lift_off_location, dropoff_location),
+            port_fee_classification_status = ?
+        WHERE id = ?
+      `);
+
+      const migrateTx = db.transaction(() => {
+        for (const t of allTrips) {
+          const baseRev = Math.max(0, Math.round(Number(t.trip_revenue || t.total_revenue || 0)));
+          const vatAmt = Math.round(baseRev * 0.08);
+          const totalRev = baseRev + vatAmt;
+          const deductAmt = Math.round(totalRev * 0.17);
+          const afterDeduct = totalRev - deductAmt;
+          const hasLegacyPortFee = Number(t.port_fee || 0) > 0 && Number(t.lift_on_fee || 0) === 0 && Number(t.lift_off_fee || 0) === 0;
+          const portClassStatus = hasLegacyPortFee ? 'NEEDS_CLASSIFICATION' : 'NONE';
+          updateStmt.run(baseRev, baseRev, vatAmt, totalRev, deductAmt, afterDeduct, portClassStatus, t.id);
+        }
+        db.prepare('INSERT INTO schema_migrations (version, description, applied_at) VALUES (?, ?, ?)').run(
+          migrationVersion,
+          'Chuẩn hóa cước gốc chưa VAT (+8% VAT, -17% nội bộ), tách nâng/hạ, tiền phơi trả hộ và giá dầu theo ngày',
+          nowIso
+        );
+      });
+      migrateTx();
+      console.log(`[DB MIGRATION] Đã chạy migration ${migrationVersion} cho ${allTrips.length} bản ghi trips.`);
+    }
+
+    // Luôn đảm bảo bảng write_requests (cũ 4 cột) có đầy đủ cột created_at mà không mất bản ghi cũ
+    const wrCols = db.prepare('PRAGMA table_info(write_requests)').all().map(c => c.name);
+    if (!wrCols.includes('created_at')) {
+      db.exec("ALTER TABLE write_requests ADD COLUMN created_at TEXT NOT NULL DEFAULT '';");
+    }
+
+    // Migration phiên bản 2: Nâng cấp bảng write_requests cũ và đồng bộ schema sau restore
+    const migrationVersion2 = '20261028_02_upgrade_write_requests_schema';
+    const hasMigrated2 = db.prepare('SELECT version FROM schema_migrations WHERE version = ?').get(migrationVersion2);
+    if (!hasMigrated2) {
+      const nowIso = new Date().toISOString();
+      db.transaction(() => {
+        const cols = db.prepare('PRAGMA table_info(write_requests)').all().map(c => c.name);
+        if (!cols.includes('created_at')) {
+          db.exec("ALTER TABLE write_requests ADD COLUMN created_at TEXT NOT NULL DEFAULT '';");
+        }
+        db.prepare("UPDATE write_requests SET created_at = ? WHERE created_at = '' OR created_at IS NULL").run(nowIso);
+        db.prepare('INSERT INTO schema_migrations (version, description, applied_at) VALUES (?, ?, ?)').run(
+          migrationVersion2,
+          'Nâng cấp bảng write_requests 4 cột cũ lên 5 cột có created_at, bảo toàn khóa chống ghi trùng cũ',
+          nowIso
+        );
+      })();
+      console.log(`[DB MIGRATION] Đã chạy migration ${migrationVersion2} thành công.`);
+    }
+
+    // Đảm bảo có tài khoản thư ký (SECRETARY) để kiểm thử và vận hành nhắc việc nếu chưa tồn tại
+    const hasSecretary = db.prepare("SELECT id FROM users WHERE role = 'SECRETARY' LIMIT 1").get();
+    if (!hasSecretary) {
+      const accUser = db.prepare("SELECT password_hash FROM users WHERE role = 'ACCOUNTANT' OR role = 'DIRECTOR' LIMIT 1").get();
+      const pwdHash = accUser?.password_hash || '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
+      const nowIso = new Date().toISOString();
+      db.prepare(`
+        INSERT OR IGNORE INTO users (id, username, password_hash, full_name, role, area_id, phone, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'SECRETARY', NULL, '0900000009', 1, ?, ?)
+      `).run('user-secretary-01', 'thuky', pwdHash, 'Thư Ký Điều Vận', nowIso, nowIso);
+    }
   } catch (err) {
     console.warn('[DB INIT] Cảnh báo nâng cấp cột trips:', err.message);
   }
 
-  console.log('[DB INIT] Hoàn tất khởi tạo 17 bảng dữ liệu và chỉ mục SQLite thành công!');
+  console.log('[DB INIT] Hoàn tất khởi tạo 23 bảng dữ liệu và chỉ mục SQLite thành công!');
 }
 
 export default initDatabase;

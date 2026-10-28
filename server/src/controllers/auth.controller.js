@@ -113,9 +113,10 @@ export function getDemoAccounts(req, res) {
         CASE role
           WHEN 'DIRECTOR' THEN 1
           WHEN 'ACCOUNTANT' THEN 2
-          WHEN 'AREA_MANAGER' THEN 3
-          WHEN 'DRIVER' THEN 4
-          ELSE 5
+          WHEN 'SECRETARY' THEN 3
+          WHEN 'AREA_MANAGER' THEN 4
+          WHEN 'DRIVER' THEN 5
+          ELSE 6
         END, username ASC
     `).all();
 

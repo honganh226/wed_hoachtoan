@@ -104,9 +104,10 @@ export default function App() {
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
-  // Phân quyền 4 vai trò cốt lõi (Theo đề xuất Giám Đốc đã duyệt)
+  // Phân quyền vai trò cốt lõi (Gồm Giám đốc, Kế toán, Thư ký, Quản lý khu, Lái xe)
   const isDirector = currentUser?.role === 'DIRECTOR';
   const isAccountant = currentUser?.role === 'ACCOUNTANT';
+  const isSecretary = currentUser?.role === 'SECRETARY';
   const isAreaManager = currentUser?.role === 'AREA_MANAGER';
   const isDriver = currentUser?.role === 'DRIVER';
   const canViewPL = Boolean(currentUser && (isDirector || isAccountant));
@@ -297,6 +298,19 @@ export default function App() {
         setSubView('help');
         setActiveTab('help');
       }
+    } else if (currentUser.role === 'SECRETARY') {
+      if (activeModule === 'overview') {
+        setActiveModule('debts');
+        setActiveTab('debts');
+      }
+      if (activeModule === 'fleet' && subView !== 'vehicles') {
+        setSubView('vehicles');
+        setActiveTab('maintenance');
+      }
+      if (activeModule === 'system' && subView !== 'help') {
+        setSubView('help');
+        setActiveTab('help');
+      }
     } else if (currentUser.role === 'ACCOUNTANT') {
       if (activeModule === 'fleet' && subView === 'driver_app') {
         setSubView('payroll');
@@ -448,7 +462,7 @@ export default function App() {
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     : 'bg-slate-100 text-slate-600 border-slate-200'
                 }`}>
-                  {isDriver ? '📱 App Lái Xe' : isAreaManager ? `📍 Khu Vực (${currentUser?.area_id || 'Tuân'})` : isAccountant ? '💼 Kế Toán P&L' : '👑 Giám Đốc'}
+                  {isDriver ? '📱 App Lái Xe' : isAreaManager ? `📍 Khu Vực (${currentUser?.area_id || 'Tuân'})` : isSecretary ? '📋 Thư Ký (Phơi & Công nợ)' : isAccountant ? '💼 Kế Toán P&L' : '👑 Giám Đốc'}
                 </span>
               </div>
               <div className="text-[11px] text-slate-400 flex items-center space-x-1.5">
@@ -576,7 +590,7 @@ export default function App() {
                   className="flex items-center space-x-2 p-1 pl-2 pr-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-all text-left"
                 >
                   <div className="w-6 h-6 rounded-full bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center">
-                    {currentUser.role === 'DIRECTOR' ? 'GĐ' : currentUser.role === 'ACCOUNTANT' ? 'KT' : currentUser.role === 'AREA_MANAGER' ? 'QL' : 'LX'}
+                    {currentUser.role === 'DIRECTOR' ? 'GĐ' : currentUser.role === 'ACCOUNTANT' ? 'KT' : currentUser.role === 'SECRETARY' ? 'TK' : currentUser.role === 'AREA_MANAGER' ? 'QL' : 'LX'}
                   </div>
                   <span className="text-xs font-semibold text-slate-800 hidden sm:inline max-w-[100px] truncate">
                     {currentUser.full_name}
@@ -605,6 +619,7 @@ export default function App() {
                         <strong className="text-slate-700">
                           {currentUser.role === 'DIRECTOR' && '👑 Giám Đốc'}
                           {currentUser.role === 'ACCOUNTANT' && '💼 Kế Toán'}
+                          {currentUser.role === 'SECRETARY' && '📋 Thư Ký'}
                           {currentUser.role === 'AREA_MANAGER' && `📍 QL Khu (${currentUser.area_id || 'Tuân'})`}
                           {currentUser.role === 'DRIVER' && '🚛 Lái Xe'}
                         </strong>
@@ -732,8 +747,8 @@ export default function App() {
                     </span>
                   </button>
 
-                  {/* Tab Công Nợ (Giám Đốc / Kế Toán) */}
-                  {(isDirector || isAccountant) && (
+                  {/* Tab Công Nợ & Tiền Phơi (Giám Đốc / Kế Toán / Thư Ký) */}
+                  {(isDirector || isAccountant || isSecretary) && (
                     <button
                       onClick={() => { setActiveModule('debts'); setActiveTab('debts'); }}
                       className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
@@ -743,7 +758,7 @@ export default function App() {
                       }`}
                     >
                       <CreditCard className="w-4 h-4 text-slate-500" />
-                      <span>Công nợ</span>
+                      <span>{isSecretary ? 'Nhắc đòi phơi & Công nợ' : 'Công nợ'}</span>
                     </button>
                   )}
 
@@ -915,8 +930,8 @@ export default function App() {
               </div>
             )}
 
-            {/* PHÂN HỆ CÔNG NỢ DOANH NGHIỆP (GIÁM ĐỐC & KẾ TOÁN) */}
-            {(isDirector || isAccountant) && (activeTab === 'debts') && (
+            {/* PHÂN HỆ CÔNG NỢ DOANH NGHIỆP & TIỀN PHƠI (GIÁM ĐỐC, KẾ TOÁN & THƯ KÝ) */}
+            {(isDirector || isAccountant || isSecretary) && (activeTab === 'debts') && (
               <div className="space-y-5 animate-fade-in">
                 <DirectorDebtsView assistantFocus={debtAssistantFocus} onAssistantFocusConsumed={() => setDebtAssistantFocus(null)} onAssistantContext={setAssistantContext} />
               </div>

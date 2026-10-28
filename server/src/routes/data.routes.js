@@ -116,7 +116,7 @@ router.post('/seed', authenticateToken, requireRole(USER_ROLES.DIRECTOR), async 
 router.get('/vehicles', (req, res) => {
   try {
     const vehicles = db.prepare(`
-      SELECT v.*, COALESCE(d.full_name,t.driver_name) as driver_name, d.phone as driver_phone
+      SELECT v.*, d.full_name as driver_name, d.phone as driver_phone
       FROM vehicles v
       LEFT JOIN drivers d ON v.default_driver_id = d.id
       ORDER BY v.plate_number ASC
@@ -371,6 +371,47 @@ router.post('/routes', requireRole([USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT, 
 
     const created = db.prepare('SELECT * FROM routes WHERE id = ?').get(id);
     return successResponse(res, created, 'Thêm mới tuyến đường thành công', 201);
+  } catch (err) {
+    return serverErrorResponse(res, err);
+  }
+});
+
+/**
+ * GET /api/v1/data/ports
+ * Lấy danh sách địa điểm nâng / hạ & cảng
+ */
+router.get('/ports', (req, res) => {
+  try {
+    const ports = db.prepare('SELECT * FROM ports ORDER BY name ASC').all();
+    return successResponse(res, ports, 'Lấy danh sách cảng / địa điểm nâng hạ thành công');
+  } catch (err) {
+    return serverErrorResponse(res, err);
+  }
+});
+
+/**
+ * POST /api/v1/data/ports
+ * Thêm nhanh địa điểm nâng / hạ & cảng mới
+ */
+router.post('/ports', requireRole([USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT, USER_ROLES.AREA_MANAGER]), (req, res) => {
+  try {
+    const { name, code, port_type = 'PORT', address, notes } = req.body;
+    if (!name || !name.trim()) return errorResponse(res, 'Tên cảng / địa điểm nâng hạ là bắt buộc', 400);
+    const cleanName = name.trim().toUpperCase();
+
+    const existing = db.prepare('SELECT * FROM ports WHERE UPPER(name) = ?').get(cleanName);
+    if (existing) return successResponse(res, existing, 'Địa điểm đã tồn tại', 200);
+
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    const safeCode = code ? code.trim().toUpperCase() : `P-${Date.now().toString().slice(-6)}`;
+    db.prepare(`
+      INSERT INTO ports (id, code, name, port_type, address, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, safeCode, cleanName, port_type, address || null, notes || null, now, now);
+
+    const created = db.prepare('SELECT * FROM ports WHERE id = ?').get(id);
+    return successResponse(res, created, 'Thêm mới địa điểm nâng / hạ thành công', 201);
   } catch (err) {
     return serverErrorResponse(res, err);
   }

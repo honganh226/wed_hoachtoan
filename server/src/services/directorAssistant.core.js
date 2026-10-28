@@ -45,15 +45,15 @@ export function detectIntent(message,previous={}){
  if(/du bao|tuong lai|thoi tiet/.test(n))return 'clarify';
  if(/so (voi|sanh)|tang giam|chenh lech|tang hay giam/.test(n))return 'compare';
  if(/(khach|chu hang|nha xe).*(gom|nhung cuoc|nhung chuyen|chi tiet)|chi tiet (khach|chu hang)/.test(n))return 'customer_trips';
+ if(/\bcuoc\s*(?:so\s*)?\d+|\bchuyen\s*(?:so\s*)?\d+|chi tiet cuoc|chi tiet chuyen|t1-2026-/.test(n))return 'trip';
  if(/cuoc.*(lo|am)|chuyen.*(lo|am)|dang lo/.test(n))return 'losses';
- if(/\bno\b|cong no|con no|no nhieu|phai thu|phai tra|da thu|thu duoc|doi tru/.test(n))return /nha xe|phai tra/.test(n)?'payables':'receivables';
+ if(/\bno\b|cong no|con no|no nhieu|phai thu|phai tra|da thu|thu duoc|doi tru|tien phoi|phoi chua hoan|den han|qua han/.test(n))return /nha xe|phai tra/.test(n)?'payables':'receivables';
  if(/tai xe|lai xe|ong nao/.test(n))return 'drivers';
  if(/hieu qua xe|xep hang xe|xe nao|xe .*nhieu nhat|xe .*it nhat/.test(n))return 'vehicles';
- if(/\bcuoc\s*(?:so\s*)?\d+|\bchuyen\s*(?:so\s*)?\d+|chi tiet cuoc|chi tiet chuyen|t1-2026-/.test(n))return 'trip';
  if(/\bxe\b/.test(n)&&!/(may|bao nhieu|so) (cuoc|chuyen)/.test(n))return 'vehicle';
  if(/\bkhach\b|chu hang/.test(n))return 'customer_trips';
  if(/tong ket|tom tat|tinh hinh|ban tin|can chu y/.test(n))return 'briefing';
- if(/doanh thu|chi phi|tien dau|gia dau|lai|loi nhuan|tien cuoc|may cuoc|bao nhieu (cuoc|chuyen)|so (cuoc|chuyen)|lam an/.test(n))return 'summary';
+ if(/doanh thu|chi phi|tien dau|gia dau|lai|loi nhuan|tien cuoc|cuoc goc|cuoc co vat|khoan tru|sau khoan tru|vat|may cuoc|bao nhieu (cuoc|chuyen)|so (cuoc|chuyen)|lam an/.test(n))return 'summary';
  if(/^(con |the |vay |chi tiet)|^tuan (nay|truoc)$|^thang (nay|truoc)$/.test(n))return previous.intent||'summary';
  return 'clarify';
 }
@@ -95,16 +95,114 @@ function inPeriod(row,period){return period.all||(row.trip_date>=period.startDat
 function filterEntity(row,entity){if(!entity)return true;const key={vehicle:'vehicle_plate',driver:'driver_name',customer:'customer_name',supplier:'subcontractor_name',trip:'id'}[entity.kind];return key&&normalize(row[key])===normalize(entity.value);}
 function amount(row,key){return typeof row[key]==='number'&&Number.isFinite(row[key])?row[key]:null;}
 function total(rows,key){return rows.reduce((sum,row)=>sum+number(row[key]),0);}
+function hasRowRevenue(r){return amount(r,'cuoc_goc')!==null||amount(r,'cuoc_vao')!==null;}
+function rowCuocGoc(r){return hasRowRevenue(r)?number(r.cuoc_goc??r.cuoc_vao):null;}
+function rowVat8(r){const g=rowCuocGoc(r);if(g===null)return null;return typeof r.vat_amount==='number'?r.vat_amount:Math.round(g*0.08);}
+function rowCuocCoVat(r){const g=rowCuocGoc(r);if(g===null)return null;return typeof r.cuoc_co_vat==='number'?r.cuoc_co_vat:g+rowVat8(r);}
+function rowKhoanTru17(r){const cv=rowCuocCoVat(r);if(cv===null)return null;return typeof r.khoan_tru_17==='number'?r.khoan_tru_17:Math.round(cv*0.17);}
+function rowCuocSauTru17(r){const cv=rowCuocCoVat(r);if(cv===null)return null;return typeof r.cuoc_sau_tru_17==='number'?r.cuoc_sau_tru_17:cv-rowKhoanTru17(r);}
+function isRowFuelMissing(r){
+ if(Boolean(r.is_fuel_price_missing))return true;
+ const liters=number(r.dau_liters??r.fuel_liters);
+ if(liters<=0)return false;
+ const fuelCost=number(r.tien_dau??r.fuel_cost);
+ const unitPrice=number(r.fuel_unit_price);
+ return fuelCost<=0&&unitPrice<=0;
+}
+function rowCompanyCost(r){
+ if(r.allocation_status==='UNALLOCATED')return null;
+ if('direct_cost' in r && r.direct_cost===null)return null;
+ if(typeof r.chi_phi_cong_ty==='number'&&Number.isFinite(r.chi_phi_cong_ty))return r.chi_phi_cong_ty;
+ if(typeof r.direct_cost==='number'&&Number.isFinite(r.direct_cost)){
+  if(r.direct_cost_before_fuel!==undefined)return r.direct_cost;
+  return r.direct_cost+number(r.tien_dau??r.fuel_cost);
+ }
+ return null;
+}
+function rowMarginAfter17(r){
+ if(r.allocation_status==='UNALLOCATED')return null;
+ if('chenh_lech_sau_tru_17' in r){
+  return typeof r.chenh_lech_sau_tru_17==='number'&&Number.isFinite(r.chenh_lech_sau_tru_17)?r.chenh_lech_sau_tru_17:null;
+ }
+ const after17=rowCuocSauTru17(r),cost=rowCompanyCost(r);
+ if(after17===null||cost===null)return null;
+ return after17-cost;
+}
+function rowProfitBeforeDeduction(r){
+ if(r.allocation_status==='UNALLOCATED')return null;
+ const goc=rowCuocGoc(r),cost=rowCompanyCost(r);
+ if(goc===null||cost===null)return null;
+ return goc-cost;
+}
+function rowReceivableDue(r){
+ const g=rowCuocGoc(r),cv=rowCuocCoVat(r);
+ if(g===null||cv===null)return 0;
+ const received=number(r.received_amount),offset=number(r.offset_amount);
+ const isSettled=Boolean(r.is_customer_paid||r.is_offset||['DA_TT','TUOI','X','DOI_TRU'].includes(r.customer_payment_status));
+ const isHistoricalSettledAtBase=isSettled&&(received+offset===g);
+ return isHistoricalSettledAtBase?0:Math.max(0,cv-received-offset);
+}
 function metricsFor(rows,groups,allRows){
- if(!rows.length)return {trips:0,revenue:null,recorded_cost:null,profit:null,fuel_liters:null,received:null,offset:null,receivable_due:null,payable:null,payable_due:null,unallocated_groups:0,incomplete_shared_cost:false,missing_financial_data:true};
+ if(!rows.length)return {trips:0,revenue:null,revenue_pre_vat:null,vat_8:null,revenue_with_vat:null,deduction_17:null,revenue_after_deduction:null,recorded_cost:null,profit:null,profit_before_deduction:null,margin_after_deduction_17:null,fuel_liters:null,fuel_cost:null,missing_fuel_price_trips:0,phoi_advance:0,phoi_refunded:0,phoi_due:0,received:null,offset:null,receivable_due:null,combined_receivable_due:null,payable:null,payable_due:null,unallocated_groups:0,incomplete_shared_cost:false,incomplete_cost:false,missing_financial_data:true};
  const ids=new Set(rows.map(r=>r.id));
  const pending=groups.filter(g=>g.allocation_mode==='UNALLOCATED'&&g.trips.some(id=>ids.has(id)));
  const incomplete=pending.some(g=>g.trips.some(id=>!ids.has(id)&&allRows.some(r=>r.id===id)));
- const missingRevenue=rows.some(r=>amount(r,'cuoc_vao')===null),missingCost=rows.some(r=>amount(r,'direct_cost')===null),missing=missingRevenue||missingCost;
- return {trips:rows.length,revenue:missingRevenue?null:total(rows,'cuoc_vao'),recorded_cost:missingCost?null:total(rows,'direct_cost'),profit:missing||incomplete?null:total(rows,'cuoc_vao')-total(rows,'direct_cost'),fuel_liters:total(rows,'dau_liters'),received:total(rows,'received_amount'),offset:total(rows,'offset_amount'),receivable_due:rows.reduce((s,r)=>s+Math.max(0,number(r.cuoc_vao)-number(r.received_amount)-number(r.offset_amount)),0),payable:total(rows,'cuoc_ra'),payable_due:rows.reduce((s,r)=>s+Math.max(0,number(r.cuoc_ra)-number(r.sub_paid_amount)),0),unallocated_groups:pending.length,incomplete_shared_cost:incomplete,missing_financial_data:missing};
+ const missingRevenue=rows.some(r=>!hasRowRevenue(r));
+ // Các dòng đơn lẻ (không thuộc nhóm gộp UNALLOCATED) nếu thiếu direct_cost là thiếu dữ liệu chi phí
+ const missingCost=rows.some(r=>r.allocation_status!=='UNALLOCATED'&&rowCompanyCost(r)===null);
+ const missing=missingRevenue||missingCost;
+ const revPreVat = missingRevenue ? null : rows.reduce((s, r) => s + rowCuocGoc(r), 0);
+ const vat8 = missingRevenue ? null : rows.reduce((s, r) => s + rowVat8(r), 0);
+ const revWithVat = missingRevenue ? null : rows.reduce((s, r) => s + rowCuocCoVat(r), 0);
+ const deduct17 = missingRevenue ? null : rows.reduce((s, r) => s + rowKhoanTru17(r), 0);
+ const revAfterDeduct = missingRevenue ? null : rows.reduce((s, r) => s + rowCuocSauTru17(r), 0);
+ const fuelCostTotal = rows.reduce((s, r) => s + number(r.tien_dau ?? r.fuel_cost), 0);
+ const costTotal = missingCost ? null : rows.reduce((s, r) => {
+  if (r.allocation_status === 'UNALLOCATED') {
+   // Với nhóm gộp chưa phân bổ nhưng nằm trọn trong kỳ: cộng chi phí trực tiếp trên dòng (đã giữ 1 lần ở dòng đầu nhóm) + tiền dầu
+   const baseCost = r.direct_cost_before_fuel !== undefined ? number(r.direct_cost_before_fuel) + number(r.tien_dau ?? r.fuel_cost) : number(r.tien_duong) + number(r.cuoc_ra) + number(r.lift_on_fee) + number(r.lift_off_fee) + number(r.phat_sinh) + number(r.tien_dau ?? r.fuel_cost);
+   return s + baseCost;
+  }
+  return s + rowCompanyCost(r);
+ }, 0);
+ const missingFuelCount = rows.filter(isRowFuelMissing).length;
+ const marginAfter17 = missing || incomplete ? null : revAfterDeduct - costTotal;
+ const profitBeforeDeduct = missing || incomplete ? null : revPreVat - costTotal;
+ const receivableDue = rows.reduce((s, r) => s + rowReceivableDue(r), 0);
+ const phoiDue = total(rows, 'phoi_balance_due');
+ const incompleteCost = Boolean(missingFuelCount > 0 || pending.length > 0 || incomplete);
+ return {
+  trips:rows.length,
+  revenue:revPreVat,
+  revenue_pre_vat:revPreVat,
+  vat_8:vat8,
+  revenue_with_vat:revWithVat,
+  deduction_17:deduct17,
+  revenue_after_deduction:revAfterDeduct,
+  recorded_cost:costTotal,
+  profit:marginAfter17,
+  margin_after_deduction_17:marginAfter17,
+  profit_before_deduction:profitBeforeDeduct,
+  fuel_liters:rows.reduce((s,r)=>s+number(r.dau_liters??r.fuel_liters),0),
+  fuel_cost:fuelCostTotal,
+  missing_fuel_price_trips:missingFuelCount,
+  phoi_advance:total(rows,'phoi_total_advance'),
+  phoi_refunded:total(rows,'phoi_total_refunded'),
+  phoi_due:phoiDue,
+  received:total(rows,'received_amount'),
+  offset:total(rows,'offset_amount'),
+  receivable_due:receivableDue,
+  combined_receivable_due:receivableDue+phoiDue,
+  payable:total(rows,'cuoc_ra'),
+  payable_due:rows.reduce((s,r)=>s+Math.max(0,number(r.cuoc_ra)-number(r.sub_paid_amount)),0),
+  unallocated_groups:pending.length,
+  incomplete_shared_cost:incomplete,
+  incomplete_cost:incompleteCost,
+  missing_financial_data:missing
+ };
 }
 function link(label,kind,value,period,entity=null){return {label,target:{kind,...(kind==='trip'?{id:value}:value?{query:value}:{}),period,entity}};}
-const note='Lãi tạm tính chưa trừ lương và chưa quy đổi tiền dầu; cước đã gồm VAT.';
+const note='Chênh lệch tạm tính chưa trừ lương; cước vào gốc là chưa VAT (+8% VAT, khoản trừ 17% là quy tắc tính nội bộ, không phải lãi ròng).';
 export function answerDirector({message,viewContext={},previous={},choice=null,data,now=new Date()}){
  const intent=detectIntent(message,previous),period=resolvePeriod(message,viewContext,previous,now);
  const companyScope=/toan cong ty/.test(normalize(message))||choice?.kind==='company_scope';
@@ -128,51 +226,58 @@ export function answerDirector({message,viewContext={},previous={},choice=null,d
  const prefix=`Phạm vi: ${period.label}${state.entity?' · '+state.entity.value:''}.`;
  if(!rows.length){response.type='no_data';response.reply=prefix+'\nChưa có dữ liệu ghi nhận trong phạm vi này; chưa đủ cơ sở kết luận doanh thu, chi phí hoặc lãi bằng 0.';const months=unique(data.rows.map(r=>r.trip_date?.slice(0,7))).sort();response.clarification={question:'Dữ liệu hiện có ở các kỳ sau:',options:months.slice(-6).map(m=>({label:m,message:`Tổng kết tháng ${Number(m.slice(5))}/${m.slice(0,4)}`}))};return {response,state};}
  if(/tien dau|chi phi dau|gia dau/.test(text)){
-  response.type='insufficient_data';response.reply=prefix+`\nĐã ghi nhận cấp ${new Intl.NumberFormat('vi-VN').format(metrics.fuel_liters)} lít dầu. Chưa có đơn giá dầu được xác nhận trong nguồn phân tích nên chưa tính được tiền dầu; không coi tiền dầu bằng 0.`;response.sources=[link('Đối chiếu các cuốc','trips',state.entity?.value,period,state.entity)];return {response,state};
+  if(metrics.missing_fuel_price_trips > 0 && metrics.fuel_cost === 0){
+   response.type='insufficient_data';response.reply=prefix+`\nĐã ghi nhận cấp ${new Intl.NumberFormat('vi-VN').format(metrics.fuel_liters)} lít dầu. Chưa có đơn giá dầu cho ngày chạy nên chưa tính được tiền dầu; không coi tiền dầu bằng 0.`;response.sources=[link('Đối chiếu các cuốc','trips',state.entity?.value,period,state.entity)];return {response,state};
+  }
+  response.reply=prefix+`\nLượng dầu cấp: ${new Intl.NumberFormat('vi-VN').format(metrics.fuel_liters)} lít · Tiền dầu đã quy đổi: ${money(metrics.fuel_cost)}${metrics.missing_fuel_price_trips>0?` (còn ${metrics.missing_fuel_price_trips} cuốc chưa có giá dầu ngày chạy)`:''}.`;
+  response.sources=[link('Đối chiếu các cuốc','trips',state.entity?.value,period,state.entity)];return {response,state};
  }
  response.notes=[note];
- if(metrics.unallocated_groups)response.notes.push(`${metrics.unallocated_groups} nhóm chi phí chung chưa phân bổ; chưa chốt lãi riêng từng cuốc.`);
- if(metrics.incomplete_shared_cost)response.notes.push('Phạm vi chỉ chứa một phần nhóm chưa phân bổ; chưa đủ cơ sở xác định lãi cho phần này.');
+ if(metrics.missing_fuel_price_trips>0)response.notes.push(`Chưa hoàn chỉnh: có ${metrics.missing_fuel_price_trips} cuốc cấp dầu (${new Intl.NumberFormat('vi-VN').format(metrics.fuel_liters)} lít) chưa nhập đơn giá dầu ngày chạy; chênh lệch tạm tính chưa trừ tiền dầu của các cuốc này.`);
+ if(metrics.unallocated_groups)response.notes.push(`${metrics.unallocated_groups} nhóm chi phí chung chưa phân bổ; chưa chốt chênh lệch riêng từng cuốc.`);
+ if(metrics.incomplete_shared_cost)response.notes.push('Phạm vi chỉ chứa một phần nhóm chưa phân bổ; chưa đủ cơ sở xác định chênh lệch cho phần này.');
  const show=v=>v===null?'Chưa đủ cơ sở':money(v);
- const brief=`${rows.length} cuốc · Doanh thu ${show(metrics.revenue)} · Chi phí đã ghi nhận ${show(metrics.recorded_cost)} · Lãi tạm tính ${show(metrics.profit)}.`;
+ const incompleteTag=metrics.missing_fuel_price_trips>0?' [chưa đủ giá dầu — chưa hoàn chỉnh]':metrics.unallocated_groups>0?' [có nhóm gộp chưa phân bổ]':'';
+ const brief=`${rows.length} cuốc · Cước gốc (chưa VAT) ${show(metrics.revenue)} · VAT 8% ${show(metrics.vat_8)} · Cước có VAT ${show(metrics.revenue_with_vat)} · Khoản trừ 17% nội bộ ${show(metrics.deduction_17)} · Cước sau trừ 17% ${show(metrics.revenue_after_deduction)} · Chi phí công ty ${show(metrics.recorded_cost)} · Chênh lệch tạm tính sau trừ 17% & chi phí (chưa trừ lương)${incompleteTag}: ${show(metrics.margin_after_deduction_17)} (Đối chiếu chênh lệch trước khoản trừ 17%: ${show(metrics.profit_before_deduction)}).`;
  if(intent==='compare'){
   const priorPeriod=comparisonPeriod(period,now);
   if(!priorPeriod){response.reply=prefix+'\nHãy chọn một khoảng ngày để so sánh với kỳ liền trước.';return {response,state};}
   const beforeRows=data.rows.filter(r=>inPeriod(r,priorPeriod)&&filterEntity(r,state.entity));
   const before=metricsFor(beforeRows,data.groups,data.rows);response.comparison={period:priorPeriod,metrics:before,changes:{}};
-  for(const key of ['trips','revenue','recorded_cost','profit']){const current=metrics[key],old=before[key];response.comparison.changes[key]=!beforeRows.length||current===null||old===null?{delta:null,percent:null}:{delta:current-old,percent:old>0?Math.round((current-old)/old*10000)/100:null};}
-  response.reply=prefix+'\n'+brief+'\n'+(beforeRows.length?`Kỳ đối chiếu ${priorPeriod.label}: doanh thu ${show(before.revenue)}, chi phí ${show(before.recorded_cost)}, lãi tạm tính ${show(before.profit)}.`:`Kỳ đối chiếu ${priorPeriod.label} chưa có dữ liệu; không tính phần trăm tăng giảm.`);
-  if(beforeRows.length)for(const[key,label]of [['revenue','Doanh thu'],['recorded_cost','Chi phí'],['profit','Lãi tạm tính']]){const change=response.comparison.changes[key];if(change.delta!==null)response.reply+=`\n${label} ${change.delta===0?'không đổi':(change.delta>0?'tăng ':'giảm ')+money(Math.abs(change.delta))}${change.percent===null?' (không tính tỷ lệ %)':` (${Math.abs(change.percent)}%)`}.`;}
+  for(const key of ['trips','revenue','revenue_with_vat','revenue_after_deduction','recorded_cost','margin_after_deduction_17','profit']){const current=metrics[key],old=before[key];response.comparison.changes[key]=!beforeRows.length||current===null||old===null?{delta:null,percent:null}:{delta:current-old,percent:old>0?Math.round((current-old)/old*10000)/100:null};}
+  response.reply=prefix+'\n'+brief+'\n'+(beforeRows.length?`Kỳ đối chiếu ${priorPeriod.label}: cước gốc (chưa VAT) ${show(before.revenue)}, cước sau trừ 17% ${show(before.revenue_after_deduction)}, chi phí công ty ${show(before.recorded_cost)}, chênh lệch tạm tính sau trừ 17% (chưa trừ lương) ${show(before.margin_after_deduction_17)}.`:`Kỳ đối chiếu ${priorPeriod.label} chưa có dữ liệu; không tính phần trăm tăng giảm.`);
+  if(beforeRows.length)for(const[key,label]of [['revenue','Cước gốc (chưa VAT)'],['revenue_after_deduction','Cước sau trừ 17%'],['recorded_cost','Chi phí công ty'],['margin_after_deduction_17','Chênh lệch tạm tính sau trừ 17% (chưa trừ lương)']]){const change=response.comparison.changes[key];if(change.delta!==null)response.reply+=`\n${label} ${change.delta===0?'không đổi':(change.delta>0?'tăng ':'giảm ')+money(Math.abs(change.delta))}${change.percent===null?' (không tính tỷ lệ %)':` (${Math.abs(change.percent)}%)`}.`;}
   response.sources=[link('Xem kỳ hiện tại','trips',state.entity?.value,period),link('Xem kỳ đối chiếu','trips',state.entity?.value,priorPeriod)];
  }else if(['receivables','payables'].includes(intent)){
   const payable=intent==='payables',key=payable?'subcontractor_name':'customer_name';
   const names=unique(rows.filter(r=>!payable||r.is_subcontractor).map(r=>r[key]));
-  const debtRows=names.map(name=>{const rs=rows.filter(r=>r[key]===name),m=metricsFor(rs,data.groups,data.rows);return {name,trips:rs.length,amount:payable?m.payable:m.revenue,paid:payable?total(rs,'sub_paid_amount'):m.received,offset:payable?0:m.offset,due:payable?m.payable_due:m.receivable_due};}).sort((a,b)=>b.due-a.due);
-  response.items=debtRows.filter(r=>r.due>0).slice(0,10);response.notes.push('Công nợ của cuốc phát sinh trong kỳ, theo tình trạng thanh toán hiện tại; chưa phải số dư lịch sử tại ngày chốt.');
-  response.reply=prefix+'\n'+(payable?`Phải trả nhà xe ${show(metrics.payable)}; còn phải trả ${show(metrics.payable_due)}.`:`Cước phải thu ${show(metrics.revenue)}; đã thu ${show(metrics.received)}; đối trừ ${show(metrics.offset)}; còn phải thu ${show(metrics.receivable_due)}.`)+(response.items.length?'\n'+response.items.map(r=>`${r.name}: còn ${money(r.due)} (${r.trips} cuốc).`).join('\n'):'\nKhông có khoản còn nợ được ghi nhận trong phạm vi này.');
+  const debtRows=names.map(name=>{const rs=rows.filter(r=>r[key]===name),m=metricsFor(rs,data.groups,data.rows);return {name,trips:rs.length,amount:payable?m.payable:m.revenue,amount_with_vat:payable?m.payable:m.revenue_with_vat,paid:payable?total(rs,'sub_paid_amount'):m.received,offset:payable?0:m.offset,due:payable?m.payable_due:m.receivable_due,phoi_due:payable?0:m.phoi_due,combined_due:payable?m.payable_due:m.combined_receivable_due};}).sort((a,b)=>(b.combined_due-a.combined_due)||(b.due-a.due));
+  response.items=debtRows.filter(r=>r.combined_due>0||r.due>0).slice(0,10);response.notes.push('Công nợ của cuốc phát sinh trong kỳ, theo tình trạng thanh toán hiện tại; chưa phải số dư lịch sử tại ngày chốt.');
+  response.reply=prefix+'\n'+(payable?`Phải trả nhà xe ${show(metrics.payable)}; còn phải trả ${show(metrics.payable_due)}.`:`Cước gốc (chưa VAT) ${show(metrics.revenue)} · Cước có VAT ${show(metrics.revenue_with_vat)}; đã thu ${show(metrics.received)}; đối trừ ${show(metrics.offset)}; còn phải thu cước (có VAT) ${show(metrics.receivable_due)} · Tiền phơi trả hộ ${show(metrics.phoi_advance)}, còn chưa hoàn ${show(metrics.phoi_due)} · Tổng phải thu khách ${show(metrics.combined_receivable_due)}.`)+(response.items.length?'\n'+response.items.map(r=>`${r.name}: còn nợ cước ${money(r.due)}${r.phoi_due>0?` + nợ phơi ${money(r.phoi_due)}`:''} (${r.trips} cuốc).`).join('\n'):'\nKhông có khoản còn nợ được ghi nhận trong phạm vi này.');
   response.sources=response.items.length?response.items.map(r=>link(r.name,payable?'payables':'customer',r.name,period)):[link('Đối chiếu chi tiết',payable?'payables':'customer',state.entity?.value,period)];
  }else if(intent==='losses'){
-  const losses=rows.filter(r=>typeof r.trip_profit==='number'&&r.trip_profit<0).sort((a,b)=>a.trip_profit-b.trip_profit);
-  const ids=new Set(rows.map(r=>r.id));const lossGroups=data.groups.filter(g=>g.trips.every(id=>ids.has(id))&&g.group_margin<0);
-  response.items=losses.slice(0,10).map(r=>({id:r.id,date:r.trip_date,customer:r.customer_name,profit:r.trip_profit}));response.metrics.loss_trips=losses.length;response.metrics.loss_groups=lossGroups.length;
-  response.reply=prefix+`\nCó ${losses.length} cuốc đủ cơ sở đang có lãi tạm tính âm và ${lossGroups.length} nhóm có chênh lệch âm.`+(losses.length?'\n'+response.items.map(r=>`${r.id} · ${r.customer}: ${money(r.profit)}.`).join('\n'):'\nKhông tự coi cuốc chưa phân bổ chi phí là có lãi hoặc không lỗ.');
+  const losses=rows.filter(r=>{const m17=rowMarginAfter17(r);return typeof m17==='number'&&m17<0;}).sort((a,b)=>rowMarginAfter17(a)-rowMarginAfter17(b));
+  const ids=new Set(rows.map(r=>r.id));const lossGroups=data.groups.filter(g=>g.trips.every(id=>ids.has(id))&&(typeof g.group_margin_after_deduction==='number'?g.group_margin_after_deduction<0:(typeof g.group_margin==='number'&&g.group_margin<0)));
+  response.items=losses.slice(0,10).map(r=>({id:r.id,date:r.trip_date,customer:r.customer_name,profit:rowMarginAfter17(r),margin_after_deduction_17:rowMarginAfter17(r),profit_before_deduction:rowProfitBeforeDeduction(r),incomplete_fuel:isRowFuelMissing(r)}));response.metrics.loss_trips=losses.length;response.metrics.loss_groups=lossGroups.length;
+  response.reply=prefix+`\nCó ${losses.length} cuốc đủ cơ sở đang có chênh lệch tạm tính sau trừ 17% (chưa trừ lương) âm và ${lossGroups.length} nhóm có chênh lệch âm.`+(losses.length?'\n'+response.items.map(r=>`${r.id} · ${r.customer}: chênh lệch sau trừ 17% ${money(r.profit)}${r.incomplete_fuel?' (chưa đủ giá dầu)':''} (Đối chiếu trước trừ 17%: ${show(r.profit_before_deduction)}).`).join('\n'):'\nKhông tự coi cuốc chưa phân bổ chi phí hoặc thiếu cơ sở là có lãi hoặc không lỗ.');
   response.sources=[...losses.slice(0,8).map(r=>link(r.id,'trip',r.id,period)),...lossGroups.slice(0,3).map(g=>link(g.group_key,'group',g.group_key,period))];
  }else if(['vehicles','drivers'].includes(intent)){
   const driver=intent==='drivers',key=driver?'driver_name':'vehicle_plate';
   const validRows=rows.filter(r=>!r.is_subcontractor&&(!driver||knownDriver(r.driver_name)));
   const names=unique(validRows.map(r=>r[key]));
-  const ranking=names.map(name=>{const own=validRows.filter(r=>r[key]===name),m=metricsFor(own,data.groups,data.rows);return {name,trips:own.length,revenue:m.revenue,profit:m.profit};});
+  const ranking=names.map(name=>{const own=validRows.filter(r=>r[key]===name),m=metricsFor(own,data.groups,data.rows);return {name,trips:own.length,revenue:m.revenue,revenue_after_deduction:m.revenue_after_deduction,recorded_cost:m.recorded_cost,fuel_cost:m.fuel_cost,profit:m.margin_after_deduction_17,margin_after_deduction_17:m.margin_after_deduction_17,profit_before_deduction:m.profit_before_deduction,missing_fuel_price_trips:m.missing_fuel_price_trips,incomplete_cost:m.incomplete_cost};});
   const metric=state.metric,asc=/it nhat|lai thap|thap nhat/.test(normalize(message));
   const available=ranking.filter(r=>r[metric]!==null).sort((a,b)=>(asc?1:-1)*(a[metric]-b[metric])||a.name.localeCompare(b.name,'vi'));
   response.items=available.slice(0,10);response.metrics.unconfirmed_driver_trips=driver?rows.filter(r=>!r.is_subcontractor&&!knownDriver(r.driver_name)).length:0;
-  response.reply=prefix+'\n'+(available.length?`Xếp theo ${metric==='trips'?'số cuốc':metric==='profit'?'lãi tạm tính đủ cơ sở':'doanh thu'}${asc?' từ thấp lên cao':''}:\n`+response.items.map((r,i)=>`${i+1}. ${r.name}: ${r.trips} cuốc, doanh thu ${show(r.revenue)}, lãi tạm tính ${show(r.profit)}.`).join('\n'):`Chưa đủ dữ liệu ${driver?'tài xế được xác nhận':'xe'} để xếp hạng theo chỉ tiêu này.`);
+  response.reply=prefix+'\n'+(available.length?`Xếp theo ${metric==='trips'?'số cuốc':metric==='profit'?'chênh lệch tạm tính sau trừ 17% (chưa trừ lương)':'cước gốc (chưa VAT)'}${asc?' từ thấp lên cao':''}:\n`+response.items.map((r,i)=>`${i+1}. ${r.name}: ${r.trips} cuốc, cước gốc ${show(r.revenue)}, cước sau trừ 17% ${show(r.revenue_after_deduction)}, chi phí công ty ${show(r.recorded_cost)} (tiền dầu ${show(r.fuel_cost)}), chênh lệch sau trừ 17% (chưa trừ lương) ${show(r.margin_after_deduction_17)}${r.missing_fuel_price_trips>0?` [chưa đủ giá dầu ${r.missing_fuel_price_trips} cuốc — chưa hoàn chỉnh]`:''}.`).join('\n'):`Chưa đủ dữ liệu ${driver?'tài xế được xác nhận':'xe'} để xếp hạng theo chỉ tiêu này.`);
   if(driver&&response.metrics.unconfirmed_driver_trips)response.notes.push(`${response.metrics.unconfirmed_driver_trips} cuốc xe công ty chưa xác nhận tài xế; không dùng dữ liệu mẫu để gán lịch sử.`);
   response.notes.push('Số cuốc ít không chứng minh xe đang rảnh hoặc tài xế làm việc kém.');response.sources=response.items.map(r=>link(r.name,'trips',r.name,period,{kind:driver?'driver':'vehicle',value:r.name}));
  }else{
   response.reply=prefix+'\n'+brief;
-  if(intent==='briefing')response.reply+=`\nĐã thu ${show(metrics.received)}, đối trừ ${show(metrics.offset)}, còn phải thu ${show(metrics.receivable_due)}; còn phải trả nhà xe ${show(metrics.payable_due)}.\nDầu cấp ${new Intl.NumberFormat('vi-VN').format(metrics.fuel_liters)} lít.\nCần chú ý: ${metrics.unallocated_groups} nhóm chưa phân bổ chi phí; ${rows.filter(r=>typeof r.trip_profit==='number'&&r.trip_profit<0).length} cuốc đủ cơ sở có lãi tạm tính âm.`;
-  if(intent==='trip'&&rows.length===1){const r=rows[0];response.reply=`${prefix}\n${r.id} · ${r.customer_name} · ${r.route_name}.\nCước vào ${show(r.cuoc_vao)}, chi phí đã ghi nhận ${show(r.direct_cost)}, lãi tạm tính ${show(r.trip_profit)}.`;}
-  if(intent==='customer_trips'||intent==='vehicle')response.items=rows.slice(0,10).map(r=>({id:r.id,date:r.trip_date,customer:r.customer_name,revenue:r.cuoc_vao,profit:r.trip_profit}));
+  const lossCount=rows.filter(r=>{const m17=rowMarginAfter17(r);return typeof m17==='number'&&m17<0;}).length;
+  if(intent==='briefing')response.reply+=`\nĐã thu ${show(metrics.received)}, đối trừ ${show(metrics.offset)}, còn phải thu cước (có VAT) ${show(metrics.receivable_due)} (tiền phơi chưa hoàn ${show(metrics.phoi_due)}); còn phải trả nhà xe ${show(metrics.payable_due)}.\nDầu cấp ${new Intl.NumberFormat('vi-VN').format(metrics.fuel_liters)} lít (tiền dầu đã quy đổi ${show(metrics.fuel_cost)}${metrics.missing_fuel_price_trips>0?`, còn ${metrics.missing_fuel_price_trips} cuốc chưa nhập giá dầu`:''}).\nCần chú ý: ${metrics.unallocated_groups} nhóm chưa phân bổ chi phí; ${lossCount} cuốc đủ cơ sở có chênh lệch sau trừ 17% âm.`;
+  if(intent==='trip'&&rows.length===1){const r=rows[0];const m17=rowMarginAfter17(r);const fuelWarn=isRowFuelMissing(r)?` [chưa đủ giá dầu ngày ${r.trip_date} cho ${number(r.dau_liters??r.fuel_liters)}L — chưa hoàn chỉnh]`:r.allocation_status==='UNALLOCATED'?' [nhóm chi phí gộp chưa phân bổ — chưa hoàn chỉnh]':'';response.reply=`${prefix}\n${r.id} · ${r.customer_name} · ${r.route_name}.\nCước vào gốc (chưa VAT) ${show(rowCuocGoc(r))}, VAT 8% ${show(rowVat8(r))}, cước có VAT ${show(rowCuocCoVat(r))}, khoản trừ 17% nội bộ ${show(rowKhoanTru17(r))}, cước sau trừ 17% ${show(rowCuocSauTru17(r))}, chi phí công ty ${show(rowCompanyCost(r))}, chênh lệch tạm tính sau trừ 17% (chưa trừ lương) ${show(m17)}${fuelWarn} (Đối chiếu chênh lệch trước khoản trừ 17%: ${show(rowProfitBeforeDeduction(r))}).`;}
+  if(intent==='customer_trips'||intent==='vehicle')response.items=rows.slice(0,10).map(r=>({id:r.id,date:r.trip_date,customer:r.customer_name,revenue:rowCuocGoc(r),revenue_after_deduction:rowCuocSauTru17(r),profit:rowMarginAfter17(r),margin_after_deduction_17:rowMarginAfter17(r),profit_before_deduction:rowProfitBeforeDeduction(r),incomplete_fuel:isRowFuelMissing(r)}));
   response.sources=intent==='trip'&&rows.length===1?[link('Xem chi tiết cuốc','trip',rows[0].id,period)]:response.items.length?response.items.slice(0,8).map(r=>link(`${r.date} · ${r.id}`,'trip',r.id,period)):[link('Đối chiếu các cuốc','trips',state.entity?.value,period),link('Xem công nợ khách','customer',null,period)];
  }
  for(const source of response.sources)if(!source.target.entity&&state.entity)source.target.entity=state.entity;

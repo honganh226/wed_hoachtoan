@@ -20,6 +20,7 @@ import { relations } from 'drizzle-orm';
 export const USER_ROLES = {
   DIRECTOR: 'DIRECTOR',
   ACCOUNTANT: 'ACCOUNTANT',
+  SECRETARY: 'SECRETARY',
   AREA_MANAGER: 'AREA_MANAGER',
   DRIVER: 'DRIVER'
 };

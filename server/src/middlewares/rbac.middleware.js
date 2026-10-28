@@ -13,8 +13,10 @@ export function requireRole(...allowedRoles) {
     }
 
     const userRole = req.user.role;
+    const tokenRole = req.user.tokenRole || userRole;
+    const dbRole = req.user.dbRole || null;
 
-    if (!roles.includes(userRole)) {
+    if (!roles.includes(userRole) || !roles.includes(tokenRole) || (dbRole && !roles.includes(dbRole))) {
       return errorResponse(
         res,
         `Quyền truy cập bị từ chối. Vai trò [${userRole}] không được phép thực hiện hành động này. Yêu cầu: [${roles.join(', ')}]`,

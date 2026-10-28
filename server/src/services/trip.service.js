@@ -18,6 +18,10 @@ import { isPeriodLocked } from '../services/periodLock.service.js';
 import { TRIP_STATUSES, VAT_TYPES, EIR_STATUSES, EIR_PAID_STATUSES } from '../db/schema.js';
 import { validateIso6346 } from '../utils/iso6346.js';
 import { broadcastPLUpdate } from './plEngine.service.js';
+import { calculateFareBreakdown, calculateFuelCost, calculateTripFinancials, normalizeContainerType, toIntVnd, isValidCalendarDate } from '../utils/tripFinancials.js';
+import { getFuelPriceForDate } from './fuelPrice.service.js';
+import { createEirAdvance } from './eirAdvance.service.js';
+import { invalidateExcelMonthCache } from './excelMonthService.js';
 if(!db.prepare('PRAGMA table_info(expenses)').all().some(c=>c.name==='source_component'))db.exec('ALTER TABLE expenses ADD COLUMN source_component TEXT');
 
 /**
@@ -99,7 +103,7 @@ export function createTrip({ tripData, user, ipAddress = null }) {
     area_id = null
   } = tripData;
 
-  if (!trip_date || !/^\d{4}-\d{2}-\d{2}$/.test(trip_date) || Number.isNaN(Date.parse(trip_date))) throw new Error('Ngày chạy phải có dạng YYYY-MM-DD hợp lệ');
+  if (!trip_date || !isValidCalendarDate(trip_date)) throw new Error('Ngày chạy phải có dạng YYYY-MM-DD hợp lệ trong lịch thực tế');
   for(const field of ['trip_revenue','subcontractor_cost','toll_fee','port_fee','parking_fee','handling_fee','meal_allowance','other_costs','fuel_liters']) {
     const value=tripData[field];if(value!=null&&value!==''&&(!Number.isFinite(Number(value))||Number(value)<0))throw Error('Số tiền/lượng không hợp lệ: '+field);
   }
@@ -155,25 +159,44 @@ export function createTrip({ tripData, user, ipAddress = null }) {
   }
   if (!finalCustomerName) finalCustomerName = 'KHÁCH LẺ';
 
-  // Tính VAT:
-  const numRevenue = Math.round(Number(autoRevenue) || 0);
-  let vatAmount = 0;
-  let totalRevenue = numRevenue;
+  // Chuẩn hóa tiền cước theo quy tắc ngày 28/10/2026:
+  // Cước gốc là chưa VAT -> +8% VAT -> -17% nội bộ
+  const rawBaseFare = tripData.base_revenue !== undefined && tripData.base_revenue !== null
+    ? Number(tripData.base_revenue)
+    : tripData.cuoc_goc !== undefined && tripData.cuoc_goc !== null
+    ? Number(tripData.cuoc_goc)
+    : Number(autoRevenue) || 0;
 
-  if (vat_type === VAT_TYPES.V) {
-    vatAmount = 0; // No tax rate has been approved; preserve gross fare.
-  } else {
-    vatAmount = 0;
-  }
+  const fareCalc = calculateFareBreakdown(rawBaseFare);
+  const numRevenue = fareCalc.cuoc_goc;
+  const vatAmount = fareCalc.vat_amount;
+  const totalRevenue = fareCalc.cuoc_co_vat;
+  const deductionAmount = fareCalc.khoan_tru_17;
+  const revenueAfterDeduction = fareCalc.cuoc_sau_tru_17;
+
+  // Tách nâng và hạ (4 ô độc lập: nơi nâng, phí nâng, nơi hạ, phí hạ)
+  const liftOnLocation = String(tripData.lift_on_location ?? pickup_location ?? '').trim() || null;
+  const liftOffLocation = String(tripData.lift_off_location ?? dropoff_location ?? '').trim() || null;
+  const numLiftOn = Math.max(0, toIntVnd(tripData.lift_on_fee ?? tripData.phi_nang ?? 0));
+  const numLiftOff = Math.max(0, toIntVnd(tripData.lift_off_fee ?? tripData.phi_ha ?? 0));
+  const hasSplitLift = numLiftOn > 0 || numLiftOff > 0;
+  // Chỉ giữ port_fee cũ nếu chưa có phí nâng/hạ tách riêng (chống cộng trùng)
+  const numPort = hasSplitLift ? 0 : Math.max(0, toIntVnd(port_fee));
+  const portClassStatus = !hasSplitLift && numPort > 0 ? 'NEEDS_CLASSIFICATION' : (hasSplitLift ? 'CLASSIFIED' : 'NONE');
 
   // Tính các khoản chi phí chi tiết
   const numSubCost = is_subcontractor ? Math.round(Number(subcontractor_cost) || 0) : 0;
   const numToll = Math.round(Number(toll_fee) || 0);
-  const numPort = Math.round(Number(port_fee) || 0);
   const numParking = Math.round(Number(parking_fee) || 0);
   const numHandling = Math.round(Number(handling_fee) || 0);
   const numMeal = Math.round(Number(meal_allowance) || 0);
-  const numFuelLiters = Number(fuel_liters) || 0;
+  const numFuelLiters = Math.max(0, Number(fuel_liters) || 0);
+
+  // Tra cứu đơn giá dầu của đúng ngày chạy (trip_date)
+  const dailyFuelPrice = tripData.fuel_unit_price !== undefined && tripData.fuel_unit_price !== null && Number(tripData.fuel_unit_price) > 0
+    ? toIntVnd(tripData.fuel_unit_price)
+    : getFuelPriceForDate(trip_date);
+  const fuelCalc = calculateFuelCost(numFuelLiters, dailyFuelPrice);
 
   // Xử lý danh sách chi phí khác
   let extraOtherCosts = 0;
@@ -182,14 +205,36 @@ export function createTrip({ tripData, user, ipAddress = null }) {
   }
   const numOtherCosts = (Math.round(Number(other_costs) || 0)) + extraOtherCosts;
 
-  // Tổng chi phí tiền đã ghi nhận (không bao gồm lương tài xế và chưa tính tiền dầu)
-  const totalDirectCosts = numSubCost + numToll + numPort + numParking + numHandling + numMeal + numOtherCosts;
-  // Lãi tạm tính = Cước vào - các chi phí tiền đã ghi nhận
-  const tempProfit = totalRevenue - totalDirectCosts;
+  // Chuẩn hóa loại container (bảo toàn 40FR, 40RF, 45, 20DC, 40DC, 40HC và giá trị nguồn chưa rõ)
+  const contNorm = normalizeContainerType(
+    tripData.container_type_raw || tripData.container_type || container_size,
+    container_size
+  );
+
+  // Tính toán 7 chỉ tiêu tài chính chuyến
+  const fin = calculateTripFinancials({
+    baseFare: numRevenue,
+    subcontractorCost: numSubCost,
+    tollFee: numToll,
+    liftOnFee: numLiftOn,
+    liftOffFee: numLiftOff,
+    legacyPortFee: numPort,
+    fuelLiters: numFuelLiters,
+    fuelUnitPrice: fuelCalc.fuel_unit_price,
+    parkingFee: numParking,
+    handlingFee: numHandling,
+    mealAllowance: numMeal,
+    otherCosts: numOtherCosts,
+  });
+
+  const totalDirectCosts = fin.chi_phi_cong_ty;
+  const tempProfit = fin.chenh_lech_sau_tru_17;
 
   const tripId = uuidv4();
   const tripCode = generateTripCode(trip_date);
   const now = new Date().toISOString();
+  const paymentTerms = String(tripData.payment_terms || '').trim() || null;
+  const sttSource = tripData.stt_source != null ? parseInt(tripData.stt_source, 10) : null;
 
   // Insert trip vào DB
   const stmt = db.prepare(`
@@ -197,7 +242,10 @@ export function createTrip({ tripData, user, ipAddress = null }) {
       id, trip_code, trip_date, vehicle_id, vehicle_plate, driver_id, driver_name,
       route_id, route_name, customer_id, customer_name, area_id,
       pickup_location, dropoff_location, vat_type, trip_revenue, vat_amount,
-      total_revenue, driver_salary, status, is_subcontractor, subcontractor_id,
+      total_revenue, base_revenue, vat_rate, deduction_rate, deduction_amount, revenue_after_deduction,
+      lift_on_location, lift_on_fee, lift_off_location, lift_off_fee, port_fee_classification_status,
+      fuel_unit_price, fuel_cost, container_type_raw, payment_terms, stt_source,
+      driver_salary, status, is_subcontractor, subcontractor_id,
       subcontractor_name, subcontractor_cost, toll_fee, port_fee, parking_fee,
       handling_fee, meal_allowance, fuel_liters, other_costs,
       customer_payment_status, subcontractor_payment_status, group_id, source_type,
@@ -207,7 +255,10 @@ export function createTrip({ tripData, user, ipAddress = null }) {
       ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
+      ?, ?, 0.08, 0.17, ?, ?,
       ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?, ?,
@@ -219,8 +270,11 @@ export function createTrip({ tripData, user, ipAddress = null }) {
   stmt.run(
     tripId, tripCode, trip_date, vehicle_id || null, vehiclePlate, driver_id || null, driverName,
     route_id && db.prepare('SELECT id FROM routes WHERE id=?').get(route_id) ? route_id : null, routeName, customer_id || null, finalCustomerName, resolvedAreaId || null,
-    pickup_location || null, dropoff_location || null, vat_type, numRevenue, vatAmount,
-    totalRevenue, Math.round(Number(autoDriverSalary) || 0), TRIP_STATUSES.NEW,
+    liftOnLocation, liftOffLocation, vat_type, numRevenue, vatAmount,
+    totalRevenue, numRevenue, deductionAmount, revenueAfterDeduction,
+    liftOnLocation, numLiftOn, liftOffLocation, numLiftOff, portClassStatus,
+    fuelCalc.fuel_unit_price, fuelCalc.fuel_cost, contNorm.container_code || container_size || '40DC', paymentTerms, sttSource,
+    Math.round(Number(autoDriverSalary) || 0), TRIP_STATUSES.NEW,
     is_subcontractor ? 1 : 0, subcontractor_id || null, finalSubName || null, numSubCost,
     numToll, numPort, numParking, numHandling, numMeal, numFuelLiters, numOtherCosts,
     customer_payment_status, subcontractor_payment_status, group_id || null, source_type,
@@ -230,23 +284,26 @@ export function createTrip({ tripData, user, ipAddress = null }) {
 
   // Lưu chi tiết các khoản chi phí vào bảng expenses để báo cáo chi phí đồng bộ
   const expenseEntries = [];
-  if (numToll > 0) expenseEntries.push({ type: 'TOLL_BOT', amount: numToll, note: 'Phí cầu đường / cao tốc' });
-  if (numPort > 0) expenseEntries.push({ type: 'LIFT_ON', amount: numPort, note: 'Phí cảng / nâng hạ' });
-  if (numParking > 0) expenseEntries.push({ type: 'PARKING', amount: numParking, note: 'Phí bến bãi / đỗ xe' });
-  if (numHandling > 0) expenseEntries.push({ type: 'HANDLING', amount: numHandling, note: 'Tiền bốc xếp' });
-  if (numMeal > 0) expenseEntries.push({ type: 'MEAL_ALLOWANCE', amount: numMeal, note: 'Phụ cấp ăn / chuyến' });
-  if (numSubCost > 0) expenseEntries.push({ type: 'SUBCONTRACTOR', amount: numSubCost, note: `Cước thuê xe ngoài: ${finalSubName}` });
+  if (numToll > 0) expenseEntries.push({ type: 'TOLL_BOT', amount: numToll, note: 'Phí cầu đường / cao tốc', comp: 'toll_fee' });
+  if (numLiftOn > 0) expenseEntries.push({ type: 'LIFT_ON', amount: numLiftOn, note: `Phí nâng${liftOnLocation ? ' tại ' + liftOnLocation : ''}`, comp: 'lift_on_fee' });
+  if (numLiftOff > 0) expenseEntries.push({ type: 'LIFT_OFF', amount: numLiftOff, note: `Phí hạ${liftOffLocation ? ' tại ' + liftOffLocation : ''}`, comp: 'lift_off_fee' });
+  if (numPort > 0) expenseEntries.push({ type: 'LIFT_ON', amount: numPort, note: 'Phí cảng / nâng hạ (chưa tách)', comp: 'port_fee' });
+  if (numParking > 0) expenseEntries.push({ type: 'PARKING', amount: numParking, note: 'Phí bến bãi / đỗ xe', comp: 'parking_fee' });
+  if (numHandling > 0) expenseEntries.push({ type: 'HANDLING', amount: numHandling, note: 'Tiền bốc xếp', comp: 'handling_fee' });
+  if (numMeal > 0) expenseEntries.push({ type: 'MEAL_ALLOWANCE', amount: numMeal, note: 'Phụ cấp ăn / chuyến', comp: 'meal_allowance' });
+  if (numSubCost > 0) expenseEntries.push({ type: 'SUBCONTRACTOR', amount: numSubCost, note: `Cước thuê xe ngoài: ${finalSubName}`, comp: 'subcontractor_cost' });
+  if (fuelCalc.fuel_cost > 0) expenseEntries.push({ type: 'FUEL', amount: fuelCalc.fuel_cost, note: `Tiền dầu (${numFuelLiters}L × ${fuelCalc.fuel_unit_price.toLocaleString('vi-VN')}đ)`, comp: 'fuel_cost' });
 
   if (Array.isArray(other_expenses)) {
     for (const exp of other_expenses) {
       const amt = Math.round(Number(exp.amount) || 0);
       if (amt > 0) {
-        expenseEntries.push({ type: 'OTHER', amount: amt, note: exp.name || exp.note || 'Chi phí khác' });
+        expenseEntries.push({ type: 'OTHER', amount: amt, note: exp.name || exp.note || 'Chi phí khác', comp: 'other_costs' });
       }
     }
   }
   if (!expenseEntries.some(e=>e.type==='OTHER') && numOtherCosts > 0) {
-    expenseEntries.push({ type: 'OTHER', amount: numOtherCosts, note: 'Chi phí khác' });
+    expenseEntries.push({ type: 'OTHER', amount: numOtherCosts, note: 'Chi phí khác', comp: 'other_costs' });
   }
 
   for (const exp of expenseEntries) {
@@ -258,7 +315,7 @@ export function createTrip({ tripData, user, ipAddress = null }) {
       ) VALUES (?, ?, ?, ?, 'VARIABLE', ?, ?, ?, NULL, 0, ?, ?, ?)
     `).run(
       expId, tripId, vehicle_id || null, exp.type, exp.amount,
-      trip_date, exp.note, now, now, ({TOLL_BOT:'toll_fee',LIFT_ON:'port_fee',PARKING:'parking_fee',HANDLING:'handling_fee',MEAL_ALLOWANCE:'meal_allowance',SUBCONTRACTOR:'subcontractor_cost',OTHER:'other_costs'})[exp.type]
+      trip_date, exp.note, now, now, exp.comp
     );
   }
 
@@ -268,29 +325,30 @@ export function createTrip({ tripData, user, ipAddress = null }) {
 
   if (Array.isArray(tripData.containers) && tripData.containers.length > 0) {
     tripData.containers.forEach((c, idx) => {
+      const cNorm = normalizeContainerType(c.container_type || c.container_size, c.container_size);
       containerListToInsert.push({
         container_number: c.container_number ? c.container_number.trim().toUpperCase() : null,
-        container_size: c.container_size || (tripData.is_multi_container ? '20' : '40'),
-        container_type: c.container_type || 'DC',
+        container_size: cNorm.container_size || c.container_size || (tripData.is_multi_container ? '20' : '40'),
+        container_type: cNorm.container_kind || c.container_type || 'DC',
         is_second_cont: c.is_second_cont ? 1 : (idx > 0 ? 1 : 0),
-        pickup_yard: c.pickup_yard || pickup_location || null,
-        dropoff_yard: c.dropoff_yard || dropoff_location || null,
-        lift_on_fee: Math.round(Number(c.lift_on_fee) || 0),
-        lift_off_fee: Math.round(Number(c.lift_off_fee) || 0),
+        pickup_yard: c.pickup_yard || liftOnLocation || null,
+        dropoff_yard: c.dropoff_yard || liftOffLocation || null,
+        lift_on_fee: idx === 0 ? (Math.round(Number(c.lift_on_fee) || 0) || numLiftOn) : Math.round(Number(c.lift_on_fee) || 0),
+        lift_off_fee: idx === 0 ? (Math.round(Number(c.lift_off_fee) || 0) || numLiftOff) : Math.round(Number(c.lift_off_fee) || 0),
         cargo_weight: Math.round(Number(c.cargo_weight) || 0),
         notes: c.notes || null
       });
     });
-  } else if (container_number || pickup_location || dropoff_location) {
+  } else if (container_number || liftOnLocation || liftOffLocation || contNorm.container_code) {
     containerListToInsert.push({
       container_number: container_number ? container_number.trim().toUpperCase() : null,
-      container_size: container_size || '40',
-      container_type: 'DC',
+      container_size: contNorm.container_size || container_size || '40',
+      container_type: contNorm.container_kind || 'DC',
       is_second_cont: 0,
-      pickup_yard: pickup_location || null,
-      dropoff_yard: dropoff_location || null,
-      lift_on_fee: 0,
-      lift_off_fee: 0,
+      pickup_yard: liftOnLocation || null,
+      dropoff_yard: liftOffLocation || null,
+      lift_on_fee: numLiftOn,
+      lift_off_fee: numLiftOff,
       cargo_weight: 0,
       notes: notes || null
     });
@@ -312,7 +370,65 @@ export function createTrip({ tripData, user, ipAddress = null }) {
     savedContainers.push({ id: cId, ...c });
   }
 
+  // Tạo khoản Tiền phơi trả hộ chủ hàng (nếu có nhập phoi_advance / eir_advances)
+  const savedPhoiAdvances = [];
+  const rawPhoiList = Array.isArray(tripData.eir_advances)
+    ? tripData.eir_advances
+    : (Number(tripData.phoi_advance_amount || tripData.tien_phoi || 0) > 0 || tripData.phoi_raw_source_value)
+    ? [{
+        advance_amount: tripData.phoi_advance_amount ?? tripData.tien_phoi ?? 0,
+        advance_date: tripData.phoi_advance_date || trip_date,
+        reference_code: tripData.phoi_reference_code || '',
+        raw_source_value: tripData.phoi_raw_source_value || '',
+        is_non_financial_note: Boolean(tripData.phoi_is_non_financial_note),
+        payment_term_type: tripData.phoi_payment_term_type || (tripData.phoi_is_tuoi ? 'TUOI' : (tripData.phoi_due_date ? 'HEN_NGAY' : 'CHUA_DAT')),
+        due_date: tripData.phoi_due_date || null,
+        notes: tripData.phoi_notes || '',
+      }]
+    : [];
+
+  for (const phoiItem of rawPhoiList) {
+    const amt = toIntVnd(phoiItem.advance_amount);
+    const rawSource = String(phoiItem.raw_source_value || '').trim();
+    if (amt > 0 || rawSource || phoiItem.is_non_financial_note) {
+      const createdAdv = createEirAdvance({
+        trip_id: tripId,
+        customer_name: finalCustomerName,
+        advance_amount: amt,
+        advance_date: phoiItem.advance_date || trip_date,
+        reference_code: phoiItem.reference_code || '',
+        raw_source_value: rawSource,
+        is_non_financial_note: Boolean(phoiItem.is_non_financial_note || (amt === 0 && rawSource)),
+        payment_term_type: phoiItem.payment_term_type || (phoiItem.is_tuoi ? 'TUOI' : (phoiItem.due_date ? 'HEN_NGAY' : 'CHUA_DAT')),
+        due_date: phoiItem.due_date || null,
+        notes: phoiItem.notes || '',
+        actor: user?.username || 'SYSTEM',
+      });
+      savedPhoiAdvances.push(createdAdv);
+    }
+  }
+
+  // Tự động lưu địa điểm nâng / hạ mới vào danh mục ports nếu chưa có
+  for (const loc of [liftOnLocation, liftOffLocation]) {
+    if (loc && loc.length >= 2) {
+      const existsPort = db.prepare('SELECT id FROM ports WHERE UPPER(name) = UPPER(?)').get(loc);
+      if (!existsPort) {
+        try {
+          db.prepare('INSERT INTO ports (id, code, name, port_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+            uuidv4(),
+            `P-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 100)}`,
+            loc,
+            'PORT',
+            now,
+            now
+          );
+        } catch (_e) { /* ignore unique code collision */ }
+      }
+    }
+  }
+
   if(other_expenses.length)db.prepare('UPDATE trips SET raw_data=? WHERE id=?').run(JSON.stringify({other_expenses}),tripId);
+  invalidateExcelMonthCache();
 
   // Ghi Audit Log
   recordAuditLog({
@@ -357,9 +473,22 @@ export function createTrip({ tripData, user, ipAddress = null }) {
     driver_name: driverName,
     route_name: routeName,
     customer_name: finalCustomerName,
+    base_revenue: numRevenue,
+    cuoc_goc: numRevenue,
     trip_revenue: numRevenue,
+    vat_amount: vatAmount,
+    vat_8: vatAmount,
     total_revenue: totalRevenue,
+    cuoc_co_vat: totalRevenue,
+    deduction_amount: deductionAmount,
+    khoan_tru_17: deductionAmount,
+    revenue_after_deduction: revenueAfterDeduction,
+    cuoc_sau_tru_17: revenueAfterDeduction,
     vat_type,
+    lift_on_location: liftOnLocation,
+    lift_on_fee: numLiftOn,
+    lift_off_location: liftOffLocation,
+    lift_off_fee: numLiftOff,
     subcontractor_cost: numSubCost,
     toll_fee: numToll,
     port_fee: numPort,
@@ -367,20 +496,31 @@ export function createTrip({ tripData, user, ipAddress = null }) {
     handling_fee: numHandling,
     meal_allowance: numMeal,
     fuel_liters: numFuelLiters,
+    fuel_unit_price: fuelCalc.fuel_unit_price,
+    fuel_cost: fuelCalc.fuel_cost,
+    is_fuel_price_missing: fuelCalc.is_fuel_price_missing,
     other_costs: numOtherCosts,
     total_direct_costs: totalDirectCosts,
+    chi_phi_cong_ty: totalDirectCosts,
     temp_profit: tempProfit,
+    chenh_lech_sau_tru_17: fin.chenh_lech_sau_tru_17,
+    chenh_lech_truoc_tru_goc: fin.chenh_lech_truoc_tru_goc,
+    chenh_lech_truoc_tru_co_vat: fin.chenh_lech_truoc_tru_co_vat,
     customer_payment_status,
     subcontractor_payment_status,
+    payment_terms: paymentTerms,
+    container_type_raw: contNorm.container_code || container_size || '40DC',
     container_number: primaryCont?.container_number || null,
     second_container_number: secondCont?.container_number || null,
     is_multi_container: !!secondCont,
-    containers: savedContainers
+    containers: savedContainers,
+    eir_advances: savedPhoiAdvances
   };
 }
 
 /**
  * Nhân bản cuốc xe hôm qua (Duplicate Trip)
+ * Lưu ý: KHÔNG sao chép trạng thái đã thanh toán hoặc đã hoàn phơi.
  */
 export function duplicateTrip({ sourceTripId, targetDate, user, ipAddress = null }) {
   const source = db.prepare('SELECT * FROM trips WHERE id = ?').get(sourceTripId);
@@ -401,11 +541,17 @@ export function duplicateTrip({ sourceTripId, targetDate, user, ipAddress = null
     area_id: source.area_id,
     pickup_location: source.pickup_location,
     dropoff_location: source.dropoff_location,
+    lift_on_location: source.lift_on_location || source.pickup_location,
+    lift_on_fee: source.lift_on_fee || 0,
+    lift_off_location: source.lift_off_location || source.dropoff_location,
+    lift_off_fee: source.lift_off_fee || 0,
     vat_type: source.vat_type,
-    trip_revenue: source.trip_revenue,
+    base_revenue: source.base_revenue || source.trip_revenue,
+    trip_revenue: source.base_revenue || source.trip_revenue,
     driver_salary: source.driver_salary,
     container_number: '', // Không copy số cont để tránh trùng số
     container_size: container?.container_size || '40',
+    container_type_raw: source.container_type_raw || container?.container_size || '40DC',
     notes: `Nhân bản từ ${source.trip_code}`,
     is_subcontractor: source.is_subcontractor,
     subcontractor_id: source.subcontractor_id,
@@ -418,8 +564,8 @@ export function duplicateTrip({ sourceTripId, targetDate, user, ipAddress = null
     meal_allowance: source.meal_allowance,
     fuel_liters: source.fuel_liters,
     other_costs: source.other_costs,
-    customer_payment_status: source.customer_payment_status,
-    subcontractor_payment_status: source.subcontractor_payment_status
+    customer_payment_status: 'CHUA_TT', // Không sao chép trạng thái đã thu
+    subcontractor_payment_status: 'CHUA_TT'
   };
 
   return createTrip({ tripData: newTripData, user, ipAddress });
@@ -436,14 +582,55 @@ export function updateTrip({ tripId, updateData, user, reason = '', ipAddress = 
     throw new Error(`Kỳ kế toán tháng [${oldTrip.trip_date.slice(0, 7)}] đã bị KHÓA SỔ. Không thể chỉnh sửa cuốc xe này.`);
   }
 
-  // Nếu người dùng đổi ngày chuyến, kiểm tra ngày mới có bị khóa không
+  // Nếu người dùng đổi ngày chuyến, kiểm tra tính hợp lệ và khóa sổ
   if (updateData.trip_date && updateData.trip_date !== oldTrip.trip_date) {
+    if (!isValidCalendarDate(updateData.trip_date)) {
+      throw new Error(`Ngày chạy mới không hợp lệ trong lịch thực tế: ${updateData.trip_date}`);
+    }
     if (isPeriodLocked(updateData.trip_date)) {
       throw new Error(`Kỳ kế toán tháng mới [${updateData.trip_date.slice(0, 7)}] đã bị KHÓA SỔ.`);
     }
   }
 
   const now = new Date().toISOString();
+  const patched = { ...updateData };
+
+  // Nếu có cập nhật cước gốc (base_revenue / cuoc_goc / trip_revenue), tự động tính lại VAT 8%, tổng có VAT và trừ 17%
+  if (patched.base_revenue !== undefined || patched.cuoc_goc !== undefined || patched.trip_revenue !== undefined) {
+    const rawBase = patched.base_revenue ?? patched.cuoc_goc ?? patched.trip_revenue;
+    const fareCalc = calculateFareBreakdown(rawBase);
+    patched.base_revenue = fareCalc.cuoc_goc;
+    patched.trip_revenue = fareCalc.cuoc_goc;
+    patched.vat_amount = fareCalc.vat_amount;
+    patched.total_revenue = fareCalc.cuoc_co_vat;
+    patched.deduction_amount = fareCalc.khoan_tru_17;
+    patched.revenue_after_deduction = fareCalc.cuoc_sau_tru_17;
+  }
+
+  // Nếu đổi ngày chạy hoặc lượng dầu, tính lại tiền dầu theo giá dầu ngày chạy
+  if (patched.trip_date !== undefined || patched.fuel_liters !== undefined) {
+    const targetDate = patched.trip_date || oldTrip.trip_date;
+    const targetLiters = patched.fuel_liters !== undefined ? Number(patched.fuel_liters) : Number(oldTrip.fuel_liters || 0);
+    const price = getFuelPriceForDate(targetDate);
+    const fuelCalc = calculateFuelCost(targetLiters, price);
+    patched.fuel_unit_price = fuelCalc.fuel_unit_price;
+    patched.fuel_cost = fuelCalc.fuel_cost;
+  }
+
+  if (patched.lift_on_location !== undefined && patched.pickup_location === undefined) {
+    patched.pickup_location = patched.lift_on_location;
+  }
+  if (patched.lift_off_location !== undefined && patched.dropoff_location === undefined) {
+    patched.dropoff_location = patched.lift_off_location;
+  }
+  if (patched.lift_on_fee !== undefined || patched.lift_off_fee !== undefined) {
+    const nextLiftOn = patched.lift_on_fee !== undefined ? toIntVnd(patched.lift_on_fee) : toIntVnd(oldTrip.lift_on_fee);
+    const nextLiftOff = patched.lift_off_fee !== undefined ? toIntVnd(patched.lift_off_fee) : toIntVnd(oldTrip.lift_off_fee);
+    if (nextLiftOn > 0 || nextLiftOff > 0) {
+      patched.port_fee_classification_status = 'CLASSIFIED';
+    }
+  }
+
   const fields = [];
   const params = [];
 
@@ -451,7 +638,10 @@ export function updateTrip({ tripId, updateData, user, reason = '', ipAddress = 
     'trip_date', 'vehicle_id', 'vehicle_plate', 'driver_id', 'driver_name',
     'route_id', 'route_name', 'customer_id', 'customer_name', 'area_id',
     'pickup_location', 'dropoff_location', 'vat_type', 'trip_revenue',
-    'vat_amount', 'total_revenue', 'driver_salary', 'status',
+    'vat_amount', 'total_revenue', 'base_revenue', 'deduction_amount', 'revenue_after_deduction',
+    'lift_on_location', 'lift_on_fee', 'lift_off_location', 'lift_off_fee', 'port_fee_classification_status',
+    'fuel_unit_price', 'fuel_cost', 'container_type_raw', 'payment_terms', 'stt_source',
+    'driver_salary', 'status',
     'is_subcontractor', 'subcontractor_id', 'subcontractor_name', 'subcontractor_cost',
     'toll_fee', 'port_fee', 'parking_fee', 'handling_fee', 'meal_allowance',
     'fuel_liters', 'other_costs', 'customer_payment_status', 'subcontractor_payment_status',
@@ -459,10 +649,10 @@ export function updateTrip({ tripId, updateData, user, reason = '', ipAddress = 
   ];
 
   for (const key of allowedFields) {
-    if (updateData[key] !== undefined) {
+    if (patched[key] !== undefined) {
       fields.push(`${key} = ?`);
-      let val = updateData[key];
-      if (['trip_revenue', 'vat_amount', 'total_revenue', 'driver_salary', 'subcontractor_cost'].includes(key)) {
+      let val = patched[key];
+      if (['trip_revenue', 'vat_amount', 'total_revenue', 'base_revenue', 'deduction_amount', 'revenue_after_deduction', 'lift_on_fee', 'lift_off_fee', 'fuel_cost', 'driver_salary', 'subcontractor_cost'].includes(key)) {
         val = Math.round(Number(val) || 0);
       }
       params.push(val);
@@ -477,37 +667,178 @@ export function updateTrip({ tripId, updateData, user, reason = '', ipAddress = 
   params.push(now);
   params.push(tripId);
 
-  db.prepare(`UPDATE trips SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+  let updatedTrip = null;
+  let phoiCustomerSyncSummary = null;
 
-  const componentTypes={toll_fee:'TOLL_BOT',port_fee:'LIFT_ON',parking_fee:'PARKING',handling_fee:'HANDLING',meal_allowance:'MEAL_ALLOWANCE',subcontractor_cost:'SUBCONTRACTOR',other_costs:'OTHER'};
-  for(const [component,type] of Object.entries(componentTypes)){
-    if(updateData[component]===undefined)continue;
-    const entries=db.prepare('SELECT * FROM expenses WHERE trip_id=? AND source_component=?').all(tripId,component);
-    const amount=Math.round(Number(updateData[component])||0);
-    if(entries.reduce((sum,e)=>sum+e.amount,0)===amount)continue;
-    db.prepare('DELETE FROM expenses WHERE trip_id=? AND source_component=?').run(tripId,component);
-    if(amount)db.prepare("INSERT INTO expenses(id,trip_id,vehicle_id,expense_type,category,amount,expense_date,note,is_anomaly,created_at,updated_at,source_component) VALUES(?,?,?,?,'VARIABLE',?,?,?,0,?,?,?)").run(uuidv4(),tripId,oldTrip.vehicle_id,type,amount,updateData.trip_date||oldTrip.trip_date,'Điều chỉnh '+component,now,now,component);
-  }
-  const updatedTrip = db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId);
+  const tx = db.transaction(() => {
+    db.prepare(`UPDATE trips SET ${fields.join(', ')} WHERE id = ?`).run(...params);
 
-  // Ghi Audit Log
-  recordAuditLog({
-    userId: user?.userId || user?.id,
-    username: user?.username || 'SYSTEM',
-    action: AUDIT_ACTIONS.UPDATE,
-    tableName: 'trips',
-    recordId: tripId,
-    oldValues: oldTrip,
-    newValues: updatedTrip,
-    reason: reason || `Cập nhật thông tin chuyến xe ${oldTrip.trip_code}`,
-    ipAddress
+    // Xử lý khoản phơi trả hộ khi đổi tên chủ hàng của chuyến (Task B05)
+    // - Khoản đã hoàn (DA_HOAN / TƯƠI / balance_due === 0) hoặc ghi chú không tài chính: LUÔN giữ nguyên chủ hàng cũ.
+    // - Khoản đang mở (balance_due > 0): Mặc định giữ nguyên chủ hàng cũ và cảnh báo rõ; chỉ chuyển sang chủ hàng mới khi có xác nhận rõ ràng (sync_open_advances_customer = true hoặc phoi_customer_sync_mode = 'SYNC_OPEN').
+    // - Tuyệt đối không nuốt lỗi đồng bộ bằng catch rỗng.
+    if (patched.customer_name && patched.customer_name !== oldTrip.customer_name) {
+      const linkedAdvances = db.prepare('SELECT * FROM eir_advances WHERE trip_id = ? ORDER BY created_at ASC').all(tripId);
+      const openAdvances = [];
+      const closedAdvances = [];
+
+      for (const adv of linkedAdvances) {
+        const balance = Math.max(0, toIntVnd(adv.advance_amount) - toIntVnd(adv.refunded_amount));
+        const isOpen = !adv.is_non_financial_note && balance > 0 && adv.refund_status !== 'DA_HOAN';
+        if (isOpen) openAdvances.push(adv);
+        else closedAdvances.push(adv);
+      }
+
+      const rawSyncMode = String(updateData.phoi_customer_sync_mode || '').trim().toUpperCase();
+      const shouldSyncOpen =
+        rawSyncMode === 'SYNC_OPEN' ||
+        rawSyncMode === 'TRANSFER_OPEN' ||
+        updateData.sync_open_advances_customer === true ||
+        updateData.transfer_open_advances === true;
+
+      if (shouldSyncOpen) {
+        for (const adv of openAdvances) {
+          db.prepare(`
+            UPDATE eir_advances
+            SET customer_name = ?, updated_at = ?
+            WHERE id = ? AND is_non_financial_note = 0 AND (advance_amount - refunded_amount) > 0 AND refund_status != 'DA_HOAN'
+          `).run(patched.customer_name, now, adv.id);
+
+          db.prepare(`
+            INSERT INTO eir_advance_history (
+              id, advance_id, trip_id, action, old_values, new_values, note, actor, created_at
+            ) VALUES (?, ?, ?, 'SYNC_CUSTOMER', ?, ?, ?, ?, ?)
+          `).run(
+            uuidv4(),
+            adv.id,
+            tripId,
+            JSON.stringify({
+              customer_name: adv.customer_name,
+              trip_customer_name: oldTrip.customer_name,
+              refund_status: adv.refund_status,
+              balance_due: Math.max(0, toIntVnd(adv.advance_amount) - toIntVnd(adv.refunded_amount)),
+            }),
+            JSON.stringify({
+              customer_name: patched.customer_name,
+              trip_customer_name: patched.customer_name,
+              refund_status: adv.refund_status,
+              balance_due: Math.max(0, toIntVnd(adv.advance_amount) - toIntVnd(adv.refunded_amount)),
+            }),
+            `Xác nhận chuyển khoản phơi đang mở theo chuyến ${oldTrip.trip_code}: ${adv.customer_name} -> ${patched.customer_name}`,
+            user?.username || 'SYSTEM',
+            now
+          );
+        }
+      } else {
+        for (const adv of openAdvances) {
+          db.prepare(`
+            INSERT INTO eir_advance_history (
+              id, advance_id, trip_id, action, old_values, new_values, note, actor, created_at
+            ) VALUES (?, ?, ?, 'KEEP_CUSTOMER_ON_TRIP_CHANGE', ?, ?, ?, ?, ?)
+          `).run(
+            uuidv4(),
+            adv.id,
+            tripId,
+            JSON.stringify({
+              customer_name: adv.customer_name,
+              trip_customer_name: oldTrip.customer_name,
+              refund_status: adv.refund_status,
+            }),
+            JSON.stringify({
+              customer_name: adv.customer_name,
+              trip_customer_name: patched.customer_name,
+              refund_status: adv.refund_status,
+            }),
+            `Đổi chủ hàng chuyến ${oldTrip.trip_code} (${oldTrip.customer_name} -> ${patched.customer_name}): mặc định giữ nguyên chủ hàng cũ (${adv.customer_name}) cho khoản phơi đang mở`,
+            user?.username || 'SYSTEM',
+            now
+          );
+        }
+      }
+
+      if (linkedAdvances.length > 0) {
+        phoiCustomerSyncSummary = {
+          mode: shouldSyncOpen ? 'SYNC_OPEN' : 'KEEP_OLD',
+          open_advances_count: openAdvances.length,
+          closed_advances_count: closedAdvances.length,
+          open_advances_synced_count: shouldSyncOpen ? openAdvances.length : 0,
+          open_advances_kept_count: shouldSyncOpen ? 0 : openAdvances.length,
+          closed_advances_kept_count: closedAdvances.length,
+          warning: shouldSyncOpen
+            ? `Đã chuyển ${openAdvances.length} khoản phơi đang mở sang chủ hàng mới "${patched.customer_name}". Giữ nguyên chủ hàng cũ cho ${closedAdvances.length} khoản phơi đã hoàn.`
+            : `Mặc định giữ nguyên chủ hàng cũ cho ${openAdvances.length} khoản phơi đang mở và ${closedAdvances.length} khoản phơi đã hoàn khi đổi chủ hàng chuyến từ "${oldTrip.customer_name}" sang "${patched.customer_name}".`,
+        };
+      }
+    }
+
+    const componentTypes = {
+      toll_fee: 'TOLL_BOT',
+      port_fee: 'LIFT_ON',
+      lift_on_fee: 'LIFT_ON',
+      lift_off_fee: 'LIFT_OFF',
+      parking_fee: 'PARKING',
+      handling_fee: 'HANDLING',
+      meal_allowance: 'MEAL_ALLOWANCE',
+      subcontractor_cost: 'SUBCONTRACTOR',
+      other_costs: 'OTHER',
+      fuel_cost: 'FUEL',
+    };
+    for (const [component, type] of Object.entries(componentTypes)) {
+      if (patched[component] === undefined) continue;
+      const entries = db.prepare('SELECT * FROM expenses WHERE trip_id=? AND source_component=?').all(tripId, component);
+      const amount = Math.round(Number(patched[component]) || 0);
+      if (entries.reduce((sum, e) => sum + e.amount, 0) === amount) continue;
+      db.prepare('DELETE FROM expenses WHERE trip_id=? AND source_component=?').run(tripId, component);
+      if (amount) {
+        db.prepare(
+          "INSERT INTO expenses(id,trip_id,vehicle_id,expense_type,category,amount,expense_date,note,is_anomaly,created_at,updated_at,source_component) VALUES(?,?,?,?,'VARIABLE',?,?,?,0,?,?,?)"
+        ).run(
+          uuidv4(),
+          tripId,
+          oldTrip.vehicle_id,
+          type,
+          amount,
+          patched.trip_date || oldTrip.trip_date,
+          'Điều chỉnh ' + component,
+          now,
+          now,
+          component
+        );
+      }
+    }
+
+    updatedTrip = db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId);
+
+    // Ghi Audit Log
+    recordAuditLog({
+      userId: user?.userId || user?.id,
+      username: user?.username || 'SYSTEM',
+      action: AUDIT_ACTIONS.UPDATE,
+      tableName: 'trips',
+      recordId: tripId,
+      oldValues: oldTrip,
+      newValues: updatedTrip,
+      reason: reason || `Cập nhật thông tin chuyến xe ${oldTrip.trip_code}`,
+      ipAddress,
+    });
   });
+
+  tx();
+  invalidateExcelMonthCache();
 
   // Phát tín hiệu cập nhật P&L Real-time SSE
   broadcastPLUpdate('TRIP_UPDATED', {
     trigger: 'UPDATE_TRIP',
-    reason: `Cập nhật thông tin chuyến xe ${oldTrip.trip_code}`
+    reason: `Cập nhật thông tin chuyến xe ${oldTrip.trip_code}`,
   });
+
+  if (phoiCustomerSyncSummary && updatedTrip) {
+    return {
+      ...updatedTrip,
+      phoi_customer_sync: phoiCustomerSyncSummary,
+      phoi_customer_warning: phoiCustomerSyncSummary.warning,
+    };
+  }
 
   return updatedTrip;
 }

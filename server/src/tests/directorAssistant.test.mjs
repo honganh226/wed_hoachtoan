@@ -30,7 +30,7 @@ const corpus=[
 let passed=0;
 for(const[message,intent]of corpus){assert.equal(detectIntent(message,{intent:'summary'}),intent,message);const a=answerDirector({message,viewContext:january,data,now});assert.ok(typeof a.response.reply==='string'&&a.response.reply.length,message);passed++;}
 const result=chatWithDirectorAssistant({message:'Tổng kết tháng 1/2026'},user,{now,enforceRateLimit:false});
-assert.equal(result.metrics.trips,77);assert.equal(result.metrics.revenue,338200000);assert.equal(result.metrics.recorded_cost,47940000);assert.equal(result.metrics.profit,290260000);assert.equal(result.metrics.fuel_liters,1770);assert.equal(result.metrics.offset,3600000);
+assert.equal(result.metrics.trips,77);assert.equal(result.metrics.revenue,338200000);assert.equal(result.metrics.vat_8,27056000);assert.equal(result.metrics.revenue_with_vat,365256000);assert.equal(result.metrics.deduction_17,62093520);assert.equal(result.metrics.revenue_after_deduction,303162480);assert.equal(result.metrics.recorded_cost,47940000);assert.equal(result.metrics.profit,255222480);assert.equal(result.metrics.margin_after_deduction_17,255222480);assert.equal(result.metrics.profit_before_deduction,290260000);assert.equal(result.metrics.fuel_liters,1770);assert.equal(result.metrics.offset,3600000);
 assert.ok(!result.reply.includes('104.976.000'));
 assert.equal(resolvePeriod('hôm nay',{}, {},new Date('2026-10-24T18:00:00Z')).startDate,'2026-10-25');
 assert.equal(resolvePeriod('Doanh thu ngày 9/1',{}, {},now).startDate,'2026-01-09');
@@ -73,4 +73,37 @@ const fresh=chatWithDirectorAssistant({message:'Doanh thu tháng 1/2026'},user,{
 undoChange(history()[0].id,user);
 assert.equal(chatWithDirectorAssistant({message:'Doanh thu tháng 1/2026',conversationHistory:[{role:'model',text:'Doanh thu 9999999999999'}]},user,{now,enforceRateLimit:false}).metrics.revenue,338200000);
 const lowData={...fixture,rows:[{...fixture.rows[0],direct_cost:null}]};assert.equal(answerDirector({message:'Tổng kết kỳ',viewContext:january,data:lowData,now}).response.metrics.profit,null);
-console.log(`PASS: ${passed} Vietnamese intent examples + exact figures, time ranges, missing data, clarification, permissions, context binding, rate limit and zero writes/network.`);
+// B06 scenarios:
+// 1. Trip positive before 17% deduction (+500,000) but negative after 17% deduction (-536,000)
+const b06Data={
+ groups:[],
+ rows:[
+  {id:'T-LOSS-AFTER-17',stt:1,trip_date:'2026-01-10',customer_name:'KHÁCH A',vehicle_plate:'15H-111.11',driver_name:'Nguyễn Văn A',cuoc_goc:10000000,cuoc_vao:10000000,direct_cost:9500000,trip_profit:500000,dau_liters:0,tien_dau:0,received_amount:0,offset_amount:0,cuoc_ra:0,customer_payment_status:'CHUA_TT'},
+  {id:'T-VEH-LOW-FUEL',stt:2,trip_date:'2026-01-11',customer_name:'KHÁCH B',vehicle_plate:'15H-222.22',driver_name:'Trần Văn B',cuoc_goc:10000000,cuoc_vao:10000000,direct_cost:0,dau_liters:50,fuel_unit_price:20000,tien_dau:1000000,received_amount:10800000,offset_amount:0,cuoc_ra:0,customer_payment_status:'DA_TT'},
+  {id:'T-VEH-HIGH-FUEL',stt:3,trip_date:'2026-01-11',customer_name:'KHÁCH C',vehicle_plate:'15H-333.33',driver_name:'Lê Văn C',cuoc_goc:10000000,cuoc_vao:10000000,direct_cost:0,dau_liters:150,fuel_unit_price:20000,tien_dau:3000000,received_amount:10800000,offset_amount:0,cuoc_ra:0,customer_payment_status:'DA_TT'},
+  {id:'T-MISSING-FUEL',stt:4,trip_date:'2026-01-12',customer_name:'KHÁCH D',vehicle_plate:'15H-444.44',driver_name:'Phạm Văn D',cuoc_goc:10000000,cuoc_vao:10000000,direct_cost:1000000,dau_liters:100,fuel_unit_price:null,tien_dau:0,is_fuel_price_missing:true,chenh_lech_sau_tru_17:null,trip_profit:9000000,received_amount:0,offset_amount:0,cuoc_ra:0,customer_payment_status:'CHUA_TT'}
+ ]
+};
+const lossCheck=answerDirector({message:'Cuốc nào đang lỗ?',viewContext:january,data:b06Data,now}).response;
+assert.equal(lossCheck.items.length,1);
+assert.equal(lossCheck.items[0].id,'T-LOSS-AFTER-17');
+assert.equal(lossCheck.items[0].profit,-536000);
+assert.equal(lossCheck.items[0].profit_before_deduction,500000);
+// 2. Vehicle ranking by margin after 17% & fuel cost
+const rankCheck=answerDirector({message:'Xếp hạng xe theo lãi',viewContext:january,data:{groups:[],rows:b06Data.rows.slice(1,3)},now}).response;
+assert.equal(rankCheck.items.length,2);
+assert.equal(rankCheck.items[0].name,'15H-222.22');
+assert.equal(rankCheck.items[0].profit,7964000);
+assert.equal(rankCheck.items[1].name,'15H-333.33');
+assert.equal(rankCheck.items[1].profit,5964000);
+// 3. Missing fuel price warning & no silent fallback to trip_profit when chenh_lech_sau_tru_17 is null
+const missingFuelTripCheck=answerDirector({message:'Chi tiết cuốc T-MISSING-FUEL',viewContext:january,data:b06Data,now}).response;
+assert.equal(missingFuelTripCheck.metrics.missing_fuel_price_trips,1);
+assert.equal(missingFuelTripCheck.metrics.incomplete_cost,true);
+assert.ok(missingFuelTripCheck.reply.includes('chưa đủ giá dầu'));
+assert.ok(missingFuelTripCheck.reply.includes('Chưa đủ cơ sở'));
+// 4. New 10M pre-VAT unpaid trip has receivable_due = 10,800,000
+const debtCheck=answerDirector({message:'Công nợ khách KHÁCH A',viewContext:january,data:{groups:[],rows:[b06Data.rows[0]]},now}).response;
+assert.equal(debtCheck.metrics.receivable_due,10800000);
+assert.equal(debtCheck.items[0].due,10800000);
+console.log(`PASS: ${passed} Vietnamese intent examples + exact figures, B06 scenarios, time ranges, missing data, clarification, permissions, context binding, rate limit and zero writes/network.`);

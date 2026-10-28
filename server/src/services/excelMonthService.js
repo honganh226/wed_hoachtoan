@@ -219,19 +219,28 @@ export class ExcelMonthService {
         rowObj.driver_name = `Xe ngoài ${subName}`;
       }
 
-      // Container Size & Type (bảo toàn 40FR, 40RF, 45, v.v.)
+      // Container Size & Type (bảo toàn 40FR, 40RF, 45, và 15H00267 ở G71:G72, không tự biến thành cont 40)
       const rawG = rowObj.raw_G ? String(rowObj.raw_G).trim() : null;
       const rawH = rowObj.raw_H ? String(rowObj.raw_H).trim() : null;
-      rowObj.container_size = rawG ? (rawG.includes('45') ? '45' : '40') : (rawH ? '20' : '40');
-      rowObj.container_type = rawG || rawH || 'DC';
+      const rawContVal = rawG || rawH || '';
+      const looksLikeAnomaly = /^[0-9]{2}[A-Z][0-9]{4,6}$/i.test(rawContVal);
+      rowObj.container_type_raw = rawContVal || null;
+      rowObj.container_size = looksLikeAnomaly
+        ? rawContVal
+        : rawG
+        ? (rawG.includes('45') ? '45' : rawG)
+        : (rawH ? rawH : '');
+      rowObj.container_type = rawContVal || '';
+      rowObj.container_needs_classification = looksLikeAnomaly;
 
       // Cảng Lạch Huyện
       rowObj.is_lach_huyen = Boolean(rowObj.raw_K && String(rowObj.raw_K).trim().toUpperCase().includes('LẠCH HUYỆN'));
 
-      // Doanh thu CƯỚC VÀO (đã gồm VAT)
+      // Doanh thu CƯỚC VÀO GỐC (theo chuẩn mới 28/10/2026: cước vào gốc là chưa VAT)
       const cuocVao = typeof rowObj.raw_O === 'number' ? rowObj.raw_O : (parseFloat(rowObj.raw_O) || 0);
-      rowObj.cuoc_vao = cuocVao;
-      totalCuocVao += cuocVao;
+      rowObj.cuoc_goc = Math.round(cuocVao);
+      rowObj.cuoc_vao = Math.round(cuocVao);
+      totalCuocVao += Math.round(cuocVao);
 
       // Dầu cấp theo lít
       rowObj.dau_liters = 0;
@@ -520,23 +529,28 @@ export class ExcelMonthService {
         SELECT t.*, (SELECT GROUP_CONCAT(container_number, ', ') FROM containers WHERE trip_id=t.id) AS container_number,
           (SELECT container_size FROM containers WHERE trip_id=t.id ORDER BY is_second_cont LIMIT 1) AS container_size
         FROM trips t WHERE COALESCE(t.source_type,'MANUAL') != 'LEGACY_TEST' ORDER BY t.trip_date ASC, t.created_at ASC
-      `).all().filter(t => !legacyDemoIds.has(t.id) && !(t.source_type === 'EXCEL' && base.rows.some(r => r.row_index === t.source_row && r.trip_date === t.trip_date && r.customer_name === t.customer_name && r.route_name === t.route_name && r.cuoc_vao === t.total_revenue)));
+      `).all().filter(t => !legacyDemoIds.has(t.id) && !(t.source_type === 'EXCEL' && base.rows.some(r => r.row_index === t.source_row && r.trip_date === t.trip_date && r.customer_name === t.customer_name && r.route_name === t.route_name && (r.cuoc_vao === (t.base_revenue || t.trip_revenue) || r.cuoc_vao === t.total_revenue))));
 
       if (dbTrips && dbTrips.length > 0) {
         // Chuyển đổi format của dbTrips sang cấu trúc chuẩn của view
         const adaptedDbTrips = dbTrips.map((dt, idx) => {
-          const rev = dt.total_revenue || dt.trip_revenue || 0;
+          const baseRev = dt.base_revenue || dt.trip_revenue || dt.total_revenue || 0;
           const toll = dt.toll_fee || 0;
           const subCost = dt.subcontractor_cost || 0;
           const fuel = dt.fuel_liters || 0;
-          const other = (dt.other_costs || 0) + (dt.port_fee || 0) + (dt.parking_fee || 0) + (dt.handling_fee || 0) + (dt.meal_allowance || 0);
-          const directCost = toll + subCost + other;
+          const liftOnFee = dt.lift_on_fee || 0;
+          const liftOffFee = dt.lift_off_fee || 0;
+          const hasSplitLift = liftOnFee > 0 || liftOffFee > 0;
+          const legacyPort = hasSplitLift ? 0 : (dt.port_fee || 0);
+          const other = (dt.other_costs || 0) + legacyPort + (dt.parking_fee || 0) + (dt.handling_fee || 0) + (dt.meal_allowance || 0);
+          const directCost = toll + subCost + liftOnFee + liftOffFee + other;
 
           return {
             id: dt.id,
             trip_code: dt.trip_code,
             row_index: 1000 + idx,
-            stt: base.rows.length + idx + 1,
+            stt: dt.stt_source || (base.rows.length + idx + 1),
+            stt_source: dt.stt_source || null,
             trip_date: dt.trip_date,
             raw_date: dt.trip_date,
             is_typo_2025: false,
@@ -548,10 +562,18 @@ export class ExcelMonthService {
             is_subcontractor: Boolean(dt.is_subcontractor),
             subcontractor_name: dt.subcontractor_name || null,
             driver_name: dt.driver_name || (dt.is_subcontractor ? `Xe ngoài ${dt.subcontractor_name || ''}` : 'Chưa xác định'),
-            container_size: dt.container_size || '40',
-            container_type: 'DC',
-            is_lach_huyen: false,
-            cuoc_vao: rev,
+            container_size: dt.container_type_raw || dt.container_size || '40DC',
+            container_type: dt.container_type_raw || dt.container_size || 'DC',
+            container_type_raw: dt.container_type_raw || dt.container_size || '40DC',
+            is_lach_huyen: Boolean((dt.lift_on_location || '').toUpperCase().includes('LẠCH HUYỆN') || (dt.lift_off_location || '').toUpperCase().includes('LẠCH HUYỆN')),
+            pickup_location: dt.lift_on_location || dt.pickup_location || null,
+            lift_on_location: dt.lift_on_location || dt.pickup_location || null,
+            lift_on_fee: liftOnFee,
+            dropoff_location: dt.lift_off_location || dt.dropoff_location || null,
+            lift_off_location: dt.lift_off_location || dt.dropoff_location || null,
+            lift_off_fee: liftOffFee,
+            cuoc_goc: baseRev,
+            cuoc_vao: baseRev,
             dau_liters: fuel,
             tien_duong: toll,
             phat_sinh: other,
@@ -560,11 +582,11 @@ export class ExcelMonthService {
             customer_payment_status: dt.customer_payment_status || 'CHUA_TT',
             is_customer_paid: ['DA_TT','TUOI','X'].includes(dt.customer_payment_status),
             is_offset: dt.customer_payment_status === 'DOI_TRU',
-            customer_payment_status: dt.customer_payment_status || 'CHUA_TT',
             subcontractor_payment_status: dt.subcontractor_payment_status || 'CHUA_TT',
+            payment_terms: dt.payment_terms || null,
             other_costs: dt.other_costs || 0,
             additional_expenses: db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM expenses WHERE trip_id=? AND source_component IS NULL').get(dt.id)?.total || 0,
-            port_fee: dt.port_fee || 0,
+            port_fee: legacyPort,
             parking_fee: dt.parking_fee || 0,
             handling_fee: dt.handling_fee || 0,
             meal_allowance: dt.meal_allowance || 0,
@@ -572,14 +594,18 @@ export class ExcelMonthService {
             is_customer_x: dt.customer_payment_status === 'X',
             is_customer_doi_tru: dt.customer_payment_status === 'DOI_TRU',
             notes_r: dt.notes || null,
+            source_type: dt.source_type || 'MANUAL',
+            source_file: dt.source_file || null,
+            source_sheet: dt.source_sheet || null,
+            source_row: dt.source_row || null,
             is_grouped: Boolean(dt.group_id),
             group_id: dt.group_id || null,
             allocated_shared_cost: null,
             allocated_shared_liters: null,
             allocation_status: dt.group_id ? 'UNALLOCATED' : 'SINGLE',
             direct_cost: directCost,
-            trip_profit: rev - directCost,
-            raw_O: rev
+            trip_profit: baseRev - directCost,
+            raw_O: baseRev
           };
         });
 
@@ -600,13 +626,19 @@ export class ExcelMonthService {
     const groups = structuredClone(base.groups);
     for (const g of groups) {
       const members = rows.filter(r => g.trips.includes(r.id));
-      g.total_revenue = members.reduce((s,r)=>s+r.cuoc_vao,0);
+      g.total_revenue = members.reduce((s,r)=>s+r.cuoc_goc,0);
+      g.total_revenue_pre_vat = g.total_revenue;
+      g.total_vat_8 = members.reduce((s,r)=>s+r.vat_amount,0);
+      g.total_revenue_with_vat = members.reduce((s,r)=>s+r.cuoc_co_vat,0);
+      g.total_deduction_17 = members.reduce((s,r)=>s+r.khoan_tru_17,0);
+      g.total_revenue_after_deduction = members.reduce((s,r)=>s+r.cuoc_sau_tru_17,0);
       for (const cost of g.shared_costs) {
         const key = {TIEN_DUONG:"tien_duong",CUOC_RA:"cuoc_ra",DAU_LITERS:"dau_liters"}[cost.type];
         if(key) {const total=members.reduce((s,r)=>s+Number(r[key]||0),0);if(key==="dau_liters")cost.liters=total;else cost.amount=total;}
       }
       g.total_shared_money=g.shared_costs.reduce((s,c)=>s+Number(c.amount||0),0);
-      g.group_margin=members.reduce((s,r)=>s+r.cuoc_vao-r.direct_cost,0);
+      g.group_margin=members.reduce((s,r)=>s+r.cuoc_goc-(r.direct_cost_before_fuel||0),0);
+      g.group_margin_after_deduction=members.reduce((s,r)=>s+r.cuoc_sau_tru_17-(r.direct_cost||0),0);
       const setting=this.groupAllocations.get(g.group_key);
       const monetary=g.shared_costs.filter(c=>c.amount>0);
       const allocation=setting?.allocations||{};
@@ -618,8 +650,15 @@ export class ExcelMonthService {
         r.allocated_shared_cost=valid?allocation[r.id]:null;
         r.allocated_toll=valid&&monetary[0]?.type==='TIEN_DUONG'?allocation[r.id]:null;
         r.allocated_subcontractor_cost=valid&&monetary[0]?.type==='CUOC_RA'?allocation[r.id]:null;
-        r.direct_cost=(r.allocated_toll??Number(r.tien_duong||0))+(r.allocated_subcontractor_cost??Number(r.cuoc_ra||0))+r.phat_sinh;
-        r.trip_profit=valid?r.cuoc_vao-r.direct_cost:null;
+        const baseDirect=(r.allocated_toll??Number(r.tien_duong||0))+(r.allocated_subcontractor_cost??Number(r.cuoc_ra||0))+(r.lift_on_fee||0)+(r.lift_off_fee||0)+r.phat_sinh;
+        r.direct_cost_before_fuel=baseDirect;
+        r.direct_cost=baseDirect+(r.tien_dau||0);
+        r.chi_phi_cong_ty=r.direct_cost;
+        r.trip_profit=valid?r.cuoc_goc-r.direct_cost_before_fuel:null;
+        r.chenh_lech_truoc_tru_goc=valid?r.cuoc_goc-r.direct_cost:null;
+        r.chenh_lech_truoc_tru_co_vat=valid?r.cuoc_co_vat-r.direct_cost:null;
+        r.chenh_lech_sau_tru_17=valid?r.cuoc_sau_tru_17-r.direct_cost:null;
+        r.is_result_incomplete=!valid || Boolean(r.is_fuel_price_missing);
       }
     }
     return {...base,rows,groups};
@@ -682,14 +721,14 @@ export class ExcelMonthService {
   }
 
   /**
-   * Tính toán dữ liệu Công nợ (Phải thu khách hàng & Phải trả nhà xe)
-   * TUYỆT ĐỐI KHÔNG TỰ THÊM GIAO DỊCH NGOÀI EXCEL THÁNG 1
+   * Tính toán dữ liệu Công nợ (Phải thu khách hàng: Cước vận chuyển + Tiền phơi trả hộ & Phải trả nhà xe)
+   * TUYỆT ĐỐI KHÔNG TỰ THÊM GIAO DỊCH NGOÀI DỮ LIỆU ĐÃ LƯU
    */
   getDebtsData(filter = {}) {
     const data = this.getData();
     const rows = data.rows.filter(r => (!filter.start_date || r.trip_date >= filter.start_date) && (!filter.end_date || r.trip_date <= filter.end_date));
 
-    // 1. Phải thu theo khách hàng từ đúng 77 dòng Excel
+    // 1. Phải thu theo khách hàng (Tách rõ: Công nợ cước, Công nợ tiền phơi trả hộ, Tổng phải thu)
     const customerMap = new Map();
 
     rows.forEach(r => {
@@ -698,23 +737,54 @@ export class ExcelMonthService {
         customerMap.set(cName, {
           customer_name: cName,
           trip_count: 0,
-          total_revenue: 0,
+          total_revenue: 0, // Cước gốc chưa VAT (tương thích ngược)
+          total_revenue_pre_vat: 0,
+          total_vat_8: 0,
+          total_revenue_with_vat: 0,
+          total_deduction_17: 0,
+          total_revenue_after_deduction: 0,
           total_paid: 0,
           total_offset: 0,
-          balance_due: 0,
+          balance_due: 0, // Số dư nợ cước xác nhận
+          vat_reconciliation_diff: 0, // Chênh lệch VAT lịch sử cần đối soát
+          phoi_total_advance: 0, // Tổng tiền phơi trả hộ
+          phoi_total_refunded: 0, // Tổng tiền phơi đã hoàn
+          phoi_balance_due: 0, // Tiền phơi còn phải hoàn
+          total_combined_due: 0, // Tổng phải thu khách (nợ cước + nợ phơi)
           trips: []
         });
       }
       const c = customerMap.get(cName);
       c.trip_count += 1;
-      c.total_revenue += r.cuoc_vao;
+      c.total_revenue += r.cuoc_goc;
+      c.total_revenue_pre_vat += r.cuoc_goc;
+      c.total_vat_8 += r.vat_amount;
+      c.total_revenue_with_vat += r.cuoc_co_vat;
+      c.total_deduction_17 += r.khoan_tru_17;
+      c.total_revenue_after_deduction += r.cuoc_sau_tru_17;
 
       const received = Number(r.received_amount || 0);
       const offset = Number(r.offset_amount || 0);
-      const balance = Math.max(0, r.cuoc_vao - received - offset);
+      // Nếu cuốc chưa thanh toán (CHUA_TT), công nợ phải thu tính trên cước có VAT;
+      // đối với chuyến lịch sử đã tất toán theo cước gốc: giữ 0 nợ và ghi nhận vatReconciliationDiff để đối soát:
+      const isHistoricalSettledAtBase = (r.is_customer_paid || r.is_offset) && (received + offset === r.cuoc_goc);
+      const balanceWithVat = isHistoricalSettledAtBase ? 0 : Math.max(0, r.cuoc_co_vat - received - offset);
+      const balancePreVat = isHistoricalSettledAtBase ? 0 : Math.max(0, r.cuoc_goc - received - offset);
+      const vatReconcile = isHistoricalSettledAtBase ? r.vat_amount : 0;
+      const effectiveDue = balanceWithVat;
+
+      const phoiAdvance = Number(r.phoi_total_advance || 0);
+      const phoiRefunded = Number(r.phoi_total_refunded || 0);
+      const phoiDue = Number(r.phoi_balance_due || 0);
+
       c.total_paid += received;
       c.total_offset += offset;
-      c.balance_due += balance;
+      c.balance_due += effectiveDue;
+      c.vat_reconciliation_diff += vatReconcile;
+      c.phoi_total_advance += phoiAdvance;
+      c.phoi_total_refunded += phoiRefunded;
+      c.phoi_balance_due += phoiDue;
+      c.total_combined_due += (effectiveDue + phoiDue);
 
       c.trips.push({
         id: r.id,
@@ -723,17 +793,40 @@ export class ExcelMonthService {
         raw_date: r.raw_date,
         route_name: r.route_name,
         container_number: r.container_number,
-        cuoc_vao: r.cuoc_vao,
+        container_size: r.container_size,
+        cuoc_goc: r.cuoc_goc,
+        cuoc_vao: r.cuoc_goc,
+        vat_amount: r.vat_amount,
+        cuoc_co_vat: r.cuoc_co_vat,
+        khoan_tru_17: r.khoan_tru_17,
+        cuoc_sau_tru_17: r.cuoc_sau_tru_17,
         payment_status_p: r.payment_status_p,
         payment_timing_q: r.payment_timing_q,
+        payment_terms: r.payment_terms || null,
         is_offset: r.is_offset,
         is_paid: r.is_customer_paid,
-        balance,
+        received_amount: received,
+        offset_amount: offset,
+        balance: effectiveDue,
+        balance_pre_vat: balancePreVat,
+        balance_with_vat: balanceWithVat,
+        vat_reconciliation_diff: vatReconcile,
+        phoi_advances: r.phoi_advances || [],
+        phoi_total_advance: phoiAdvance,
+        phoi_total_refunded: phoiRefunded,
+        phoi_balance_due: phoiDue,
+        phoi_status: r.phoi_status || 'KHONG_PHAT_SINH',
+        phoi_status_label: r.phoi_status_label || 'Không phát sinh',
+        phoi_due_date: r.phoi_due_date || null,
+        phoi_reminder_status: r.phoi_reminder_status || 'NONE',
+        phoi_reminder_label: r.phoi_reminder_label || '',
+        phoi_is_completed: Boolean(r.phoi_is_completed),
+        total_combined_due: effectiveDue + phoiDue,
         notes: r.notes_r || r.payment_status_p
       });
     });
 
-    const customerDebts = Array.from(customerMap.values()).sort((a, b) => b.balance_due - a.balance_due);
+    const customerDebts = Array.from(customerMap.values()).sort((a, b) => (b.total_combined_due - a.total_combined_due) || (b.total_revenue_with_vat - a.total_revenue_with_vat));
 
     // 2. Phải trả theo nhà xe ngoài
     const subMap = new Map();
@@ -777,9 +870,19 @@ export class ExcelMonthService {
 
     // Tổng hợp chung công nợ
     const totalReceivable = customerDebts.reduce((s, c) => s + c.total_revenue, 0);
+    const totalReceivableWithVat = customerDebts.reduce((s, c) => s + c.total_revenue_with_vat, 0);
+    const totalVat8 = customerDebts.reduce((s, c) => s + c.total_vat_8, 0);
+    const totalDeduction17 = customerDebts.reduce((s, c) => s + c.total_deduction_17, 0);
+    const totalAfterDeduction17 = customerDebts.reduce((s, c) => s + c.total_revenue_after_deduction, 0);
     const totalCustomerPaid = customerDebts.reduce((s, c) => s + c.total_paid, 0);
     const totalCustomerOffset = customerDebts.reduce((s, c) => s + c.total_offset, 0);
     const totalCustomerDue = customerDebts.reduce((s, c) => s + c.balance_due, 0);
+    const totalVatReconciliationDiff = customerDebts.reduce((s, c) => s + c.vat_reconciliation_diff, 0);
+
+    const totalPhoiAdvance = customerDebts.reduce((s, c) => s + c.phoi_total_advance, 0);
+    const totalPhoiRefunded = customerDebts.reduce((s, c) => s + c.phoi_total_refunded, 0);
+    const totalPhoiDue = customerDebts.reduce((s, c) => s + c.phoi_balance_due, 0);
+    const totalCombinedReceivableDue = totalCustomerDue + totalPhoiDue;
 
     const totalPayable = subcontractorPayables.reduce((s, c) => s + c.total_payable, 0);
     const totalSubPaid = subcontractorPayables.reduce((s, c) => s + c.total_paid, 0);
@@ -788,9 +891,19 @@ export class ExcelMonthService {
     return {
       receivables: {
         total_receivable: totalReceivable,
+        total_receivable_pre_vat: totalReceivable,
+        total_vat_8: totalVat8,
+        total_receivable_with_vat: totalReceivableWithVat,
+        total_deduction_17: totalDeduction17,
+        total_after_deduction_17: totalAfterDeduction17,
         total_paid: totalCustomerPaid,
         total_offset: totalCustomerOffset,
         total_due: totalCustomerDue,
+        total_vat_reconciliation_diff: totalVatReconciliationDiff,
+        total_phoi_advance: totalPhoiAdvance,
+        total_phoi_refunded: totalPhoiRefunded,
+        total_phoi_due: totalPhoiDue,
+        total_combined_due: totalCombinedReceivableDue,
         customers: customerDebts
       },
       payables: {
@@ -803,13 +916,76 @@ export class ExcelMonthService {
   }
 
   /**
+   * Lấy danh sách các bản ghi cần phân loại / đối soát theo kế hoạch chuẩn hóa 28/10/2026
+   */
+  getUnclassifiedItems() {
+    const data = this.getData();
+    const rows = data.rows || [];
+
+    const legacyPortFeeTrips = rows.filter(r => r.has_unclassified_port_fee);
+    const anomalyContainerTrips = rows.filter(r => r.container_needs_classification || ['15H00267'].includes(String(r.container_type_raw || '').toUpperCase()));
+    const unallocatedGroups = (data.groups || []).filter(g => g.allocation_mode === 'UNALLOCATED');
+    const missingFuelPriceTrips = rows.filter(r => r.is_fuel_price_missing);
+    const nonFinancialPhoiNotes = rows.filter(r => r.phoi_status === 'GHI_CHU_NGUON');
+    const vatReconciliationTrips = rows.filter(r => (r.vat_reconciliation_diff || 0) > 0);
+
+    return {
+      legacy_port_fee_trips: legacyPortFeeTrips.map(r => ({
+        id: r.id,
+        trip_date: r.trip_date,
+        customer_name: r.customer_name,
+        route_name: r.route_name,
+        port_fee: r.port_fee,
+        note: 'Khoản port_fee gộp cũ: chưa tự tách thành phí nâng/hạ hoặc tiền phơi'
+      })),
+      anomaly_container_trips: anomalyContainerTrips.map(r => ({
+        id: r.id,
+        row_index: r.row_index,
+        trip_date: r.trip_date,
+        customer_name: r.customer_name,
+        container_number: r.container_number,
+        raw_value: r.container_type_raw || r.raw_G || r.raw_H,
+        note: 'Giá trị ở cột loại cont không phải kích cỡ tiêu chuẩn (VD: G71:G72 = 15H00267)'
+      })),
+      unallocated_groups: unallocatedGroups.map(g => ({
+        group_key: g.group_key,
+        name: g.name,
+        trips: g.trips,
+        total_shared_money: g.total_shared_money,
+        total_shared_liters: g.total_shared_liters,
+        note: 'Nhóm chi phí gộp chưa phân bổ xuống từng cuốc'
+      })),
+      missing_fuel_price_trips: missingFuelPriceTrips.map(r => ({
+        id: r.id,
+        trip_date: r.trip_date,
+        vehicle_plate: r.vehicle_plate,
+        dau_liters: r.dau_liters,
+        note: 'Có lít dầu cấp nhưng chưa nhập đơn giá dầu cho ngày chạy'
+      })),
+      non_financial_phoi_notes: nonFinancialPhoiNotes.map(r => ({
+        id: r.id,
+        trip_date: r.trip_date,
+        customer_name: r.customer_name,
+        raw_note: r.phoi_raw_note,
+        note: 'Ghi chú nguồn tại cột phơi (VD: K MẤT) — không tạo khoản nợ'
+      })),
+      vat_reconciliation_summary: {
+        trips_count: vatReconciliationTrips.length,
+        total_recorded_paid_or_offset_base: vatReconciliationTrips.reduce((s, r) => s + (r.received_amount || 0) + (r.offset_amount || 0), 0),
+        total_vat_8_diff: vatReconciliationTrips.reduce((s, r) => s + (r.vat_reconciliation_diff || 0), 0),
+        note: 'Các cuốc lịch sử đã ghi nhận ĐÃ TT / ĐỐI TRỪ theo cước gốc chưa VAT; phần VAT 8% mới được tách riêng để đối soát, không tự tăng tiền thực thu lịch sử.'
+      }
+    };
+  }
+
+  /**
    * Lấy kết quả Tổng quan điều hành Giám Đốc (Phần A, B, C)
    * TÍNH TOÁN THEO ĐÚNG PHẠM VI LỌC (SCOPED METRICS)
    */
   getExecutiveOverview(filter = { period: 'month' }) {
     const data = this.getData();
     const debts = this.getDebtsData();
-    const { rows, groups, stats } = data;
+    const { rows, groups } = data;
 
     // 1. Lọc tập cuốc theo phạm vi thời gian
     let filteredTrips = rows;
@@ -832,10 +1008,24 @@ export class ExcelMonthService {
       }
     }
 
-    // 2. Tính toán scoped metrics cho phạm vi được lọc
-    const scopedRevenue = filteredTrips.reduce((s, r) => s + (r.cuoc_vao || 0), 0);
+    // 2. Tính toán 7 chỉ tiêu tài chính chuẩn hóa cho phạm vi lọc (cộng từ từng dòng đã làm tròn)
+    const scopedBaseRevenue = filteredTrips.reduce((s, r) => s + (r.cuoc_goc || 0), 0);
+    const scopedVat8 = filteredTrips.reduce((s, r) => s + (r.vat_amount || 0), 0);
+    const scopedRevenueWithVat = filteredTrips.reduce((s, r) => s + (r.cuoc_co_vat || 0), 0);
+    const scopedDeduction17 = filteredTrips.reduce((s, r) => s + (r.khoan_tru_17 || 0), 0);
+    const scopedRevenueAfterDeduction = filteredTrips.reduce((s, r) => s + (r.cuoc_sau_tru_17 || 0), 0);
+
     const scopedFuelLiters = filteredTrips.reduce((s, r) => s + (r.dau_liters || 0), 0);
+    const scopedFuelCost = filteredTrips.reduce((s, r) => s + (r.tien_dau || 0), 0);
+    const scopedMissingFuelCount = filteredTrips.filter(r => r.is_fuel_price_missing).length;
+
+    const scopedLiftOnFee = filteredTrips.reduce((s, r) => s + (r.lift_on_fee || 0), 0);
+    const scopedLiftOffFee = filteredTrips.reduce((s, r) => s + (r.lift_off_fee || 0), 0);
     const scopedPhatSinh = filteredTrips.reduce((s, r) => s + (r.phat_sinh || 0), 0);
+
+    const scopedPhoiAdvance = filteredTrips.reduce((s, r) => s + (r.phoi_total_advance || 0), 0);
+    const scopedPhoiRefunded = filteredTrips.reduce((s, r) => s + (r.phoi_total_refunded || 0), 0);
+    const scopedPhoiDue = filteredTrips.reduce((s, r) => s + (r.phoi_balance_due || 0), 0);
 
     let scopedToll = 0;
     let scopedCuocRa = 0;
@@ -861,18 +1051,22 @@ export class ExcelMonthService {
             scopedCuocRa += (r.cuoc_ra || 0);
           }
         } else {
-          // UNALLOCATED: Lấy giá trị trực tiếp từ dòng của sheet
           scopedToll += (r.tien_duong || 0);
           scopedCuocRa += (r.cuoc_ra || 0);
         }
       }
     });
 
-    const scopedDirectCost = scopedToll + scopedCuocRa + scopedPhatSinh;
-    const scopedProfit = scopedRevenue - scopedDirectCost;
+    // Chi phí trực tiếp chưa gồm dầu (để đối chiếu lịch sử 47.940.000đ) và tổng chi phí công ty đã ghi nhận (gồm nâng, hạ, tiền dầu)
+    const scopedDirectCostBeforeFuel = scopedToll + scopedCuocRa + scopedLiftOnFee + scopedLiftOffFee + scopedPhatSinh;
+    const scopedCompanyCost = scopedDirectCostBeforeFuel + scopedFuelCost;
 
-    // Đếm số lượt / nhóm đối chiếu (không bao giờ âm):
-    // Cuốc đơn = 1 lượt; Nhóm = 1 lượt nhóm
+    // Chênh lệch trước khoản trừ (trên cước gốc chưa VAT — đối chiếu báo cáo cũ: 338.200.000 - 47.940.000 = 290.260.000)
+    const scopedMarginBeforeDeductionBase = scopedBaseRevenue - scopedDirectCostBeforeFuel;
+    const scopedMarginBeforeDeductionWithVat = scopedRevenueWithVat - scopedCompanyCost;
+    // Chỉ tiêu #7: Chênh lệch tạm tính sau khoản trừ 17% và chi phí công ty (KHÔNG trừ tiền phơi trả hộ, chưa trừ lương)
+    const scopedMarginAfterDeduction17 = scopedRevenueAfterDeduction - scopedCompanyCost;
+
     const singleTripsCount = filteredTrips.filter(r => !r.is_grouped).length;
     const uniqueGroupsInScope = new Set(filteredTrips.filter(r => r.is_grouped).map(r => r.group_id));
     const journeysCount = filteredTrips.length === 0 ? 0 : (singleTripsCount + uniqueGroupsInScope.size);
@@ -888,25 +1082,45 @@ export class ExcelMonthService {
           is_subcontractor: r.is_subcontractor,
           trip_count: 0,
           total_revenue: 0,
+          total_revenue_pre_vat: 0,
+          total_vat_8: 0,
+          total_revenue_with_vat: 0,
+          total_deduction_17: 0,
+          total_revenue_after_deduction: 0,
           total_toll: 0,
           total_cuoc_ra: 0,
+          total_lift_on_fee: 0,
+          total_lift_off_fee: 0,
           total_phat_sinh: 0,
           total_dau_liters: 0,
+          total_fuel_cost: 0,
+          missing_fuel_price_trips: 0,
           total_direct_cost: 0,
-          total_profit: 0
+          total_profit: 0,
+          margin_after_deduction_17: 0
         });
       }
       const v = vehicleMap.get(plate);
       v.trip_count += 1;
-      v.total_revenue += r.cuoc_vao;
+      v.total_revenue += r.cuoc_goc;
+      v.total_revenue_pre_vat += r.cuoc_goc;
+      v.total_vat_8 += r.vat_amount;
+      v.total_revenue_with_vat += r.cuoc_co_vat;
+      v.total_deduction_17 += r.khoan_tru_17;
+      v.total_revenue_after_deduction += r.cuoc_sau_tru_17;
       v.total_toll += (r.tien_duong || 0);
       const cCost = r.allocated_subcontractor_cost ?? (r.cuoc_ra || 0);
       v.total_cuoc_ra += cCost;
+      v.total_lift_on_fee += (r.lift_on_fee || 0);
+      v.total_lift_off_fee += (r.lift_off_fee || 0);
       v.total_phat_sinh += (r.phat_sinh || 0);
       v.total_dau_liters += (r.dau_liters || 0);
+      v.total_fuel_cost += (r.tien_dau || 0);
+      if (r.is_fuel_price_missing) v.missing_fuel_price_trips += 1;
       const tripCost = r.direct_cost;
       v.total_direct_cost += tripCost;
-      v.total_profit += (r.cuoc_vao - tripCost);
+      v.total_profit += (r.cuoc_goc - (r.direct_cost_before_fuel || 0));
+      v.margin_after_deduction_17 += (r.cuoc_sau_tru_17 - tripCost);
     });
 
     const vehiclePerformance = Array.from(vehicleMap.values()).sort((a, b) => b.total_revenue - a.total_revenue);
@@ -924,35 +1138,53 @@ export class ExcelMonthService {
           is_subcontractor: r.is_subcontractor,
           trip_count: 0,
           total_revenue: 0,
+          total_revenue_pre_vat: 0,
+          total_vat_8: 0,
+          total_revenue_with_vat: 0,
+          total_deduction_17: 0,
+          total_revenue_after_deduction: 0,
           total_toll: 0,
           total_cuoc_ra: 0,
+          total_lift_on_fee: 0,
+          total_lift_off_fee: 0,
           total_phat_sinh: 0,
           total_dau_liters: 0,
+          total_fuel_cost: 0,
           total_direct_cost: 0,
-          total_profit: 0
+          total_profit: 0,
+          margin_after_deduction_17: 0
         });
       }
       const d = driverMap.get(driver);
       d.trip_count += 1;
-      d.total_revenue += r.cuoc_vao;
+      d.total_revenue += r.cuoc_goc;
+      d.total_revenue_pre_vat += r.cuoc_goc;
+      d.total_vat_8 += r.vat_amount;
+      d.total_revenue_with_vat += r.cuoc_co_vat;
+      d.total_deduction_17 += r.khoan_tru_17;
+      d.total_revenue_after_deduction += r.cuoc_sau_tru_17;
       d.total_toll += (r.tien_duong || 0);
       const cCost = r.allocated_subcontractor_cost ?? (r.cuoc_ra || 0);
       d.total_cuoc_ra += cCost;
+      d.total_lift_on_fee += (r.lift_on_fee || 0);
+      d.total_lift_off_fee += (r.lift_off_fee || 0);
       d.total_phat_sinh += (r.phat_sinh || 0);
       d.total_dau_liters += (r.dau_liters || 0);
+      d.total_fuel_cost += (r.tien_dau || 0);
       const tripCost = r.direct_cost;
       d.total_direct_cost += tripCost;
-      d.total_profit += (r.cuoc_vao - tripCost);
+      d.total_profit += (r.cuoc_goc - (r.direct_cost_before_fuel || 0));
+      d.margin_after_deduction_17 += (r.cuoc_sau_tru_17 - tripCost);
     });
-    const driverPerformance = Array.from(driverMap.values()).sort((a, b) => b.total_profit - a.total_profit);
+    const driverPerformance = Array.from(driverMap.values()).sort((a, b) => b.margin_after_deduction_17 - a.margin_after_deduction_17);
 
-    // 3. Phần B: Cần chú ý (Dựa trên số liệu thực tế tháng 1)
+    // 3. Phần B: Cần chú ý
     const attentionItems = [
       {
         id: 'GROUP_63_64',
         title: 'Chia lãi nhóm cuốc kết hợp 63–64 (HÀ PHƯƠNG)',
-        desc: 'Cước vào 5.6M (2.2M + 3.4M), Cước ra gộp chung 4.8M → Chênh lệch nhóm 800.000 đ',
-        impact: 'Chênh lệch 800.000 đ',
+        desc: 'Cước gốc 5.6M (2.2M + 3.4M), Cước có VAT 6.048M, Cước sau trừ 17% 5.019.840đ, Cước ra gộp 4.8M',
+        impact: 'Cước ra gộp 4.800.000 đ',
         severity: 'high',
         btnText: 'Mở chia lãi nhóm',
         action_target: 'GROUP-63-64'
@@ -960,7 +1192,7 @@ export class ExcelMonthService {
       {
         id: 'OFFSET_P22',
         title: 'Khoản đối trừ P22 (Khách VẠN ĐẠT THÁI BÌNH)',
-        desc: 'Cuốc hàng 22 ghi chú ĐỐI TRỪ XONG: 3.600.000 đ giảm nợ khách nhưng không tăng tiền mặt thực thu',
+        desc: 'Cuốc hàng 22 ghi chú ĐỐI TRỪ XONG: 3.600.000 đ (gốc) giảm nợ khách nhưng không tăng tiền mặt thực thu',
         impact: 'Đối trừ 3.600.000 đ',
         severity: 'medium',
         btnText: 'Xem Công Nợ',
@@ -968,27 +1200,59 @@ export class ExcelMonthService {
       },
       {
         id: 'FUEL_LITERS',
-        title: 'Lượng cấp dầu ghi nhận theo Lít (Chưa có đơn giá)',
-        desc: 'Tổng cộng 1.770 lít dầu được cấp trong bảng kê tháng 1; chưa quy đổi thành tiền do thiếu đơn giá',
-        impact: '1.770 Lít dầu',
-        severity: 'medium',
-        btnText: 'Xem chi tiết dầu',
+        title: scopedMissingFuelCount > 0
+          ? `Lượng dầu cấp (${scopedFuelLiters.toLocaleString('vi-VN')}L — còn ${scopedMissingFuelCount} cuốc chưa có giá dầu ngày chạy)`
+          : `Tiền dầu đã quy đổi (${scopedFuelLiters.toLocaleString('vi-VN')}L = ${scopedFuelCost.toLocaleString('vi-VN')} đ)`,
+        desc: scopedMissingFuelCount > 0
+          ? `Đã tính ${scopedFuelCost.toLocaleString('vi-VN')} đ tiền dầu; còn ${scopedMissingFuelCount} cuốc có cấp dầu nhưng chưa nhập đơn giá dầu cho ngày chạy.`
+          : 'Tất cả các cuốc có cấp dầu trong phạm vi lọc đã có đơn giá dầu theo ngày chạy.',
+        impact: `${scopedFuelLiters.toLocaleString('vi-VN')} Lít dầu`,
+        severity: scopedMissingFuelCount > 0 ? 'medium' : 'low',
+        btnText: 'Quản lý giá dầu',
         action_target: 'FUEL'
       }
     ];
+
+    const profitNote = scopedMissingFuelCount > 0
+      ? `Chưa trừ lương • Còn ${scopedMissingFuelCount} cuốc có cấp dầu (${scopedFuelLiters.toLocaleString('vi-VN')}L) chưa nhập giá dầu ngày chạy`
+      : 'Chưa trừ lương (Đã tính đủ chi phí công ty và tiền dầu theo ngày chạy)';
 
     return {
       period_label: filter.period === 'january' || filter.period === 'month' ? 'Tháng 01/2026 (Chuẩn bảng kê)' : (filter.period || 'Phạm vi lọc'),
       kpis: {
         trips_count: filteredTrips.length,
         journeys_count: journeysCount,
-        total_revenue_vat_inc: scopedRevenue,
-        total_known_direct_cost: scopedDirectCost,
+        // 7 chỉ tiêu chuẩn hóa theo mục 3A:
+        total_revenue_pre_vat: scopedBaseRevenue, // 1. Cước vào chưa VAT (gốc)
+        total_vat_8: scopedVat8, // 2. VAT 8%
+        total_revenue_with_vat: scopedRevenueWithVat, // 3. Cước vào có VAT (x1,08)
+        total_deduction_17: scopedDeduction17, // 4. Khoản trừ 17% trên cước có VAT
+        total_revenue_after_deduction: scopedRevenueAfterDeduction, // 5. Cước sau khoản trừ 17% (x0,83)
+        total_company_cost: scopedCompanyCost, // 6. Chi phí công ty đã ghi nhận
+        margin_after_deduction_17: scopedMarginAfterDeduction17, // 7. Chênh lệch tạm tính sau khoản trừ và chi phí
+        // Chi tiết chi phí & đối chiếu lịch sử:
+        total_revenue_vat_inc: scopedBaseRevenue, // Giữ key cũ để tương thích ngược
+        total_known_direct_cost: scopedDirectCostBeforeFuel,
+        total_toll_fee: scopedToll,
+        total_subcontractor_cost: scopedCuocRa,
+        total_lift_on_fee: scopedLiftOnFee,
+        total_lift_off_fee: scopedLiftOffFee,
+        total_other_cost: scopedPhatSinh,
         fuel_liters: scopedFuelLiters,
-        profit_before_salary_and_fuel: scopedProfit,
-        profit_note: 'Chưa trừ lương và chưa quy đổi tiền dầu (1.770 lít cấp)',
+        total_fuel_cost: scopedFuelCost,
+        missing_fuel_price_trips_count: scopedMissingFuelCount,
+        profit_before_salary_and_fuel: scopedMarginBeforeDeductionBase,
+        margin_before_deduction_with_vat: scopedMarginBeforeDeductionWithVat,
+        profit_note: profitNote,
+        // Tiền phơi trả hộ (tách riêng, không tính vào lãi):
+        total_phoi_advance: scopedPhoiAdvance,
+        total_phoi_refunded: scopedPhoiRefunded,
+        total_phoi_due: scopedPhoiDue,
+        // Công nợ:
         total_customer_receivables: debts.receivables.total_receivable,
+        total_customer_receivables_with_vat: debts.receivables.total_receivable_with_vat,
         total_customer_due: debts.receivables.total_due,
+        total_customer_combined_due: debts.receivables.total_combined_due,
         total_subcontractor_payables: debts.payables.total_payable,
         total_subcontractor_due: debts.payables.total_due
       },
@@ -1002,3 +1266,6 @@ export class ExcelMonthService {
 
 // Singleton instance
 export const excelMonthService = new ExcelMonthService();
+export function invalidateExcelMonthCache() {
+  excelMonthService.cachedData = null;
+}

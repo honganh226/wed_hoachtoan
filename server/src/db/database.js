@@ -83,9 +83,44 @@ rawDb.exec('PRAGMA busy_timeout = 30000;');
 class DatabaseWrapper {
   constructor(internalDb) {
     this.internal = internalDb;
+    this._txDepth = 0;
   }
 
   exec(sql) {
+    const trimmed = typeof sql === 'string' ? sql.trim().toUpperCase() : '';
+    if (/^BEGIN(\s+(TRANSACTION|IMMEDIATE|EXCLUSIVE|DEFERRED))?\s*;?$/i.test(trimmed)) {
+      if (this._txDepth === 0) {
+        this._txDepth++;
+        return this.internal.exec('BEGIN TRANSACTION;');
+      } else {
+        const sp = `raw_sp_${this._txDepth}`;
+        this._txDepth++;
+        return this.internal.exec(`SAVEPOINT ${sp};`);
+      }
+    }
+    if (/^(COMMIT|END)(\s+TRANSACTION)?\s*;?$/i.test(trimmed)) {
+      if (this._txDepth > 1) {
+        this._txDepth--;
+        const sp = `raw_sp_${this._txDepth}`;
+        return this.internal.exec(`RELEASE SAVEPOINT ${sp};`);
+      } else if (this._txDepth === 1) {
+        this._txDepth = 0;
+        return this.internal.exec('COMMIT;');
+      }
+      return;
+    }
+    if (/^ROLLBACK(\s+TRANSACTION)?\s*;?$/i.test(trimmed)) {
+      if (this._txDepth > 1) {
+        this._txDepth--;
+        const sp = `raw_sp_${this._txDepth}`;
+        try { this.internal.exec(`ROLLBACK TO SAVEPOINT ${sp};`); } catch (_) {}
+        return this.internal.exec(`RELEASE SAVEPOINT ${sp};`);
+      } else if (this._txDepth === 1) {
+        this._txDepth = 0;
+        return this.internal.exec('ROLLBACK;');
+      }
+      return;
+    }
     return this.internal.exec(sql);
   }
 
@@ -124,14 +159,34 @@ class DatabaseWrapper {
 
   transaction(fn) {
     return (...args) => {
-      this.internal.exec('BEGIN TRANSACTION;');
+      const depth = this._txDepth;
+      this._txDepth++;
+      const sp = `tx_sp_${depth}`;
+      if (depth === 0) {
+        this.internal.exec('BEGIN TRANSACTION;');
+      } else {
+        this.internal.exec(`SAVEPOINT ${sp};`);
+      }
       try {
         const result = fn(...args);
-        this.internal.exec('COMMIT;');
+        if (depth === 0) {
+          this.internal.exec('COMMIT;');
+        } else {
+          this.internal.exec(`RELEASE SAVEPOINT ${sp};`);
+        }
         return result;
       } catch (err) {
-        this.internal.exec('ROLLBACK;');
+        if (depth === 0) {
+          try { this.internal.exec('ROLLBACK;'); } catch (_) {}
+        } else {
+          try {
+            this.internal.exec(`ROLLBACK TO SAVEPOINT ${sp};`);
+            this.internal.exec(`RELEASE SAVEPOINT ${sp};`);
+          } catch (_) {}
+        }
         throw err;
+      } finally {
+        this._txDepth = depth;
       }
     };
   }
