@@ -211,17 +211,17 @@ export function calculateTripFinancials(params = {}) {
     baseFare = params.base_revenue ?? params.cuoc_goc ?? params.trip_revenue ?? 0,
     subcontractorCost = params.subcontractor_cost ?? params.cuoc_ra ?? 0,
     tollFee = params.toll_fee ?? params.tien_duong ?? 0,
-    liftOnFee = params.lift_on_fee ?? 0,
-    liftOffFee = params.lift_off_fee ?? 0,
+    liftOnFee = params.lift_on_fee ?? params.phi_nang ?? 0,
+    liftOffFee = params.lift_off_fee ?? params.phi_ha ?? 0,
     legacyPortFee = params.port_fee ?? 0,
     fuelLiters = params.fuel_liters ?? params.dau_liters ?? 0,
     fuelUnitPrice = params.fuel_unit_price ?? null,
     parkingFee = params.parking_fee ?? 0,
     handlingFee = params.handling_fee ?? 0,
     mealAllowance = params.meal_allowance ?? 0,
-    otherCosts = params.other_costs ?? 0,
-    allocatedGroupCost = params.allocated_group_cost ?? null,
-    isUnallocatedGroup = params.is_unallocated_group ?? false,
+    otherCosts = params.otherCosts ?? (params.other_costs || params.phat_sinh || 0),
+    allocatedGroupCost = params.allocatedGroupCost ?? params.allocated_group_cost ?? null,
+    isUnallocatedGroup = params.isUnallocatedGroup ?? params.is_unallocated_group ?? (Boolean(params.is_grouped) && params.allocation_status === 'UNALLOCATED'),
   } = params;
   const fare = calculateFareBreakdown(baseFare);
   const fuel = calculateFuelCost(fuelLiters, fuelUnitPrice);
@@ -243,8 +243,13 @@ export function calculateTripFinancials(params = {}) {
   const direct_cost_without_group =
     c_sub + c_toll + c_lift_on + c_lift_off + fuel.fuel_cost + c_other_total;
 
+  const hasAllocatedGroupCost =
+    Boolean(params.is_grouped || params.group_id) &&
+    allocatedGroupCost !== null &&
+    allocatedGroupCost !== undefined;
+
   const effective_company_cost =
-    allocatedGroupCost !== null && allocatedGroupCost !== undefined
+    hasAllocatedGroupCost
       ? toIntVnd(allocatedGroupCost) + c_lift_on + c_lift_off + fuel.fuel_cost + c_parking + c_handling + c_meal
       : direct_cost_without_group;
 
