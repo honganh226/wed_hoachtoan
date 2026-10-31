@@ -42,6 +42,7 @@ export default function TripDetailDrawer({
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         handlers.current.onClose();
       }
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
@@ -135,12 +136,12 @@ export default function TripDetailDrawer({
         className="fixed inset-y-0 right-0 w-full max-w-2xl h-full shadow-2xl flex flex-col border-l border-slate-200 z-10 bg-white"
       >
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50 text-slate-900">
           <div className="flex items-center space-x-2">
             <button
               onClick={onPrev}
               disabled={!hasPrev}
-              className="p-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 transition-colors"
+              className="p-1.5 rounded-lg border border-slate-300 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 transition-colors"
               title="Cuốc trước (Phím [)"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -148,17 +149,17 @@ export default function TripDetailDrawer({
             <button
               onClick={onNext}
               disabled={!hasNext}
-              className="p-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 transition-colors"
+              className="p-1.5 rounded-lg border border-slate-300 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 transition-colors"
               title="Cuốc tiếp theo (Phím ])"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
             <div className="pl-1">
               <div className="flex items-center space-x-2">
-                <h3 className="font-mono font-bold text-white text-sm sm:text-base">{tripCode}</h3>
-                <span className="text-[11px] text-slate-300 font-normal">• Ngày chạy: {tripDate}</span>
+                <h3 className="font-mono font-bold text-slate-900 text-sm sm:text-base">{tripCode}</h3>
+                <span className="text-[11px] text-slate-500 font-normal">• Ngày chạy: {tripDate}</span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Dòng nguồn #{selectedTrip.row_index || selectedTrip.stt || selectedTrip.id} •{' '}
                 {selectedTrip.area_id === 'TUAN' ? 'Khu Tuân (Xe nhà)' : 'Toàn công ty'}
               </p>
@@ -167,13 +168,13 @@ export default function TripDetailDrawer({
 
           <div className="flex items-center space-x-2">
             {isMergedGroup && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/30 text-indigo-200 border border-indigo-400/40">
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
                 Ô gộp {groupId}
               </span>
             )}
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors"
               title="Đóng (Escape)"
             >
               <X className="w-5 h-5" />
@@ -196,76 +197,78 @@ export default function TripDetailDrawer({
           )}
 
           {/* 7 CHỈ TIÊU TÀI CHÍNH CHUYẾN (Mục 3.A) */}
-          <div className="p-3.5 rounded-xl bg-slate-900 text-white space-y-3 shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-700 pb-2">
-              <span className="font-bold text-amber-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                <Coins className="w-3.5 h-3.5" />
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 space-y-3 shadow-2xs">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <span className="font-bold text-indigo-950 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <Coins className="w-3.5 h-3.5 text-indigo-600" />
                 <span>7 Chỉ Tiêu Tài Chính Chuyến (Chuẩn Hóa Cước Gốc Chưa VAT • VAT 8% • Trừ 17%)</span>
               </span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <div className="p-2.5 bg-slate-800 rounded-lg border border-slate-700">
-                <span className="text-[10px] text-slate-400 block">1. Cước vào chưa VAT</span>
-                <span className="text-sm font-bold font-mono text-white block mt-0.5">
+              <div className="p-2.5 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                <span className="text-[10px] text-slate-500 block">1. Cước vào chưa VAT</span>
+                <span className="text-sm font-bold font-mono text-slate-900 block mt-0.5">
                   {formatVnd(fin.cuoc_goc)}
                 </span>
               </div>
 
-              <div className="p-2.5 bg-slate-800 rounded-lg border border-slate-700">
-                <span className="text-[10px] text-slate-400 block">2. VAT 8%</span>
-                <span className="text-sm font-bold font-mono text-teal-300 block mt-0.5">
+              <div className="p-2.5 bg-white rounded-lg border border-teal-200 shadow-2xs">
+                <span className="text-[10px] text-teal-700 font-medium block">2. VAT 8%</span>
+                <span className="text-sm font-bold font-mono text-teal-800 block mt-0.5">
                   +{formatVnd(fin.vat_amount)}
                 </span>
               </div>
 
-              <div className="p-2.5 bg-slate-800 rounded-lg border border-emerald-600/60">
-                <span className="text-[10px] text-emerald-300 font-semibold block">3. Cước vào có VAT (×1,08)</span>
-                <span className="text-sm font-extrabold font-mono text-emerald-400 block mt-0.5">
+              <div className="p-2.5 bg-emerald-50/70 rounded-lg border border-emerald-200 shadow-2xs">
+                <span className="text-[10px] text-emerald-700 font-semibold block">3. Cước vào có VAT (×1,08)</span>
+                <span className="text-sm font-extrabold font-mono text-emerald-800 block mt-0.5">
                   {formatVnd(fin.cuoc_co_vat)}
                 </span>
               </div>
 
-              <div className="p-2.5 bg-slate-800 rounded-lg border border-amber-600/60">
-                <span className="text-[10px] text-amber-300 block">4. Khoản trừ 17% nội bộ</span>
-                <span className="text-sm font-bold font-mono text-amber-300 block mt-0.5">
+              <div className="p-2.5 bg-amber-50/70 rounded-lg border border-amber-200 shadow-2xs">
+                <span className="text-[10px] text-amber-800 font-medium block">4. Khoản trừ 17% nội bộ</span>
+                <span className="text-sm font-bold font-mono text-amber-900 block mt-0.5">
                   −{formatVnd(fin.khoan_tru_17)}
                 </span>
               </div>
 
-              <div className="p-2.5 bg-slate-800 rounded-lg border border-blue-500/60">
-                <span className="text-[10px] text-blue-300 font-semibold block">5. Cước sau trừ 17% (×0,83)</span>
-                <span className="text-sm font-extrabold font-mono text-blue-300 block mt-0.5">
+              <div className="p-2.5 bg-blue-50/70 rounded-lg border border-blue-200 shadow-2xs">
+                <span className="text-[10px] text-blue-700 font-semibold block">5. Cước sau trừ 17% (×0,83)</span>
+                <span className="text-sm font-extrabold font-mono text-blue-800 block mt-0.5">
                   {formatVnd(fin.cuoc_sau_tru_17)}
                 </span>
               </div>
 
-              <div className="p-2.5 bg-slate-800 rounded-lg border border-rose-500/60">
-                <span className="text-[10px] text-rose-300 block">6. Chi phí Cty đã ghi nhận</span>
-                <span className="text-sm font-bold font-mono text-rose-300 block mt-0.5">
+              <div className="p-2.5 bg-rose-50/70 rounded-lg border border-rose-200 shadow-2xs">
+                <span className="text-[10px] text-rose-700 font-medium block">6. Chi phí Cty đã ghi nhận</span>
+                <span className="text-sm font-bold font-mono text-rose-800 block mt-0.5">
                   {formatVnd(fin.chi_phi_cong_ty)}
                 </span>
               </div>
             </div>
 
             {/* Chỉ tiêu thứ 7 */}
-            <div className="p-3 bg-amber-500/15 border border-amber-400/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <div className="text-xs font-bold text-amber-300">
+                <div className="text-xs font-bold text-emerald-950">
                   7. Chênh lệch tạm tính sau khoản trừ 17% và chi phí
                 </div>
-                <div className="text-[10px] text-slate-300 mt-0.5">
+                <div className="text-[10px] text-emerald-700 mt-0.5">
                   Chưa trừ lương • Không trừ tiền phơi trả hộ • Đối chiếu trước trừ 17% (Cước gốc − Chi phí):{' '}
-                  <strong className="text-white">{formatVnd(fin.chenh_lech_truoc_tru_goc)}</strong>
+                  <strong className="text-emerald-950 font-mono">{formatVnd(fin.chenh_lech_truoc_tru_goc)}</strong>
                 </div>
               </div>
               <div className="text-right">
                 {pendingAllocation ? (
-                  <span className="text-xs font-bold font-mono text-indigo-300">Theo nhóm ô gộp</span>
+                  <span className="text-xs font-bold font-mono text-indigo-700 bg-indigo-100/80 px-2.5 py-1 rounded-md border border-indigo-200">
+                    Theo nhóm ô gộp
+                  </span>
                 ) : (
                   <span
                     className={`text-base sm:text-lg font-extrabold font-mono ${
-                      fin.chenh_lech_sau_tru_17 >= 0 ? 'text-amber-300' : 'text-rose-400'
+                      fin.chenh_lech_sau_tru_17 >= 0 ? 'text-emerald-700' : 'text-rose-600'
                     }`}
                   >
                     {formatVnd(fin.chenh_lech_sau_tru_17)}
