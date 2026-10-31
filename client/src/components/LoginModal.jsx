@@ -69,10 +69,10 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess, currentUse
             </div>
             <div>
               <h2 className="text-lg font-bold text-white tracking-wide">
-                Đăng Nhập Hệ Thống
+                Đăng nhập Quản lý vận tải
               </h2>
               <p className="text-xs text-slate-400">
-                Xác thực phân quyền 4 vai trò & Token JWT
+                Dành cho nhân sự công ty
               </p>
             </div>
           </div>
@@ -111,7 +111,7 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess, currentUse
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Ví dụ: giamdoc, ketoan, tuan, liem..."
+                  placeholder="Nhập tài khoản được công ty cấp"
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   autoFocus
                 />

@@ -1,5 +1,5 @@
 /**
- * Service Worker cho Hệ Thống Điều Vận Container - WED_HOACHTOAN
+ * Service Worker cho Quản lý vận tải
  * Phiên bản: v1.0.0
  * Chiến lược:
  * - App Shell & Tĩnh: Stale-While-Revalidate / Cache-First
@@ -7,7 +7,7 @@
  * - API POST/PUT: Bỏ qua SW, xử lý hàng đợi qua IndexedDB Sync Engine
  */
 
-const CACHE_NAME = 'wed-hoachtoan-cache-v3';
+const CACHE_NAME = 'wed-hoachtoan-cache-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

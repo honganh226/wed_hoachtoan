@@ -1,6 +1,6 @@
 {
-  "name": "Hệ Thống Điều Vận Container - WED_HOACHTOAN",
-  "short_name": "Điều Vận Cont",
+  "name": "Quản lý vận tải",
+  "short_name": "Quản lý vận tải",
   "description": "Ứng dụng web nội bộ điều hành vận tải container, quản lý cuốc xe, chi phí, phơi EIR và tạm ứng lái xe",
   "id": "/",
   "start_url": "/",
@@ -11,7 +11,11 @@
   "theme_color": "#0f172a",
   "lang": "vi",
   "dir": "ltr",
-  "categories": ["business", "productivity", "utilities"],
+  "categories": [
+    "business",
+    "productivity",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -44,21 +48,36 @@
       "short_name": "Lái Xe",
       "description": "Mở nhanh giao diện tác nghiệp cuốc xe cho Lái xe",
       "url": "/?tab=driver_app",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Tạo Chuyến Xe Mới",
       "short_name": "+ Chuyến Mới",
       "description": "Tạo nhanh chuyến xe container mới",
       "url": "/?action=create_trip",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Dashboard Giám Đốc",
       "short_name": "Dashboard",
       "description": "Xem P&L Real-time và dòng tiền",
       "url": "/?tab=dashboard",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

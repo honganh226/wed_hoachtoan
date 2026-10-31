@@ -453,7 +453,7 @@ export default function App() {
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-bold text-slate-900 text-sm tracking-tight">HỒNG ANH</span>
+                <span className="font-bold text-slate-900 text-sm tracking-tight">QUẢN LÝ VẬN TẢI</span>
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
                   isDriver
                     ? 'bg-purple-50 text-purple-700 border-purple-200'
@@ -468,7 +468,7 @@ export default function App() {
               </div>
               <div className="text-[11px] text-slate-400 flex items-center space-x-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>{isDriver ? 'Sẵn sàng nhận chuyến' : 'Quản trị vận tải'}</span>
+                <span>{isDriver ? 'Sẵn sàng nhận chuyến' : 'Hệ thống quản trị doanh nghiệp'}</span>
               </div>
             </div>
           </div>

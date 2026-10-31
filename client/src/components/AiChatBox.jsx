@@ -19,9 +19,9 @@ function LegacyAiChatBox({ currentUser, isOpen, onClose }) {
     {
       id: 'welcome',
       sender: 'ai',
-      text: `Xin chào ${currentUser?.full_name || 'bạn'}! Tôi là **Trợ Lý Ảo Vận Tải AI** trực thuộc Hệ thống Điều Vận Container WED_HOACHTOAN. 
+      text: `Xin chào ${currentUser?.full_name || 'bạn'}! Tôi là **Trợ lý vận tải** của công ty. 
 
-Tôi được trang bị bộ lọc bảo mật **AI Guardrails** và có thể giải đáp thông tin về:
+Tôi có thể hỗ trợ tra cứu theo quyền truy cập của bạn:
 - 🚛 Tình trạng đội xe, cảnh báo hạn đăng kiểm, bảo hiểm, chu kỳ thay dầu máy.
 - 📋 Chuyến xe, tra cứu tuyến đường và cảnh báo đọng phơi EIR.
 - 📦 Chuẩn kiểm tra số container ISO 6346 và nghiệp vụ cont kẹp 2x20'.
