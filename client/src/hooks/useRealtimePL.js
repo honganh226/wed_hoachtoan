@@ -147,9 +147,19 @@ export function useRealtimePL(dateFilter = {}, currentUser = null) {
       pollInterval = setInterval(() => {
         if (sessionKeyRef.current && !isExpiredRef.current && typeof document !== 'undefined' && !document.hidden) {
           refresh(dateFilterRef.current);
+          window.dispatchEvent(new CustomEvent('business-data-changed', { detail: { source: 'polling_fallback' } }));
         }
       }, 60000);
     };
+
+    // Khi người dùng quay lại tab trình duyệt (visibilitychange): kiểm tra và làm mới tức thì
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && sessionKeyRef.current && !isExpiredRef.current) {
+        refresh(dateFilterRef.current);
+        window.dispatchEvent(new CustomEvent('business-data-changed', { detail: { source: 'tab_visible' } }));
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Tự động nhận diện nếu đang chạy qua trycloudflare.com thì dùng ngay polling, không mở SSE
     const isCloudflareTunnel = typeof window !== 'undefined' && window.location.hostname.includes('trycloudflare.com');
@@ -184,6 +194,9 @@ export function useRealtimePL(dateFilter = {}, currentUser = null) {
                 reason: payload.reason
               });
             }
+
+            // Tự động phát sự kiện cập nhật để các view nghiệp vụ (Chuyến xe, Công nợ, Tổng quan) tự đồng bộ
+            window.dispatchEvent(new CustomEvent('business-data-changed', { detail: payload }));
           },
           // onError
           (err) => {
@@ -232,6 +245,7 @@ export function useRealtimePL(dateFilter = {}, currentUser = null) {
     }
 
     return () => {
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
       if (es) {
         es.close();
       }

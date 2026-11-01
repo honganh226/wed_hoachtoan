@@ -119,6 +119,7 @@ export function idempotentWrites(req, res, next) {
         });
       }
       const cachedData = JSON.parse(old.response);
+      res.setHeader('X-Idempotent-Replay', 'true');
       return res.status(old.status).json(cachedData);
     }
 

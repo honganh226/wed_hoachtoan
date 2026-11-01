@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { db } from '../db/database.js';
-import { excelMonthService } from './excelMonthService.js';
+import { excelMonthService, invalidateExcelMonthCache } from './excelMonthService.js';
 import { createTrip, updateTrip } from './trip.service.js';
 import { legacyDemoIds } from './demoData.service.js';
 import { calculateFareBreakdown, calculateFuelCost, calculateTripFinancials, normalizeContainerType, toIntVnd } from '../utils/tripFinancials.js';
@@ -220,6 +220,7 @@ export function saveEntity(entity,id,values,expectedVersion,user,reason=''){
   const after=rowsFor(entity).find(r=>r.id===id);
   db.prepare('INSERT INTO director_history VALUES(?,?,?,?,?,?,?,?)').run(randomUUID(),entity,id,JSON.stringify(old),JSON.stringify(after),user.username,reason||'Chỉnh sửa dữ liệu',now);
  })();
+ invalidateExcelMonthCache();
  return listEntity(entity).find(r=>r.id===id);
 }
 export function history(){return db.prepare('SELECT * FROM director_history ORDER BY created_at DESC LIMIT 100').all();}

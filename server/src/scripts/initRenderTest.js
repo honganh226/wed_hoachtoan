@@ -9,7 +9,7 @@ import { db } from '../db/database.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-if (process.env.RENDER_READ_ONLY !== 'true') throw new Error('This initializer requires RENDER_READ_ONLY=true');
+if (process.env.RENDER_READ_ONLY !== 'true' && process.env.ONLINE_EDITING !== 'true') throw new Error('This initializer requires RENDER_READ_ONLY=true or ONLINE_EDITING=true');
 const password = process.env.DIRECTOR_INIT_PASSWORD;
 if (!password || password.length < 6) throw new Error('Configure DIRECTOR_INIT_PASSWORD with at least 6 characters for the test account');
 
