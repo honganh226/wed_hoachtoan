@@ -11,6 +11,7 @@
  * ============================================================
  */
 import { db } from '../db/database.js';
+import { durableWriteContext } from './durableWriteContext.js';
 import { EXPENSE_CATEGORIES, TRIP_STATUSES, USER_ROLES } from '../db/schema.js';
 
 // Danh sách client SSE đang kết nối
@@ -503,6 +504,7 @@ export function registerSSEClient(req, res) {
  * Phát tín hiệu cập nhật P&L tức thì tới toàn bộ trình duyệt đang kết nối
  */
 export function broadcastPLUpdate(eventType = 'PL_UPDATED', meta = {}) {
+  if (durableWriteContext.getStore()?.pending) return;
   if (sseClients.size === 0) return;
 
   try {

@@ -4,6 +4,7 @@ import { initDatabase } from '../db/init.js';
 import { excelMonthService, invalidateExcelMonthCache } from './excelMonthService.js';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 import { broadcastPLUpdate } from './plEngine.service.js';
+import { durableWriteContext } from './durableWriteContext.js';
 
 let revision = null;
 let ready = false;
@@ -265,6 +266,8 @@ export function durableWrites(req, res, next) {
             if (res.statusCode < 400) {
               if (res.getHeader('X-Idempotent-Replay') !== 'true') {
                 await flushState();
+                const context = durableWriteContext.getStore();
+                if (context) context.pending = false;
                 try {
                   broadcastPLUpdate('DATA_MUTATED', {
                     trigger: 'DURABLE_WRITE',
@@ -301,7 +304,7 @@ export function durableWrites(req, res, next) {
           resolve();
         }
       });
-      next();
+      durableWriteContext.run({ pending: true }, next);
     });
   };
   const task = queue.then(run);
