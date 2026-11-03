@@ -11,9 +11,56 @@ db.exec(`CREATE TABLE IF NOT EXISTS director_records(entity TEXT NOT NULL, recor
 CREATE TABLE IF NOT EXISTS director_history(id TEXT PRIMARY KEY,entity TEXT NOT NULL,record_id TEXT NOT NULL,before_value TEXT NOT NULL,after_value TEXT NOT NULL,actor TEXT NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS salary_settings(id TEXT PRIMARY KEY,driver_id TEXT NOT NULL,effective_month TEXT NOT NULL,amount INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(driver_id,effective_month));`);
 
+export function ensureDirectorSchema() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS director_records(entity TEXT NOT NULL, record_id TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(entity,record_id));
+    CREATE TABLE IF NOT EXISTS director_history(id TEXT PRIMARY KEY,entity TEXT NOT NULL,record_id TEXT NOT NULL,before_value TEXT NOT NULL,after_value TEXT NOT NULL,actor TEXT NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS salary_settings(id TEXT PRIMARY KEY,driver_id TEXT NOT NULL,effective_month TEXT NOT NULL,amount INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(driver_id,effective_month));
+  `);
+  const historyCols = new Set(db.prepare("PRAGMA table_info(director_history)").all().map(r => r.name));
+  if (!historyCols.has('is_undone')) db.exec("ALTER TABLE director_history ADD COLUMN is_undone INTEGER DEFAULT 0;");
+  if (!historyCols.has('undone_at')) db.exec("ALTER TABLE director_history ADD COLUMN undone_at TEXT;");
+  if (!historyCols.has('undone_by')) db.exec("ALTER TABLE director_history ADD COLUMN undone_by TEXT;");
+  return true;
+}
+ensureDirectorSchema();
+
 const field=(key,label,type='text',required=false,options=null)=>({key,label,type,required,options});
 const money=(key,label)=>field(key,label,'money');
 const paymentOptions=['CHUA_TT','TUOI','X','DA_TT','DOI_TRU'];
+export function syncTripExpenseComponent(tripId, sourceComponent, timestamp = new Date().toISOString()) {
+  if (!tripId) return;
+  const dbTrip = db.prepare('SELECT id FROM trips WHERE id = ?').get(tripId);
+  if (!dbTrip) return;
+
+  const allowed = ['toll_fee', 'port_fee', 'parking_fee', 'handling_fee', 'meal_allowance', 'subcontractor_cost', 'other_costs', 'lift_on_fee', 'lift_off_fee'];
+  if (sourceComponent && allowed.includes(sourceComponent)) {
+    const total = db.prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE trip_id = ? AND source_component = ?').get(tripId, sourceComponent).total;
+    db.prepare(`UPDATE trips SET ${sourceComponent} = ?, updated_at = ? WHERE id = ?`).run(total, timestamp, tripId);
+
+    const compMap = {
+      toll_fee: 'tien_duong',
+      subcontractor_cost: 'cuoc_ra',
+      lift_on_fee: 'lift_on_fee',
+      lift_off_fee: 'lift_off_fee',
+      port_fee: 'port_fee',
+      parking_fee: 'parking_fee',
+      handling_fee: 'handling_fee',
+      meal_allowance: 'meal_allowance',
+      other_costs: 'other_costs'
+    };
+    const overlayKey = compMap[sourceComponent] || sourceComponent;
+    const overlay = db.prepare("SELECT value FROM director_records WHERE entity = 'trips' AND record_id = ?").get(tripId);
+    if (overlay) {
+      const patch = JSON.parse(overlay.value);
+      patch[overlayKey] = total;
+      if (overlayKey === 'lift_on_fee') patch.phi_nang = total;
+      if (overlayKey === 'lift_off_fee') patch.phi_ha = total;
+      db.prepare("UPDATE director_records SET value = ? WHERE entity = 'trips' AND record_id = ?").run(JSON.stringify(patch), tripId);
+    }
+  }
+}
+
 export const entities={
  trips:{label:'Chuyến xe & công nợ',business:true,fields:[field('trip_date','Ngày chạy','date',true),field('customer_name','Khách hàng', 'text',true),field('route_name','Tuyến'),field('vehicle_plate','Biển số'),field('driver_name','Tài xế'),field('container_number','Số container'),field('container_size','Loại container'),field('is_subcontractor','Xe thuê ngoài','boolean'),field('subcontractor_name','Nhà xe ngoài'),money('cuoc_goc','Cước vào gốc — chưa VAT'),money('cuoc_vao','Cước vào — chưa VAT (nguồn)'),field('lift_on_location','Nơi nâng'),money('lift_on_fee','Phí nâng'),field('lift_off_location','Nơi hạ'),money('lift_off_fee','Phí hạ'),money('cuoc_ra','Cước ra'),money('tien_duong','Phí cầu đường'),money('port_fee','Phí cảng gộp cũ (chưa tách)'),money('parking_fee','Phí bến bãi'),money('handling_fee','Bốc xếp'),money('meal_allowance','Tiền ăn / phụ cấp'),money('other_costs','Chi phí khác'),field('dau_liters','Dầu cấp (lít)','number'),field('customer_payment_status','Thanh toán khách','select',false,paymentOptions),field('subcontractor_payment_status','Thanh toán nhà xe','select',false,['CHUA_TT','DA_TT']),money('received_amount','Tiền khách đã trả'),money('offset_amount','Khoản đối trừ'),money('sub_paid_amount','Tiền đã trả nhà xe'),field('payment_terms','Điều khoản công nợ (VD: CN 30 NGÀY)'),field('notes_r','Ghi chú')]},
  vehicles:{label:'Đầu xe',table:'vehicles',fields:[field('plate_number','Biển số','text',true),field('vehicle_type','Loại xe'),field('status','Trạng thái'),field('default_driver_id','Tài xế mặc định','ref',false,'drivers'),field('inspection_expiry','Hạn đăng kiểm','date'),field('insurance_expiry','Hạn bảo hiểm','date'),field('current_km','Số km','number'),field('last_maintenance_km','Km bảo dưỡng gần nhất','number'),field('oil_change_interval_km','Chu kỳ thay dầu (km)','number'),field('notes','Ghi chú')]},
@@ -23,15 +70,15 @@ export const entities={
  customers:{label:'Khách hàng',table:'customers',fields:[field('name','Tên khách','text',true),field('code','Mã khách'),field('phone','Điện thoại'),field('address','Địa chỉ'),field('tax_code','Mã số thuế'),field('notes','Ghi chú')]},
  ports:{label:'Địa điểm nâng / hạ & cảng',table:'ports',fields:[field('name','Tên cảng / địa điểm','text',true),field('code','Mã địa điểm'),field('port_type','Loại (PORT/ICD/DEPOT)'),field('address','Địa chỉ'),field('notes','Ghi chú')]},
  subcontractors:{label:'Nhà xe ngoài',table:'subcontractors',fields:[field('name','Tên nhà xe','text',true),field('contact_person','Liên hệ'),field('phone','Điện thoại'),field('notes','Ghi chú')]},
- expenses:{label:'Chi phí chi tiết',table:'expenses',fields:[field('trip_id','Chuyến','ref',true,'dbtrips'),field('expense_type','Loại chi phí'),field('category','Nhóm chi phí'),money('amount','Số tiền'),field('expense_date','Ngày chi','date'),field('note','Ghi chú')]},
+ expenses:{label:'Chi phí chi tiết',table:'expenses',fields:[field('trip_id','Chuyến','ref',true,'dbtrips'),field('expense_type','Loại chi phí'),field('category','Nhóm chi phí'),money('amount','Số tiền'),field('expense_date','Ngày chi','date'),field('source_component','Thành phần chi phí chuyến'),field('note','Ghi chú')]},
  advances:{label:'Tạm ứng',table:'trip_advances',fields:[field('driver_id','Tài xế','ref',true,'drivers'),field('trip_id','Chuyến','ref',true,'dbtrips'),field('advance_date','Ngày ứng','date',true),money('advance_amount','Tiền ứng'),money('settled_amount','Thực chi đã quyết toán'),field('status','Trạng thái'),field('notes','Ghi chú')]},
  incentives:{label:'Động viên & điều chỉnh lương',table:'driver_incentives',fields:[field('driver_id','Tài xế','ref',true,'drivers'),field('period_month','Kỳ lương','month',true),money('incentive_amount','Động viên'),money('base_salary_override','Lương cứng riêng kỳ này'),field('incentive_note','Ghi chú'),field('is_approved','Đã duyệt','boolean')]},
  maintenance:{label:'Bảo dưỡng',table:'maintenance_proposals',fields:[field('vehicle_id','Xe','ref',true,'vehicles'),field('title','Nội dung','text',true),field('description','Chi tiết'),field('proposal_type','Loại bảo dưỡng'),money('estimated_cost','Chi phí dự kiến'),money('actual_cost','Chi phí thực tế'),field('km_at_proposal','Km tại thời điểm','number'),field('status','Trạng thái'),field('completed_at','Ngày hoàn thành','date')]},
  legacy_trips:{label:'Chuyến mẫu đội xe — riêng báo cáo tài chính',table:'trips',legacy:true,fields:[field('trip_date','Ngày chạy','date',true),field('customer_name','Khách','text',true),field('vehicle_id','Xe','ref',false,'vehicles'),field('driver_id','Tài xế','ref',false,'drivers'),field('route_name','Tuyến'),money('trip_revenue','Cước vào'),money('driver_salary','Lương chuyến'),money('subcontractor_cost','Cước ra'),field('status','Trạng thái'),field('notes','Ghi chú')]},
- containers:{label:'Container & các chặng',table:'containers',fields:[field('trip_id','Chuyến','ref',true,'dbtrips'),field('container_number','Số container'),field('container_size','Kích cỡ'),field('container_type','Loại container'),field('is_second_cont','Container thứ hai','boolean'),field('pickup_yard','Điểm lấy'),field('dropoff_yard','Điểm trả'),money('lift_on_fee','Phí nâng'),money('lift_off_fee','Phí hạ'),field('notes','Ghi chú')]}
+ containers:{label:'Container & các chặng',table:'containers',fields:[field('trip_id','Chuyến','ref',true,'dbtrips'),field('container_number','Số container'),field('container_size','Kích cỡ'),field('container_type','Loại container'),field('is_second_cont','Container thứ hai','boolean'),field('pickup_yard','Điểm lấy'),field('dropoff_yard','Điểm trả'),money('lift_on_fee','Phí nâng'),money('lift_off_fee','Phí hạ'),field('notes','Ghi chú')]},
+ eir_advances:{label:'Tiền phơi trả hộ',table:'eir_advances',fields:[field('trip_id','Chuyến','ref',true,'dbtrips'),field('customer_name','Chủ hàng','text',true),money('advance_amount','Tiền phơi trả hộ'),field('advance_date','Ngày ứng','date',true),field('payment_term_type','Điều khoản hoàn tiền','select',false,['CHUA_DAT','TUOI','NGAY_CO_DINH','SO_NGAY_SAU_CHUYEN']),field('due_date','Ngày hẹn hoàn','date'),field('refund_status','Trạng thái hoàn','select',false,['CHUA_HOAN','HOAN_MOT_PHAN','DA_HOAN']),money('refunded_amount','Đã hoàn'),field('notes','Ghi chú')]}
 };
 const version=row=>createHash('sha256').update(JSON.stringify(row)).digest('hex');
-export function ensureDirectorSchema(){return true;}
 
 export function overlayBusiness(rows){
  const patches=new Map(db.prepare("SELECT record_id,value FROM director_records WHERE entity='trips'").all().map(r=>[r.record_id,JSON.parse(r.value)]));
@@ -41,6 +88,12 @@ export function overlayBusiness(rows){
  return rows.map(source=>{
   const patch=patches.get(source.id)||{};
   const r={...source,...patch};
+  if (patch.is_cancelled) {
+    r.is_cancelled = true;
+    r.cancel_reason = patch.cancel_reason;
+    r.cancelled_at = patch.cancelled_at;
+    r.cancelled_by = patch.cancelled_by;
+  }
 
   // 1. Cước vào gốc là chưa VAT (+8% VAT, -17% nội bộ)
   const rawBaseFare = patch.cuoc_goc !== undefined
@@ -155,7 +208,7 @@ export function overlayBusiness(rows){
   return r;
  });
 }
-function rowsFor(entity){const c=entities[entity];if(!c)throw Error('Danh mục không hợp lệ');if(c.business)return excelMonthService.getData().rows;const rows=db.prepare(`SELECT * FROM ${c.table} ORDER BY rowid DESC LIMIT 3000`).all();return c.legacy?rows.filter(r=>r.source_type==='LEGACY_TEST'||legacyDemoIds.has(r.id)):rows;}
+function rowsFor(entity){const c=entities[entity];if(!c)throw Error('Danh mục không hợp lệ');if(c.business)return excelMonthService.getData().rows.filter(r=>!r.is_cancelled);const rows=db.prepare(`SELECT * FROM ${c.table} ORDER BY rowid DESC LIMIT 3000`).all();return c.legacy?rows.filter(r=>r.source_type==='LEGACY_TEST'||legacyDemoIds.has(r.id)):rows;}
 export function listEntity(entity){return rowsFor(entity).map(r=>({...r,_version:version(r)}));}
 export function metadata(){return {entities:Object.entries(entities).map(([key,value])=>({key,label:value.label,fields:value.fields})),references:{drivers:db.prepare('SELECT id,full_name as label FROM drivers').all(),vehicles:db.prepare('SELECT id,plate_number as label FROM vehicles').all(),dbtrips:db.prepare('SELECT id,trip_code as label FROM trips').all()},read_only:process.env.RENDER_READ_ONLY==='true'};}
 function validate(config,value){
@@ -189,6 +242,23 @@ export function saveEntity(entity,id,values,expectedVersion,user,reason=''){
    }
    if(values.subcontractor_payment_status && values.subcontractor_payment_status!==old?.subcontractor_payment_status)clean.sub_paid_amount=clean.subcontractor_payment_status==='DA_TT'?clean.cuoc_ra:0;
  }
+ if (entity === 'expenses' && !clean.source_component && clean.expense_type) {
+   const typeToComp = {
+     TOLL: 'toll_fee',
+     TOLL_BOT: 'toll_fee',
+     PORT_LIFT: 'port_fee',
+     LIFT_ON: 'lift_on_fee',
+     LIFT_OFF: 'lift_off_fee',
+     PARKING: 'parking_fee',
+     HANDLING: 'handling_fee',
+     MEAL_ALLOWANCE: 'meal_allowance',
+     SUBCONTRACTOR: 'subcontractor_cost',
+     OTHER: 'other_costs'
+   };
+   if (typeToComp[clean.expense_type]) {
+     clean.source_component = typeToComp[clean.expense_type];
+   }
+ }
  db.transaction(()=>{
   if(c.business){
    const fare = calculateFareBreakdown(clean.cuoc_goc ?? clean.cuoc_vao ?? 0);
@@ -206,22 +276,468 @@ export function saveEntity(entity,id,values,expectedVersion,user,reason=''){
    if(old){if(columns.has('updated_at'))clean.updated_at=now;const keys=Object.keys(clean);db.prepare(`UPDATE ${c.table} SET ${keys.map(k=>`${k}=?`).join(',')} WHERE id=?`).run(...keys.map(k=>clean[k]),id);}
    else {id=randomUUID();const data={...clean,id};if(columns.has('created_at'))data.created_at=now;if(columns.has('updated_at'))data.updated_at=now;if(columns.has('proposed_by'))data.proposed_by=user.username;if(columns.has('created_by'))data.created_by=user.username;const keys=Object.keys(data);db.prepare(`INSERT INTO ${c.table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...keys.map(k=>data[k]));}
   }
-  if(entity==='expenses' && old?.source_component){
-    if(clean.trip_id!==old.trip_id)throw Error('Chi phí thành phần không được chuyển sang cuốc khác; sửa tại cuốc gốc.');
-    const component=old.source_component;
-    const allowed=['toll_fee','port_fee','parking_fee','handling_fee','meal_allowance','subcontractor_cost','other_costs'];
-    if(allowed.includes(component)){
-      const total=db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM expenses WHERE trip_id=? AND source_component=?').get(old.trip_id,component).total;
-      db.prepare(`UPDATE trips SET ${component}=?,updated_at=? WHERE id=?`).run(total,now,old.trip_id);
-      const overlay=db.prepare("SELECT value FROM director_records WHERE entity='trips' AND record_id=?").get(old.trip_id);
-      if(overlay){const patch=JSON.parse(overlay.value);patch[({toll_fee:'tien_duong',subcontractor_cost:'cuoc_ra'})[component]||component]=total;db.prepare("UPDATE director_records SET value=? WHERE entity='trips' AND record_id=?").run(JSON.stringify(patch),old.trip_id);}
+  if(entity==='expenses'){
+    const targetTripId = clean.trip_id || old?.trip_id;
+    const targetComponent = clean.source_component || old?.source_component;
+    if(old?.source_component && clean.trip_id && clean.trip_id !== old.trip_id){
+      throw Error('Chi phí thành phần không được chuyển sang cuốc khác; sửa tại cuốc gốc.');
+    }
+    if(targetTripId && targetComponent){
+      syncTripExpenseComponent(targetTripId, targetComponent, now);
+    }
+    if(old?.source_component && old.source_component !== targetComponent && old.trip_id){
+      syncTripExpenseComponent(old.trip_id, old.source_component, now);
     }
   }
   const after=rowsFor(entity).find(r=>r.id===id);
-  db.prepare('INSERT INTO director_history VALUES(?,?,?,?,?,?,?,?)').run(randomUUID(),entity,id,JSON.stringify(old),JSON.stringify(after),user.username,reason||'Chỉnh sửa dữ liệu',now);
+  db.prepare('INSERT INTO director_history (id, entity, record_id, before_value, after_value, actor, reason, created_at, is_undone) VALUES(?,?,?,?,?,?,?,?,0)').run(randomUUID(),entity,id,JSON.stringify(old),JSON.stringify(after),user.username,reason||'Chỉnh sửa dữ liệu',now);
  })();
  invalidateExcelMonthCache();
  return listEntity(entity).find(r=>r.id===id);
 }
-export function history(){return db.prepare('SELECT * FROM director_history ORDER BY created_at DESC LIMIT 100').all();}
-export function undoChange(historyId,user){const h=db.prepare('SELECT * FROM director_history WHERE id=?').get(historyId);if(!h)throw Error('Không tìm thấy lịch sử');const before=JSON.parse(h.before_value),after=JSON.parse(h.after_value);if(!before)throw Error('Bản ghi mới cần xử lý riêng, không tự xóa dữ liệu liên quan');const restored=Object.fromEntries(entities[h.entity].fields.map(f=>[f.key,before[f.key]??(['money','number','boolean'].includes(f.type)?0:f.type==='select'?f.options[0]:null)]));return saveEntity(h.entity,h.record_id,restored,version(after),user,'Hoàn tác '+historyId);}
+export function deleteEntity(entity, id, user, reason = '', expectedVersion = null) {
+  const c = entities[entity];
+  if (!c) {
+    const err = new Error('Danh mục không hợp lệ');
+    err.status = 400;
+    throw err;
+  }
+  if (!reason || typeof reason !== 'string' || !reason.trim() || reason.trim().length < 3) {
+    const err = new Error('Bắt buộc nhập lý do xóa / hủy dữ liệu (tối thiểu 3 ký tự) để phục vụ kiểm toán.');
+    err.status = 400;
+    throw err;
+  }
+  const cleanReason = reason.trim();
+  const old = rowsFor(entity).find(r => r.id === id);
+  if (!old) {
+    const err = new Error('Không tìm thấy dữ liệu để xóa/hủy');
+    err.status = 404;
+    throw err;
+  }
+  if (!expectedVersion || typeof expectedVersion !== 'string' || !expectedVersion.trim()) {
+    const err = new Error('Bắt buộc cung cấp mã phiên bản (version) để xác thực tính toàn vẹn khi xóa/hủy bản ghi.');
+    err.status = 400;
+    throw err;
+  }
+  const cleanExpectedVersion = expectedVersion.trim();
+  if (version(old) !== cleanExpectedVersion) {
+    const err = new Error('Dữ liệu đã được người khác chỉnh sửa trước đó (phiên bản không khớp). Vui lòng tải lại trước khi thao tác.');
+    err.status = 409;
+    throw err;
+  }
+
+  const now = new Date().toISOString();
+  let actionResult = 'DELETED';
+  let impactMessage = 'Đã xóa bản ghi thành công';
+  let fullSnapshot = null;
+
+  db.transaction(() => {
+    if (c.business && entity === 'trips') {
+      // 1. Kiểm tra khóa sổ kỳ kế toán
+      const tripMonth = (old.trip_date || '').slice(0, 7);
+      if (tripMonth) {
+        const pCols = new Set(db.prepare("PRAGMA table_info(period_locks)").all().map(r => r.name));
+        const monthCol = pCols.has('period_month') ? 'period_month' : pCols.has('effective_month') ? 'effective_month' : null;
+        const lockCol = pCols.has('is_locked') ? 'is_locked = 1' : pCols.has('status') ? "status = 'LOCKED'" : null;
+        if (monthCol && lockCol) {
+          const isLocked = db.prepare(`SELECT 1 FROM period_locks WHERE ${monthCol} = ? AND ${lockCol} LIMIT 1`).get(tripMonth);
+          if (isLocked) {
+            const err = new Error(`Kỳ kế toán [${tripMonth}] chứa ngày chạy của cuốc xe đã bị khóa sổ. Không thể xóa hoặc hủy.`);
+            err.status = 403;
+            throw err;
+          }
+        }
+      }
+
+      const dbTrip = db.prepare('SELECT id, source_type, is_locked FROM trips WHERE id = ?').get(id);
+      if (dbTrip?.is_locked) {
+        const err = new Error('Cuốc xe đã bị khóa sổ kỳ kế toán. Không thể xóa/hủy.');
+        err.status = 403;
+        throw err;
+      }
+
+      // 2. Kiểm tra đầy đủ các giao dịch thực tế & chi phí phát sinh trước khi cho phép xóa/hủy
+      const blockingReasons = [];
+
+      if (Number(old.received_amount || 0) > 0 || ['TUOI', 'X', 'DA_TT'].includes(old.customer_payment_status)) {
+        blockingReasons.push(`tiền đã thu khách (${Number(old.received_amount || 0).toLocaleString('vi-VN')} đ / trạng thái ${old.customer_payment_status})`);
+      }
+      if (Number(old.offset_amount || 0) > 0 || old.customer_payment_status === 'DOI_TRU') {
+        blockingReasons.push(`khoản đối trừ công nợ (${Number(old.offset_amount || 0).toLocaleString('vi-VN')} đ)`);
+      }
+      if (Number(old.sub_paid_amount || 0) > 0 || old.subcontractor_payment_status === 'DA_TT' || Number(old.cuoc_ra || 0) > 0) {
+        blockingReasons.push(`tiền trả nhà xe / cước thuê ngoài (${Number(old.sub_paid_amount || old.cuoc_ra || 0).toLocaleString('vi-VN')} đ)`);
+      }
+
+      const dbExpenseSum = db.prepare('SELECT COALESCE(SUM(amount), 0) AS s FROM expenses WHERE trip_id = ? AND amount > 0').get(id)?.s || 0;
+      const nonSubDirectCost = Math.max(0, Number(old.direct_cost || 0) - Number(old.cuoc_ra || 0));
+      const tripFuelLiters = Number(old.dau_liters || 0);
+      if (dbExpenseSum > 0 || nonSubDirectCost > 0 || tripFuelLiters > 0) {
+        const expParts = [];
+        if (Math.max(dbExpenseSum, nonSubDirectCost) > 0) expParts.push(`${Math.max(dbExpenseSum, nonSubDirectCost).toLocaleString('vi-VN')} đ`);
+        if (tripFuelLiters > 0) expParts.push(`${tripFuelLiters}L dầu`);
+        blockingReasons.push(`chi phí thực tế (${expParts.join(', ')})`);
+      }
+
+      const hasActiveRefund = Boolean(db.prepare(`
+        SELECT 1 FROM eir_refunds r
+        INNER JOIN eir_advances a ON r.advance_id = a.id
+        WHERE a.trip_id = ? AND r.status = 'ACTIVE'
+        LIMIT 1
+      `).get(id));
+      const eirAdvanceSum = db.prepare('SELECT COALESCE(SUM(advance_amount), 0) AS s FROM eir_advances WHERE trip_id = ? AND advance_amount > 0').get(id)?.s || Number(old.phoi_total_advance || 0);
+      if (hasActiveRefund || eirAdvanceSum > 0) {
+        blockingReasons.push(`tiền phơi trả hộ (${eirAdvanceSum.toLocaleString('vi-VN')} đ${hasActiveRefund ? ', đã có hoàn tiền' : ''})`);
+      }
+
+      const advRow = db.prepare('SELECT COALESCE(SUM(advance_amount), 0) AS adv, COALESCE(SUM(settled_amount), 0) AS setl FROM trip_advances WHERE trip_id = ? AND (advance_amount > 0 OR settled_amount > 0)').get(id);
+      if (advRow && (advRow.adv > 0 || advRow.setl > 0)) {
+        blockingReasons.push(`phiếu tạm ứng tài xế (${advRow.adv.toLocaleString('vi-VN')} đ)`);
+      }
+
+      if (blockingReasons.length > 0) {
+        const err = new Error(
+          `Tạm chặn xóa/hủy cuốc xe [${id}] vì đang có giao dịch hoặc chi phí thực tế cần xử lý trước: ${blockingReasons.join('; ')}. Vui lòng tất toán, hoàn tác hoặc điều chỉnh các khoản này về 0 trước khi xóa/hủy.`
+        );
+        err.status = 400;
+        err.blocking_items = blockingReasons;
+        throw err;
+      }
+
+      const isExcelMonth1 = String(id).startsWith('T1-2026-') || !dbTrip;
+
+      // Cuốc chưa phát sinh giao dịch/chi phí thực tế:
+      if (isExcelMonth1) {
+        actionResult = 'CANCELLED';
+        impactMessage = `Đã hủy cuốc xe [${id}] (chưa phát sinh giao dịch thực tế) có lưu dấu vết.`;
+        db.prepare(`
+          INSERT INTO director_records(entity, record_id, value)
+          VALUES(?, ?, ?)
+          ON CONFLICT(entity, record_id) DO UPDATE SET value = excluded.value
+        `).run(entity, id, JSON.stringify({
+          ...old,
+          is_cancelled: 1,
+          cancel_reason: cleanReason,
+          cancelled_at: now,
+          cancelled_by: user?.username
+        }));
+      } else {
+        // Cuốc DB chưa có giao dịch thực tế -> xóa cứng kèm lưu bản chụp đầy đủ để khôi phục nguyên trạng
+        actionResult = 'DELETED';
+        impactMessage = `Đã xóa cuốc xe [${id}] (chưa phát sinh giao dịch thực tế) khỏi hệ thống thành công.`;
+
+        const rawTrip = db.prepare('SELECT * FROM trips WHERE id = ?').get(id);
+        const rawContainers = db.prepare('SELECT * FROM containers WHERE trip_id = ?').all(id);
+        const rawExpenses = db.prepare('SELECT * FROM expenses WHERE trip_id = ?').all(id);
+        const rawOverlay = db.prepare("SELECT value FROM director_records WHERE entity = 'trips' AND record_id = ?").get(id);
+
+        fullSnapshot = {
+          ...old,
+          _raw_trip: rawTrip || null,
+          _raw_containers: rawContainers || [],
+          _raw_expenses: rawExpenses || [],
+          _raw_overlay: rawOverlay ? rawOverlay.value : null
+        };
+
+        db.prepare('DELETE FROM eir_advances WHERE trip_id = ?').run(id);
+        db.prepare('DELETE FROM expenses WHERE trip_id = ?').run(id);
+        db.prepare('DELETE FROM containers WHERE trip_id = ?').run(id);
+        db.prepare('DELETE FROM director_records WHERE entity = ? AND record_id = ?').run(entity, id);
+        db.prepare('DELETE FROM trips WHERE id = ?').run(id);
+      }
+    } else {
+      const table = c.table;
+      if (!table) {
+        const err = new Error('Không hỗ trợ xóa cho bảng này');
+        err.status = 400;
+        throw err;
+      }
+
+      const isCatalog = ['vehicles', 'drivers', 'customers', 'subcontractors', 'routes', 'ports'].includes(entity);
+      if (isCatalog) {
+        let isReferenced = false;
+        if (entity === 'vehicles') isReferenced = Boolean(db.prepare('SELECT 1 FROM trips WHERE vehicle_id = ? OR vehicle_plate = ? LIMIT 1').get(id, old.plate_number));
+        else if (entity === 'drivers') isReferenced = Boolean(db.prepare('SELECT 1 FROM trips WHERE driver_id = ? LIMIT 1').get(id));
+        else if (entity === 'customers') isReferenced = Boolean(db.prepare('SELECT 1 FROM trips WHERE customer_id = ? OR customer_name = ? LIMIT 1').get(id, old.name));
+        else if (entity === 'subcontractors') isReferenced = Boolean(db.prepare('SELECT 1 FROM trips WHERE subcontractor_id = ? OR subcontractor_name = ? LIMIT 1').get(id, old.name));
+        else if (entity === 'routes') isReferenced = Boolean(db.prepare('SELECT 1 FROM trips WHERE route_id = ? OR route_name = ? LIMIT 1').get(id, old.route_name));
+        else if (entity === 'ports') isReferenced = Boolean(db.prepare('SELECT 1 FROM trips WHERE lift_on_location = ? OR lift_off_location = ? LIMIT 1').get(old.name, old.name));
+
+        if (isReferenced) {
+          actionResult = 'DEACTIVATED';
+          impactMessage = `Danh mục "${old.name || old.plate_number || old.full_name || id}" đã được dùng trong các chuyến xe lịch sử nên được chuyển sang trạng thái ngưng hoạt động để bảo toàn đối soát.`;
+          const cols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name));
+          if (cols.has('is_active')) {
+            db.prepare(`UPDATE ${table} SET is_active = 0, updated_at = ? WHERE id = ?`).run(now, id);
+          } else if (cols.has('status')) {
+            db.prepare(`UPDATE ${table} SET status = 'INACTIVE', updated_at = ? WHERE id = ?`).run(now, id);
+          } else {
+            const err = new Error(`Danh mục "${old.name || old.plate_number || old.full_name || id}" đã được dùng trong chuyến xe và không có cột trạng thái ngưng hoạt động.`);
+            err.status = 400;
+            throw err;
+          }
+        } else {
+          actionResult = 'DELETED';
+          impactMessage = `Đã xóa danh mục [${id}] thành công.`;
+          db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+        }
+      } else {
+        if (entity === 'eir_advances') {
+          const hasRefund = db.prepare("SELECT 1 FROM eir_refunds WHERE advance_id = ? AND status = 'ACTIVE' LIMIT 1").get(id);
+          if (hasRefund) {
+            const err = new Error('Khoản phơi đã có giao dịch hoàn tiền thực tế. Cần hủy giao dịch hoàn tiền trước.');
+            err.status = 400;
+            throw err;
+          }
+          db.prepare('DELETE FROM eir_advance_history WHERE advance_id = ?').run(id);
+          db.prepare('DELETE FROM eir_advances WHERE id = ?').run(id);
+          actionResult = 'DELETED';
+          impactMessage = 'Đã xóa khoản tạm ứng phơi thành công.';
+        } else if (entity === 'advances') {
+          if (Number(old.settled_amount || 0) > 0 || old.status === 'SETTLED') {
+            const err = new Error('Phiếu tạm ứng đã quyết toán chi phí thực tế. Không thể xóa.');
+            err.status = 400;
+            throw err;
+          }
+          db.prepare('DELETE FROM trip_advances WHERE id = ?').run(id);
+          actionResult = 'DELETED';
+          impactMessage = 'Đã xóa phiếu tạm ứng thành công.';
+        } else if (entity === 'expenses') {
+          db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+          if (old.trip_id && old.source_component) {
+            syncTripExpenseComponent(old.trip_id, old.source_component, now);
+          }
+          actionResult = 'DELETED';
+          impactMessage = 'Đã xóa chi phí thành phần và cập nhật lại tổng chi phí cuốc xe.';
+        } else {
+          db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+          actionResult = 'DELETED';
+          impactMessage = 'Đã xóa bản ghi thành công.';
+        }
+      }
+    }
+
+    db.prepare(`
+      INSERT INTO director_history (id, entity, record_id, before_value, after_value, actor, reason, created_at, is_undone)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+    `).run(
+      randomUUID(),
+      entity,
+      id,
+      JSON.stringify(fullSnapshot || old),
+      JSON.stringify({ is_deleted: true, action: actionResult, reason: cleanReason, deleted_at: now }),
+      user.username,
+      cleanReason,
+      now
+    );
+  })();
+
+  invalidateExcelMonthCache();
+  return { success: true, id, entity, action: actionResult, message: impactMessage };
+}
+
+export function history() {
+  return db.prepare('SELECT * FROM director_history ORDER BY created_at DESC LIMIT 100').all();
+}
+
+export function undoChange(historyId, user) {
+  const h = db.prepare('SELECT * FROM director_history WHERE id = ?').get(historyId);
+  if (!h) {
+    const err = new Error('Không tìm thấy lịch sử để hoàn tác');
+    err.status = 404;
+    throw err;
+  }
+  if (h.is_undone) {
+    const err = new Error('Thao tác này đã được hoàn tác trước đó.');
+    err.status = 400;
+    throw err;
+  }
+
+  const before = JSON.parse(h.before_value || 'null');
+  const after = JSON.parse(h.after_value || 'null');
+  const now = new Date().toISOString();
+
+  let message = 'Đã hoàn tác thay đổi thành công';
+
+  db.transaction(() => {
+    // 1. Hoàn tác một thao tác XÓA / HỦY (after.is_deleted === true)
+    if (after?.is_deleted) {
+      if (!before) {
+        throw new Error('Không có dữ liệu trước đó để khôi phục.');
+      }
+
+      if (h.entity === 'trips') {
+        // Trường hợp chuyến xe: Phải giữ đúng ID ban đầu h.record_id!
+        if (after.action === 'CANCELLED' || before.source_type === 'EXCEL' || String(h.record_id).startsWith('T1-2026-')) {
+          // Khôi phục cuốc bị hủy: Xóa cờ hủy trong director_records
+          const currentRecord = db.prepare("SELECT value FROM director_records WHERE entity = 'trips' AND record_id = ?").get(h.record_id);
+          if (currentRecord) {
+            const patch = JSON.parse(currentRecord.value);
+            delete patch.is_cancelled;
+            delete patch.cancel_reason;
+            delete patch.cancelled_at;
+            delete patch.cancelled_by;
+            db.prepare("UPDATE director_records SET value = ? WHERE entity = 'trips' AND record_id = ?").run(JSON.stringify(patch), h.record_id);
+          }
+          // Khôi phục trạng thái trong trips nếu có
+          const dbTrip = db.prepare('SELECT id FROM trips WHERE id = ?').get(h.record_id);
+          if (dbTrip) {
+            db.prepare("UPDATE trips SET status = ?, updated_at = ? WHERE id = ?").run(before.status || 'PLANNED', now, h.record_id);
+          }
+          message = `Đã hoàn tác hủy cuốc xe [${h.record_id}], khôi phục lại toàn bộ dữ liệu tài chính.`;
+        } else {
+          // Khôi phục cuốc nháp đã bị hard delete: Phục hồi lại với đúng ID gốc h.record_id!
+          const existing = db.prepare('SELECT id FROM trips WHERE id = ?').get(h.record_id);
+          if (existing) {
+            throw new Error(`Cuốc xe [${h.record_id}] hiện đã tồn tại. Không thể khôi phục.`);
+          }
+          const tripCols = new Set(db.prepare("PRAGMA table_info(trips)").all().map(r => r.name));
+          const rawSource = before._raw_trip || before;
+          const toInsert = {};
+          for (const k of Object.keys(rawSource)) {
+            if (tripCols.has(k) && !k.startsWith('_')) toInsert[k] = rawSource[k];
+          }
+          toInsert.id = h.record_id;
+          if (!toInsert.updated_at) toInsert.updated_at = now;
+          const cols = Object.keys(toInsert);
+          db.prepare(`INSERT INTO trips (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).run(...cols.map(k => toInsert[k]));
+
+          // Phục hồi container(s)
+          if (Array.isArray(before._raw_containers) && before._raw_containers.length > 0) {
+            const contCols = new Set(db.prepare("PRAGMA table_info(containers)").all().map(r => r.name));
+            for (const cont of before._raw_containers) {
+              const cData = {};
+              for (const k of Object.keys(cont)) {
+                if (contCols.has(k)) cData[k] = cont[k];
+              }
+              cData.trip_id = h.record_id;
+              if (!cData.id) cData.id = randomUUID();
+              const cKeys = Object.keys(cData);
+              db.prepare(`INSERT INTO containers (${cKeys.join(',')}) VALUES (${cKeys.map(() => '?').join(',')})`).run(...cKeys.map(k => cData[k]));
+            }
+          }
+
+          // Phục hồi chi phí nếu có
+          if (Array.isArray(before._raw_expenses) && before._raw_expenses.length > 0) {
+            const expCols = new Set(db.prepare("PRAGMA table_info(expenses)").all().map(r => r.name));
+            for (const exp of before._raw_expenses) {
+              const eData = {};
+              for (const k of Object.keys(exp)) {
+                if (expCols.has(k)) eData[k] = exp[k];
+              }
+              eData.trip_id = h.record_id;
+              if (!eData.id) eData.id = randomUUID();
+              const eKeys = Object.keys(eData);
+              db.prepare(`INSERT INTO expenses (${eKeys.join(',')}) VALUES (${eKeys.map(() => '?').join(',')})`).run(...eKeys.map(k => eData[k]));
+            }
+          }
+
+          // Phục hồi overlay director_records nếu có
+          if (before._raw_overlay) {
+            db.prepare("INSERT INTO director_records (entity, record_id, value) VALUES ('trips', ?, ?) ON CONFLICT(entity, record_id) DO UPDATE SET value = excluded.value").run(h.record_id, before._raw_overlay);
+          }
+
+          message = `Đã khôi phục hoàn chỉnh cuốc xe [${h.record_id}] cùng đầy đủ container và dữ liệu gốc.`;
+        }
+      } else {
+        // Khôi phục các danh mục hoặc bản ghi bảng khác:
+        const c = entities[h.entity];
+        if (!c?.table) throw new Error(`Không hỗ trợ khôi phục cho thực thể ${h.entity}`);
+
+        if (after.action === 'DEACTIVATED') {
+          // Danh mục đã được chuyển sang ngưng hoạt động: khôi phục kích hoạt lại
+          const cols = new Set(db.prepare(`PRAGMA table_info(${c.table})`).all().map(r => r.name));
+          const updates = [];
+          const params = [];
+          if (cols.has('is_active')) { updates.push('is_active = ?'); params.push(before.is_active ?? 1); }
+          if (cols.has('status')) { updates.push('status = ?'); params.push(before.status || 'ACTIVE'); }
+          if (cols.has('updated_at')) { updates.push('updated_at = ?'); params.push(before.updated_at || now); }
+          if (updates.length > 0) {
+            params.push(h.record_id);
+            db.prepare(`UPDATE ${c.table} SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+          }
+          message = `Đã kích hoạt lại danh mục [${h.record_id}] thành công.`;
+        } else {
+          // Danh mục hoặc bản ghi bị xóa vật lý:
+          // KIỂM TRA BẢN GHI HIỆN TẠI VÀ TRÁNH XUNG ĐỘT RÀNG BUỘC (Không dùng INSERT OR REPLACE!)
+          const existing = db.prepare(`SELECT 1 FROM ${c.table} WHERE id = ?`).get(h.record_id);
+          if (existing) {
+            throw new Error(`Bản ghi [${h.record_id}] hiện đã tồn tại trong bảng ${c.table}. Không thể khôi phục đè.`);
+          }
+          // Kiểm tra unique collisions (ví dụ biển số xe)
+          if (h.entity === 'vehicles' && before.plate_number) {
+            const conflict = db.prepare('SELECT id FROM vehicles WHERE plate_number = ?').get(before.plate_number);
+            if (conflict) {
+              throw new Error(`Biển số xe [${before.plate_number}] hiện đã được sử dụng ở bản ghi khác (${conflict.id}). Không thể khôi phục.`);
+            }
+          }
+          const tableCols = new Set(db.prepare(`PRAGMA table_info(${c.table})`).all().map(r => r.name));
+          const toInsert = {};
+          for (const k of Object.keys(before)) {
+            if (tableCols.has(k) && k !== '_version') toInsert[k] = before[k];
+          }
+          toInsert.id = h.record_id;
+          if (tableCols.has('updated_at') && !toInsert.updated_at) toInsert.updated_at = now;
+          const cols = Object.keys(toInsert);
+          db.prepare(`INSERT INTO ${c.table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).run(...cols.map(k => toInsert[k]));
+          message = `Đã khôi phục bản ghi [${h.record_id}] trong danh mục ${c.label}.`;
+        }
+      }
+    } else {
+      // 2. Hoàn tác một thao tác SỬA (after.is_deleted === false / undefined)
+      if (!before) throw new Error('Bản ghi mới thêm cần xử lý xóa riêng, không tự ý hoàn tác.');
+      const current = rowsFor(h.entity).find(r => r.id === h.record_id);
+      if (!current) throw new Error('Bản ghi hiện không còn tồn tại để hoàn tác giá trị.');
+      
+      // Chống đè lên thay đổi mới hơn
+      if (after && version(current) !== version(after)) {
+        const err = new Error('Dữ liệu đã có chỉnh sửa tiếp theo sau mốc này. Không thể hoàn tác để tránh mất dữ liệu mới.');
+        err.status = 409;
+        throw err;
+      }
+
+      // Khôi phục giá trị cũ
+      if (entities[h.entity].business) {
+        db.prepare(`
+          INSERT INTO director_records(entity, record_id, value)
+          VALUES(?, ?, ?)
+          ON CONFLICT(entity, record_id) DO UPDATE SET value = excluded.value
+        `).run(h.entity, h.record_id, JSON.stringify(before));
+      } else {
+        const table = entities[h.entity].table;
+        const tableCols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name));
+        const updates = [];
+        const params = [];
+        for (const k of Object.keys(before)) {
+          if (tableCols.has(k) && k !== 'id' && k !== '_version') {
+            updates.push(`${k} = ?`);
+            params.push(before[k]);
+          }
+        }
+        if (tableCols.has('updated_at') && !('updated_at' in before)) {
+          updates.push('updated_at = ?');
+          params.push(now);
+        }
+        params.push(h.record_id);
+        db.prepare(`UPDATE ${table} SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+      }
+      message = `Đã khôi phục lại giá trị trước sửa đổi cho bản ghi [${h.record_id}].`;
+    }
+
+    // Đồng bộ chi phí cuốc cha nếu hoàn tác chi phí
+    if (h.entity === 'expenses') {
+      const targetTripId = before?.trip_id || after?.trip_id;
+      const targetComponent = before?.source_component || after?.source_component;
+      if (targetTripId && targetComponent) {
+        syncTripExpenseComponent(targetTripId, targetComponent, now);
+      }
+    }
+
+    // Đánh dấu bản ghi lịch sử này ĐÃ HOÀN TÁC (chống bấm lặp / 1 lần duy nhất)
+    db.prepare('UPDATE director_history SET is_undone = 1, undone_at = ?, undone_by = ? WHERE id = ?').run(now, user?.username || 'DIRECTOR', historyId);
+  })();
+
+  invalidateExcelMonthCache();
+  return { success: true, historyId, message };
+}
+

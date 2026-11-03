@@ -16,7 +16,7 @@
 import XLSX from 'xlsx';
 import fs from 'fs';
 import { createHash } from 'node:crypto';
-import { excelMonthService } from './excelMonthService.js';
+import { excelMonthService, invalidateExcelMonthCache } from './excelMonthService.js';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/database.js';
 import { createTrip } from './trip.service.js';

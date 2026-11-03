@@ -37,6 +37,9 @@ router.post('/preview', upload.single('file'), (req, res) => {
     db.prepare('INSERT INTO import_previews VALUES(?,?,?,?)').run(previewId,req.user.username,JSON.stringify(preview),Date.now());
     return successResponse(res, {...preview,preview_id:previewId}, 'Phân tích tệp Excel thành công');
   } catch (err) {
+    if (err.message && !err.message.includes('SqliteError')) {
+      return errorResponse(res, err.message, 400);
+    }
     return serverErrorResponse(res, err);
   }
 });
@@ -64,6 +67,9 @@ router.post('/commit', (req, res) => {
     });
     return successResponse(res, result, `Đã nhập thành công ${result.inserted_count} cuốc xe vào hệ thống`, 201);
   } catch (err) {
+    if (err.message && !err.message.includes('SqliteError')) {
+      return errorResponse(res, err.message, 400);
+    }
     return serverErrorResponse(res, err);
   }
 });
@@ -77,6 +83,9 @@ router.get('/batches', (req, res) => {
     const batches = db.prepare('SELECT * FROM import_batches ORDER BY created_at DESC LIMIT 20').all();
     return successResponse(res, batches, 'Lấy lịch sử đợt nhập thành công');
   } catch (err) {
+    if (err.message && !err.message.includes('SqliteError')) {
+      return errorResponse(res, err.message, 400);
+    }
     return serverErrorResponse(res, err);
   }
 });
@@ -90,6 +99,9 @@ router.post('/batches/:id/rollback', requireRole(USER_ROLES.DIRECTOR), (req, res
     const result=ExcelImportService.rollbackBatch({batchId:req.params.id,user:req.user});
     return successResponse(res,result,'Đã hoàn tác đúng đợt nhập');
   } catch (err) {
+    if (err.message && !err.message.includes('SqliteError')) {
+      return errorResponse(res, err.message, 400);
+    }
     return serverErrorResponse(res, err);
   }
 });

@@ -622,7 +622,7 @@ export class ExcelMonthService {
   }
 
   refreshBusinessData(base, inputRows) {
-    const rows = overlayBusiness(inputRows);
+    const rows = overlayBusiness(inputRows).filter(r => !r.is_cancelled);
     const groups = structuredClone(base.groups);
     for (const g of groups) {
       const members = rows.filter(r => g.trips.includes(r.id));
