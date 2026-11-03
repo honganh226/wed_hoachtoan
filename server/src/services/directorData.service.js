@@ -698,6 +698,40 @@ export function undoChange(historyId, user) {
 
       // Khôi phục giá trị cũ
       if (entities[h.entity].business) {
+        const dbTrip = db.prepare('SELECT * FROM trips WHERE id = ?').get(h.record_id);
+        if (dbTrip) {
+          const fare = calculateFareBreakdown(before.cuoc_goc ?? before.cuoc_vao ?? 0);
+          updateTrip({
+            tripId: h.record_id,
+            updateData: {
+              trip_date: before.trip_date,
+              customer_name: before.customer_name,
+              route_name: before.route_name,
+              vehicle_plate: before.vehicle_plate,
+              driver_name: before.driver_name,
+              base_revenue: fare.cuoc_goc,
+              trip_revenue: fare.cuoc_goc,
+              lift_on_location: before.lift_on_location,
+              lift_on_fee: before.lift_on_fee,
+              lift_off_location: before.lift_off_location,
+              lift_off_fee: before.lift_off_fee,
+              subcontractor_cost: before.cuoc_ra,
+              toll_fee: before.tien_duong,
+              port_fee: before.port_fee,
+              parking_fee: before.parking_fee,
+              handling_fee: before.handling_fee,
+              meal_allowance: before.meal_allowance,
+              other_costs: before.other_costs,
+              fuel_liters: before.dau_liters,
+              customer_payment_status: before.customer_payment_status,
+              subcontractor_payment_status: before.subcontractor_payment_status,
+              payment_terms: before.payment_terms,
+              notes: before.notes_r
+            },
+            user,
+            reason: `Hoàn tác: ${h.reason || 'Chỉnh sửa dữ liệu'}`
+          });
+        }
         db.prepare(`
           INSERT INTO director_records(entity, record_id, value)
           VALUES(?, ?, ?)
