@@ -43,61 +43,6 @@ if (!secretary) {
 }
 console.log('[TEST] Secretary test account synchronized from environment.');
 
-// 2. Dựng lại dữ liệu thử cho Đội xe, KPI và Bảng lương (4 xe, 4 tài xế, 33 chuyến, v.v.)
-// Khi Render ngủ, restart hoặc redeploy, dữ liệu thử được tự động khôi phục.
-const seedFilePath = path.resolve(__dirname, '../data/fleet_payroll_seed.json');
-if (fs.existsSync(seedFilePath)) {
-  try {
-    const seedData = JSON.parse(fs.readFileSync(seedFilePath, 'utf8'));
-    const vehicleCount = db.prepare('SELECT COUNT(*) as c FROM vehicles').get();
-
-    if (!vehicleCount || vehicleCount.c === 0) {
-      console.log('[TEST] Seeding fleet, trips, and payroll mock data for testing...');
-
-      db.transaction(() => {
-        // Nạp từng bảng theo thứ tự quan hệ khóa ngoại
-        const tableOrder = [
-          'vehicles',
-          'drivers',
-          'subcontractors',
-          'routes',
-          'customers',
-          'ports',
-          'trips',
-          'containers',
-          'expenses',
-          'trip_advances',
-          'driver_incentives',
-          'maintenance_proposals'
-        ];
-
-        for (const tableName of tableOrder) {
-          const rows = seedData[tableName];
-          if (!Array.isArray(rows) || rows.length === 0) continue;
-
-          // Lấy danh sách cột từ row đầu tiên
-          const columns = Object.keys(rows[0]);
-          const placeholders = columns.map(() => '?').join(', ');
-          const sql = `INSERT OR IGNORE INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
-          const stmt = db.prepare(sql);
-
-          for (const row of rows) {
-            const values = columns.map(col => row[col] !== undefined ? row[col] : null);
-            stmt.run(...values);
-          }
-          if(tableName === 'trips')for(const row of rows)db.prepare("UPDATE trips SET source_type='LEGACY_TEST' WHERE id=?").run(row.id);
-          console.log(`[TEST] Restored ${rows.length} rows into ${tableName}`);
-        }
-      })();
-
-      console.log('[TEST] Fleet and payroll test data restored successfully!');
-    } else {
-      console.log(`[TEST] Fleet data already exists (${vehicleCount.c} vehicles). Skipping seed.`);
-    }
-  } catch (err) {
-    console.error('[TEST] Error restoring fleet_payroll_seed:', err.message);
-    throw err;
-  }
-} else {
-  throw new Error('[TEST] Fleet/payroll seed file not found: ' + seedFilePath);
-}
+// 2. Không tự động seed dữ liệu mock (33 chuyến, fleet_payroll_seed.json) khi khởi động
+// Dữ liệu nghiệp vụ chỉ được nạp từ Supabase durable snapshot hoặc qua form/file Excel do người dùng tải lên.
+console.log('[INIT] Khởi động máy chủ thành công. Sẵn sàng đồng bộ bền vững với Supabase.');

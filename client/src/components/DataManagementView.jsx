@@ -32,6 +32,7 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
   const [assistantPeriod, setAssistantPeriod] = useState(null), [assistantEntity, setAssistantEntity] = useState(null);
   const [meta, setMeta] = useState(null), [entity, setEntity] = useState('trips'), [rows, setRows] = useState([]), [query, setQuery] = useState(''), [editing, setEditing] = useState(null), [draft, setDraft] = useState({}), [reason, setReason] = useState(''), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [history, setHistory] = useState(null);
   const [deleting, setDeleting] = useState(null), [deleteReason, setDeleteReason] = useState('');
+  const [showResetConfirm, setShowResetConfirm] = useState(false), [resetReason, setResetReason] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -189,6 +190,26 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
     }
   }
 
+  async function handleResetAll() {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await request('/reset-business-data', 'POST', {
+        confirm_token: 'CONFIRM_RESET_ALL_BUSINESS_DATA',
+        reason: resetReason.trim() || 'Giám đốc làm sạch toàn bộ dữ liệu nghiệp vụ cũ để chuẩn bị nhập Excel mới'
+      });
+      setShowResetConfirm(false);
+      setResetReason('');
+      setNotice(res.message || 'Đã làm sạch toàn bộ dữ liệu nghiệp vụ thành công. Hệ thống ở trạng thái sạch.');
+      await load();
+      window.dispatchEvent(new Event('business-data-changed'));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleDelete(e) {
     if (e) e.preventDefault();
     if (!deleting) return;
@@ -243,6 +264,14 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
           }}>Lịch sử thay đổi</button>
           <button className="bg-slate-900 text-white rounded-lg px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-40" disabled={!config || busy || meta?.read_only} onClick={() => open(null)}>
             Thêm dữ liệu
+          </button>
+          <button
+            type="button"
+            className="border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-40"
+            disabled={busy || meta?.read_only}
+            onClick={() => setShowResetConfirm(true)}
+          >
+            🗑️ Làm sạch dữ liệu nghiệp vụ
           </button>
         </div>
       </div>
@@ -409,6 +438,50 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN LÀM SẠCH TOÀN BỘ DỮ LIỆU NGHIỆP VỤ */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 p-1.5 sm:p-4 flex items-start sm:items-center justify-center overflow-y-auto">
+          <div className="bg-white rounded-xl w-full max-w-lg my-auto max-h-[calc(100dvh-0.75rem)] sm:max-h-[92dvh] overflow-hidden shadow-2xl flex flex-col border border-red-200">
+            <div className="p-3.5 sm:p-4 border-b bg-red-50 flex justify-between items-center shrink-0">
+              <h2 className="font-bold text-red-900 flex items-center gap-2 text-sm sm:text-base">
+                <span>⚠️</span> Xác nhận Làm sạch toàn bộ dữ liệu nghiệp vụ cũ
+              </h2>
+              <button type="button" aria-label="Đóng" className="p-1 text-slate-500 hover:text-slate-800" onClick={() => setShowResetConfirm(false)}>✕</button>
+            </div>
+            <div className="p-3.5 sm:p-4 space-y-3 text-sm overflow-y-auto flex-1 min-h-0">
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-900 space-y-1.5">
+                <div><b>Phạm vi xóa:</b> Toàn bộ chuyến xe cũ, chi phí chuyến, công nợ, tiền phơi trả hộ, giá dầu và bảng lương phát sinh cũ sẽ được xóa sạch khỏi cơ sở dữ liệu.</div>
+                <div><b>Phạm vi bảo toàn:</b> Tài khoản đăng nhập (Giám đốc, Thư ký), cấu hình bảo mật, phân quyền, kết nối database và nhật ký kiểm toán được giữ nguyên 100%.</div>
+              </div>
+              <p className="text-slate-600 text-xs">
+                Hệ thống sẽ được đưa về trạng thái sạch (0 chuyến xe, 0 doanh thu) và lưu bền vững vào Supabase, sẵn sàng để Giám đốc tải lên file Excel mới.
+              </p>
+              <label className="block text-sm">
+                <span className="font-medium text-slate-700">Ghi chú lý do làm sạch (lưu vào nhật ký kiểm toán):</span>
+                <input
+                  placeholder="Chủ dự án cho phép xóa dữ liệu cũ để chuẩn bị nhập Excel mới..."
+                  value={resetReason}
+                  onChange={e => setResetReason(e.target.value)}
+                  className="block w-full border rounded-lg p-2 mt-1 min-w-0 text-xs"
+                />
+              </label>
+              {error && <p role="alert" className="text-red-700 bg-red-50 border border-red-200 p-2.5 rounded-lg text-xs break-words">{error}</p>}
+            </div>
+            <div className="p-3.5 sm:p-4 border-t flex flex-wrap justify-end gap-2 bg-slate-50 shrink-0">
+              <button type="button" className="border rounded-lg px-4 py-2 text-sm bg-white hover:bg-slate-100" onClick={() => setShowResetConfirm(false)}>Hủy bỏ</button>
+              <button
+                type="button"
+                disabled={busy || meta?.read_only}
+                onClick={handleResetAll}
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white rounded-lg px-4 py-2 text-sm font-semibold"
+              >
+                {busy ? 'Đang xóa sạch dữ liệu…' : 'Xác nhận xóa sạch dữ liệu'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

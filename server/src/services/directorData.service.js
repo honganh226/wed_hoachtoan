@@ -779,3 +779,92 @@ export function undoChange(historyId, user) {
   return { success: true, historyId, message };
 }
 
+
+export function resetBusinessData({ user, reason, confirmToken }) {
+  if (confirmToken !== 'CONFIRM_RESET_ALL_BUSINESS_DATA') {
+    const err = new Error('Mã xác nhận xóa toàn bộ dữ liệu nghiệp vụ không chính xác.');
+    err.status = 400;
+    throw err;
+  }
+
+  const now = new Date().toISOString();
+  const actor = user?.username || 'DIRECTOR';
+  const cleanReason = reason || 'Chủ dự án cho phép xóa toàn bộ dữ liệu nghiệp vụ cũ để chuẩn bị nhập Excel mới';
+
+  const deletedCounts = {};
+
+  db.transaction(() => {
+    // Thứ tự xóa tôn trọng quan hệ khóa ngoại
+    const businessTables = [
+      'director_records',
+      'director_history',
+      'eir_refunds',
+      'eir_advance_history',
+      'eir_advances',
+      'expenses',
+      'containers',
+      'trip_advances',
+      'trips',
+      'import_batches',
+      'import_previews',
+      'write_requests',
+      'driver_incentives',
+      'salary_settings',
+      'maintenance_proposals',
+      'fuel_price_history',
+      'fuel_prices',
+      'drivers',
+      'vehicles',
+      'customers',
+      'routes',
+      'subcontractors',
+      'ports'
+    ];
+
+    for (const t of businessTables) {
+      try {
+        const c = db.prepare(`SELECT count(*) as c FROM ${t}`).get()?.c || 0;
+        db.prepare(`DELETE FROM ${t}`).run();
+        deletedCounts[t] = c;
+      } catch (tableErr) {
+        deletedCounts[t] = 0;
+      }
+    }
+
+    // Ghi nhận vào audit_logs để lưu vết kiểm toán bắt buộc
+    const auditId = randomUUID();
+    db.prepare(`
+      INSERT INTO audit_logs (id, user_id, username, action, table_name, record_id, old_values, new_values, reason, created_at)
+      VALUES (?, ?, ?, 'RESET_BUSINESS_DATA', 'ALL_BUSINESS_TABLES', 'ALL', ?, ?, ?, ?)
+    `).run(
+      auditId,
+      user?.id || 'DIRECTOR',
+      actor,
+      JSON.stringify(deletedCounts),
+      JSON.stringify({ status: 'CLEAN_EMPTY_STATE' }),
+      cleanReason,
+      now
+    );
+  })();
+
+  // Xóa cấu hình phân bổ bộ nhớ & cache
+  if (excelMonthService?.groupAllocations) {
+    excelMonthService.groupAllocations.clear();
+    try { excelMonthService.saveAllocationsToFile(); } catch (_) {}
+  }
+  invalidateExcelMonthCache();
+
+  try {
+    broadcastPLUpdate('DATA_MUTATED', {
+      trigger: 'RESET_BUSINESS_DATA',
+      reason: 'Toàn bộ dữ liệu nghiệp vụ cũ đã được làm sạch theo lệnh của Giám đốc'
+    });
+  } catch (_) {}
+
+  return {
+    success: true,
+    message: 'Đã xóa toàn bộ dữ liệu nghiệp vụ cũ thành công. Hệ thống đã trở về trạng thái sạch.',
+    deleted_counts: deletedCounts,
+    timestamp: now
+  };
+}

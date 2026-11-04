@@ -180,11 +180,12 @@ export class ExcelImportService {
   /**
    * Phân tích tệp Excel và trả về báo cáo xem trước (Preview)
    */
-  static parseAndPreview({ buffer, filename, mapping = null }) {
+  static parseAndPreview({ buffer, filename, mapping = null, sheetName = null }) {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellFormula: true, cellStyles: true });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) throw new Error('File Excel không có sheet dữ liệu hợp lệ');
+    const availableSheets = workbook.SheetNames || [];
+    const selectedSheetName = sheetName && availableSheets.includes(sheetName) ? sheetName : availableSheets[0];
+    const sheet = workbook.Sheets[selectedSheetName];
+    if (!sheet) throw new Error('File Excel không có sheet dữ liệu hợp lệ: ' + selectedSheetName);
 
     const { headers, detected_mapping } = this.detectColumns(sheet);
     const colMap = { ...detected_mapping };
@@ -478,9 +479,8 @@ export class ExcelImportService {
         newTrips.push(r);
       }
     }
-    if (isThang1Structure) {
-      for (const r of rows) r.duplicate_candidate = true;
-    }
+    // Chỉ đánh dấu trùng lặp nếu thực sự có chuyến tương ứng đã tồn tại trong database
+    const warnings = [];
 
     // TỔNG HỢP CÁC CHỈ TIÊU BẢNG KÊ (Ô GỘP CHỈ TÍNH 1 LẦN)
     let totalCuocGoc = 0;
@@ -518,16 +518,53 @@ export class ExcelImportService {
     const tempProfitBeforeDeduction = totalCuocGoc - totalDirectCostBeforeFuel;
     const marginAfterDeduction17 = totalCuocSauTru17 - totalCompanyCost;
 
+    // Trích xuất và nhận diện danh mục phát sinh (khách hàng, xe, tuyến, nhà xe)
+    const detectedCustomers = Array.from(new Set(rows.map(r => r.customer_name).filter(Boolean)));
+    const detectedVehicles = Array.from(new Set(rows.map(r => r.vehicle_plate).filter(p => p && p !== 'XE NGOÀI')));
+    const detectedRoutes = Array.from(new Set(rows.map(r => r.route_name).filter(Boolean)));
+    const detectedSubs = Array.from(new Set(rows.map(r => r.subcontractor_name).filter(Boolean)));
+
+    const existingCustomers = new Set(db.prepare('SELECT UPPER(name) as name FROM customers').all().map(c => c.name));
+    const existingVehicles = new Set(db.prepare('SELECT UPPER(plate_number) as plate FROM vehicles').all().map(v => v.plate));
+    const existingRoutes = new Set(db.prepare('SELECT UPPER(route_name) as name FROM routes').all().map(r => r.name));
+    const existingSubs = new Set(db.prepare('SELECT UPPER(name) as name FROM subcontractors').all().map(s => s.name));
+
+    const masterData = {
+      customers: {
+        total: detectedCustomers.length,
+        new: detectedCustomers.filter(c => !existingCustomers.has(c.toUpperCase())),
+        existing: detectedCustomers.filter(c => existingCustomers.has(c.toUpperCase()))
+      },
+      vehicles: {
+        total: detectedVehicles.length,
+        new: detectedVehicles.filter(v => !existingVehicles.has(v.toUpperCase())),
+        existing: detectedVehicles.filter(v => existingVehicles.has(v.toUpperCase()))
+      },
+      routes: {
+        total: detectedRoutes.length,
+        new: detectedRoutes.filter(r => !existingRoutes.has(r.toUpperCase())),
+        existing: detectedRoutes.filter(r => existingRoutes.has(r.toUpperCase()))
+      },
+      subcontractors: {
+        total: detectedSubs.length,
+        new: detectedSubs.filter(s => !existingSubs.has(s.toUpperCase())),
+        existing: detectedSubs.filter(s => existingSubs.has(s.toUpperCase()))
+      }
+    };
+
     return {
       filename,
       file_hash: fileHash,
       baseline_file: isThang1Structure,
-      sheet_name: sheetName,
+      available_sheets: availableSheets,
+      sheet_name: selectedSheetName,
       detected_headers: headers,
       applied_mapping: colMap,
       total_rows: rows.length,
       new_count: newTrips.length,
       duplicate_count: duplicates.length,
+      master_data: masterData,
+      warnings,
       summary: {
         total_cuoc_goc: totalCuocGoc,
         total_cuoc_vao: totalCuocGoc, // tương thích ngược
@@ -652,11 +689,33 @@ export class ExcelImportService {
 
         db.prepare(`
           UPDATE trips 
-          SET source_file = ?, source_sheet = ?, source_row = ?, raw_data = ?
+          SET source_file = ?, source_sheet = ?, source_row = ?, raw_data = ?, updated_at = created_at
           WHERE id = ?
         `).run(filename || null, sheetName || null, r.source_row || null, JSON.stringify({ batch_id: batchId, ...r }), created.id);
 
         insertedTrips.push(created);
+
+        // Tự động tạo danh mục tương ứng nếu chưa tồn tại
+        if (r.customer_name) {
+          db.prepare('INSERT OR IGNORE INTO customers (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
+            uuidv4(), r.customer_name, now, now
+          );
+        }
+        if (r.vehicle_plate && r.vehicle_plate !== 'XE NGOÀI' && (r.vehicle_plate.startsWith('15C') || r.vehicle_plate.startsWith('15H'))) {
+          db.prepare("INSERT OR IGNORE INTO vehicles (id, plate_number, vehicle_type, status, created_at, updated_at) VALUES (?, ?, 'TRACTOR', 'ACTIVE', ?, ?)").run(
+            uuidv4(), r.vehicle_plate, now, now
+          );
+        }
+        if (r.route_name) {
+          db.prepare('INSERT OR IGNORE INTO routes (id, route_name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
+            uuidv4(), r.route_name, now, now
+          );
+        }
+        if (r.is_subcontractor && r.subcontractor_name) {
+          db.prepare('INSERT OR IGNORE INTO subcontractors (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
+            uuidv4(), r.subcontractor_name, now, now
+          );
+        }
       }
 
       db.prepare(`
@@ -731,11 +790,13 @@ export class ExcelImportService {
           throw new Error(`Không thể hoàn tác: cuốc xe ${trip.trip_code} đã phát sinh giao dịch thu hoàn tiền phơi thực tế.`);
         }
 
+        const timeDiffMs = Math.abs(new Date(trip.updated_at).getTime() - new Date(trip.created_at).getTime());
+        const isModifiedManually = timeDiffMs > 10000;
         if (
           trip.is_locked ||
-          trip.updated_at !== trip.created_at ||
+          isModifiedManually ||
           db.prepare('SELECT 1 FROM trip_advances WHERE trip_id=? LIMIT 1').get(trip.id) ||
-          db.prepare('SELECT 1 FROM expenses WHERE trip_id=? AND (source_component IS NULL OR updated_at<>created_at) LIMIT 1').get(trip.id) ||
+          db.prepare('SELECT 1 FROM expenses WHERE trip_id=? AND (source_component IS NULL OR (updated_at<>created_at AND abs(strftime(\'%s\', updated_at) - strftime(\'%s\', created_at)) > 10)) LIMIT 1').get(trip.id) ||
           db.prepare('SELECT 1 FROM director_history WHERE record_id=? LIMIT 1').get(trip.id)
         ) {
           throw Error('Không thể hoàn tác: cuốc đã được chỉnh sửa, khóa hoặc có giao dịch liên quan.');

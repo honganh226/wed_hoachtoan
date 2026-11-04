@@ -130,7 +130,7 @@ export default function ExcelImportModal({
     }
   };
 
-  const processSelectedFile = async (selectedFile, customMap = null) => {
+  const processSelectedFile = async (selectedFile, customMap = null, targetSheet = null) => {
     if (!selectedFile.name.match(/\.(xlsx|xls)$/i)) {
       setErr('Vui lòng chọn đúng tệp Excel định dạng .xlsx hoặc .xls');
       return;
@@ -143,7 +143,7 @@ export default function ExcelImportModal({
     setLoading(true);
 
     try {
-      const res = await previewExcelImportApi(selectedFile, customMap);
+      const res = await previewExcelImportApi(selectedFile, customMap, targetSheet);
       if (res.success) {
         setPreviewData(res.data);
         if (res.data?.header_mapping) {
@@ -451,6 +451,46 @@ export default function ExcelImportModal({
           {/* BƯỚC 2: XEM TRƯỚC, GHÉP CỘT & ĐỐI CHIẾU */}
           {step >= 2 && step <= 4 && previewData && (
             <div className="space-y-4">
+              {/* CHỌN SHEET & BÁO CÁO DANH MỤC */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                <div className="flex items-center space-x-2 text-xs">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="text-slate-600 font-medium">Sheet đang đọc:</span>
+                  <span className="font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">{previewData.sheet_name}</span>
+                </div>
+                {previewData.available_sheets && previewData.available_sheets.length > 1 && (
+                  <div className="flex items-center space-x-1.5 text-xs">
+                    <span className="text-slate-500 font-medium text-[11px]">Đổi sheet:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {previewData.available_sheets.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => processSelectedFile(file, columnMapping, s)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${previewData.sheet_name === s ? 'bg-emerald-600 text-white' : 'bg-white border text-slate-700 hover:bg-slate-100'}`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* BÁO CÁO DANH MỤC PHÁT SINH MỚI */}
+              {previewData.master_data && (
+                <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-2.5 text-xs text-emerald-950 flex flex-wrap items-center gap-3">
+                  <span className="font-bold flex items-center space-x-1">
+                    <span>📋</span>
+                    <span>Danh mục nhận diện:</span>
+                  </span>
+                  <span>Khách hàng: <b>{previewData.master_data.customers?.total || 0}</b> ({previewData.master_data.customers?.new?.length || 0} mới)</span>
+                  <span>Đầu xe: <b>{previewData.master_data.vehicles?.total || 0}</b> ({previewData.master_data.vehicles?.new?.length || 0} mới)</span>
+                  <span>Tuyến đường: <b>{previewData.master_data.routes?.total || 0}</b> ({previewData.master_data.routes?.new?.length || 0} mới)</span>
+                  <span>Nhà xe ngoài: <b>{previewData.master_data.subcontractors?.total || 0}</b> ({previewData.master_data.subcontractors?.new?.length || 0} mới)</span>
+                </div>
+              )}
+
               {/* TỔNG QUAN SỐ LIỆU ĐỌC ĐƯỢC THEO CHUẨN MỚI */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">

@@ -521,104 +521,190 @@ export class ExcelMonthService {
    * kèm các cuốc xe mới tạo (MANUAL, BATCH, EXCEL) trong SQLite
    */
   getData() {
-    const base = this.cachedData ? this.cachedData : this.parseSheetData();
+    if (this.cachedData) return this.cachedData;
 
-    // Tra cứu các cuốc xe mới tạo trong SQLite chưa có trong file Excel nguồn
     try {
       const dbTrips = db.prepare(`
         SELECT t.*, (SELECT GROUP_CONCAT(container_number, ', ') FROM containers WHERE trip_id=t.id) AS container_number,
           (SELECT container_size FROM containers WHERE trip_id=t.id ORDER BY is_second_cont LIMIT 1) AS container_size
         FROM trips t WHERE COALESCE(t.source_type,'MANUAL') != 'LEGACY_TEST' ORDER BY t.trip_date ASC, t.created_at ASC
-      `).all().filter(t => !legacyDemoIds.has(t.id) && !(t.source_type === 'EXCEL' && base.rows.some(r => r.row_index === t.source_row && r.trip_date === t.trip_date && r.customer_name === t.customer_name && r.route_name === t.route_name && (r.cuoc_vao === (t.base_revenue || t.trip_revenue) || r.cuoc_vao === t.total_revenue))));
+      `).all().filter(t => !legacyDemoIds.has(t.id));
 
-      if (dbTrips && dbTrips.length > 0) {
-        // Chuyển đổi format của dbTrips sang cấu trúc chuẩn của view
-        const adaptedDbTrips = dbTrips.map((dt, idx) => {
-          const baseRev = dt.base_revenue || dt.trip_revenue || dt.total_revenue || 0;
-          const toll = dt.toll_fee || 0;
-          const subCost = dt.subcontractor_cost || 0;
-          const fuel = dt.fuel_liters || 0;
-          const liftOnFee = dt.lift_on_fee || 0;
-          const liftOffFee = dt.lift_off_fee || 0;
-          const hasSplitLift = liftOnFee > 0 || liftOffFee > 0;
-          const legacyPort = hasSplitLift ? 0 : (dt.port_fee || 0);
-          const other = (dt.other_costs || 0) + legacyPort + (dt.parking_fee || 0) + (dt.handling_fee || 0) + (dt.meal_allowance || 0);
-          const directCost = toll + subCost + liftOnFee + liftOffFee + other;
-
-          return {
-            id: dt.id,
-            trip_code: dt.trip_code,
-            row_index: 1000 + idx,
-            stt: dt.stt_source || (base.rows.length + idx + 1),
-            stt_source: dt.stt_source || null,
-            trip_date: dt.trip_date,
-            raw_date: dt.trip_date,
-            is_typo_2025: false,
-            customer_name: dt.customer_name || 'KHÁCH HÀNG',
-            route_name: dt.route_name || '',
-            container_number: dt.container_number || null,
-            bks_raw: dt.vehicle_plate || '',
-            vehicle_plate: dt.vehicle_plate || null,
-            is_subcontractor: Boolean(dt.is_subcontractor),
-            subcontractor_name: dt.subcontractor_name || null,
-            driver_name: dt.driver_name || (dt.is_subcontractor ? `Xe ngoài ${dt.subcontractor_name || ''}` : 'Chưa xác định'),
-            container_size: dt.container_type_raw || dt.container_size || '40DC',
-            container_type: dt.container_type_raw || dt.container_size || 'DC',
-            container_type_raw: dt.container_type_raw || dt.container_size || '40DC',
-            is_lach_huyen: Boolean((dt.lift_on_location || '').toUpperCase().includes('LẠCH HUYỆN') || (dt.lift_off_location || '').toUpperCase().includes('LẠCH HUYỆN')),
-            pickup_location: dt.lift_on_location || dt.pickup_location || null,
-            lift_on_location: dt.lift_on_location || dt.pickup_location || null,
-            lift_on_fee: liftOnFee,
-            dropoff_location: dt.lift_off_location || dt.dropoff_location || null,
-            lift_off_location: dt.lift_off_location || dt.dropoff_location || null,
-            lift_off_fee: liftOffFee,
-            cuoc_goc: baseRev,
-            cuoc_vao: baseRev,
-            dau_liters: fuel,
-            tien_duong: toll,
-            phat_sinh: other,
-            phat_sinh_note: dt.notes || null,
-            cuoc_ra: subCost,
-            customer_payment_status: dt.customer_payment_status || 'CHUA_TT',
-            is_customer_paid: ['DA_TT','TUOI','X'].includes(dt.customer_payment_status),
-            is_offset: dt.customer_payment_status === 'DOI_TRU',
-            subcontractor_payment_status: dt.subcontractor_payment_status || 'CHUA_TT',
-            payment_terms: dt.payment_terms || null,
-            other_costs: dt.other_costs || 0,
-            additional_expenses: db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM expenses WHERE trip_id=? AND source_component IS NULL').get(dt.id)?.total || 0,
-            port_fee: legacyPort,
-            parking_fee: dt.parking_fee || 0,
-            handling_fee: dt.handling_fee || 0,
-            meal_allowance: dt.meal_allowance || 0,
-            is_customer_tuoi: dt.customer_payment_status === 'TUOI',
-            is_customer_x: dt.customer_payment_status === 'X',
-            is_customer_doi_tru: dt.customer_payment_status === 'DOI_TRU',
-            notes_r: dt.notes || null,
-            source_type: dt.source_type || 'MANUAL',
-            source_file: dt.source_file || null,
-            source_sheet: dt.source_sheet || null,
-            source_row: dt.source_row || null,
-            is_grouped: Boolean(dt.group_id),
-            group_id: dt.group_id || null,
-            allocated_shared_cost: null,
-            allocated_shared_liters: null,
-            allocation_status: dt.group_id ? 'UNALLOCATED' : 'SINGLE',
-            direct_cost: directCost,
-            trip_profit: baseRev - directCost,
-            raw_O: baseRev
-          };
-        });
-
-        // Kết hợp 77 cuốc chuẩn tháng 1 với các cuốc mới
-        const mergedRows = [...base.rows, ...adaptedDbTrips];
-
-        return this.refreshBusinessData(base, mergedRows);
+      if (!dbTrips || dbTrips.length === 0) {
+        const emptyData = {
+          filename: 'Chưa có file',
+          sheet_name: '',
+          rows: [],
+          groups: [],
+          rawMerges: [],
+          stats: {
+            total_rows: 0,
+            total_revenue_vat_inc: 0,
+            count_2025_typos_normalized: 0,
+            count_2026_normal: 0,
+            total_fuel_liters: 0,
+            total_toll_bot: 0,
+            total_subcontractor_cost: 0,
+            total_incurred_expense: 0,
+            total_known_direct_cost: 0,
+            profit_before_salary_and_fuel: 0
+          }
+        };
+        this.cachedData = emptyData;
+        return emptyData;
       }
-    } catch (e) {
-      console.warn('[ExcelMonthService] Tra cứu SQLite bổ sung:', e.message);
-    }
 
-    return this.refreshBusinessData(base, base.rows);
+      // Chuyển đổi format của dbTrips sang cấu trúc chuẩn của view
+      const adaptedDbTrips = dbTrips.map((dt, idx) => {
+        const baseRev = dt.base_revenue || dt.trip_revenue || dt.total_revenue || 0;
+        const toll = dt.toll_fee || 0;
+        const subCost = dt.subcontractor_cost || 0;
+        const fuel = dt.fuel_liters || 0;
+        const liftOnFee = dt.lift_on_fee || 0;
+        const liftOffFee = dt.lift_off_fee || 0;
+        const hasSplitLift = liftOnFee > 0 || liftOffFee > 0;
+        const legacyPort = hasSplitLift ? 0 : (dt.port_fee || 0);
+        const other = (dt.other_costs || 0) + legacyPort + (dt.parking_fee || 0) + (dt.handling_fee || 0) + (dt.meal_allowance || 0);
+        const directCost = toll + subCost + liftOnFee + liftOffFee + other;
+
+        return {
+          id: dt.id,
+          trip_code: dt.trip_code,
+          row_index: dt.source_row || (1000 + idx),
+          stt: dt.stt_source || (idx + 1),
+          stt_source: dt.stt_source || null,
+          trip_date: dt.trip_date,
+          raw_date: dt.trip_date,
+          is_typo_2025: false,
+          customer_name: dt.customer_name || 'KHÁCH HÀNG',
+          route_name: dt.route_name || '',
+          container_number: dt.container_number || null,
+          bks_raw: dt.vehicle_plate || '',
+          vehicle_plate: dt.vehicle_plate || null,
+          is_subcontractor: Boolean(dt.is_subcontractor),
+          subcontractor_name: dt.subcontractor_name || null,
+          driver_name: dt.driver_name || (dt.is_subcontractor ? `Xe ngoài ${dt.subcontractor_name || ''}` : 'Chưa xác định'),
+          container_size: dt.container_type_raw || dt.container_size || '40DC',
+          container_type: dt.container_type_raw || dt.container_size || 'DC',
+          container_type_raw: dt.container_type_raw || dt.container_size || '40DC',
+          is_lach_huyen: Boolean((dt.lift_on_location || '').toUpperCase().includes('LẠCH HUYỆN') || (dt.lift_off_location || '').toUpperCase().includes('LẠCH HUYỆN')),
+          pickup_location: dt.lift_on_location || dt.pickup_location || null,
+          lift_on_location: dt.lift_on_location || dt.pickup_location || null,
+          lift_on_fee: liftOnFee,
+          dropoff_location: dt.lift_off_location || dt.dropoff_location || null,
+          lift_off_location: dt.lift_off_location || dt.dropoff_location || null,
+          lift_off_fee: liftOffFee,
+          cuoc_goc: baseRev,
+          cuoc_vao: baseRev,
+          dau_liters: fuel,
+          tien_duong: toll,
+          phat_sinh: other,
+          phat_sinh_note: dt.notes || null,
+          cuoc_ra: subCost,
+          customer_payment_status: dt.customer_payment_status || 'CHUA_TT',
+          is_customer_paid: ['DA_TT','TUOI','X'].includes(dt.customer_payment_status),
+          is_offset: dt.customer_payment_status === 'DOI_TRU',
+          subcontractor_payment_status: dt.subcontractor_payment_status || 'CHUA_TT',
+          payment_terms: dt.payment_terms || null,
+          other_costs: dt.other_costs || 0,
+          additional_expenses: db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM expenses WHERE trip_id=? AND source_component IS NULL').get(dt.id)?.total || 0,
+          port_fee: legacyPort,
+          parking_fee: dt.parking_fee || 0,
+          handling_fee: dt.handling_fee || 0,
+          meal_allowance: dt.meal_allowance || 0,
+          is_customer_tuoi: dt.customer_payment_status === 'TUOI',
+          is_customer_x: dt.customer_payment_status === 'X',
+          is_customer_doi_tru: dt.customer_payment_status === 'DOI_TRU',
+          notes_r: dt.notes || null,
+          source_type: dt.source_type || 'MANUAL',
+          source_file: dt.source_file || null,
+          source_sheet: dt.source_sheet || null,
+          source_row: dt.source_row || null,
+          is_grouped: Boolean(dt.group_id),
+          group_id: dt.group_id || null,
+          allocated_shared_cost: null,
+          allocated_shared_liters: null,
+          allocation_status: dt.group_id ? 'UNALLOCATED' : 'SINGLE',
+          direct_cost: directCost,
+          trip_profit: baseRev - directCost,
+          raw_O: baseRev
+        };
+      });
+
+      // Tự động nhận diện nhóm ô gộp từ group_id
+      const groupMap = new Map();
+      adaptedDbTrips.forEach(r => {
+        if (!r.group_id) return;
+        if (!groupMap.has(r.group_id)) {
+          const savedAlloc = this.groupAllocations.get(r.group_id);
+          groupMap.set(r.group_id, {
+            group_key: r.group_id,
+            name: `Nhóm ô gộp ${r.group_id}`,
+            trips: [],
+            row_indices: [],
+            total_revenue: 0,
+            vehicle_or_partner: r.vehicle_plate || r.subcontractor_name || 'Đối tác',
+            shared_costs: [],
+            allocation_mode: savedAlloc?.mode || 'UNALLOCATED',
+            manual_allocations: savedAlloc?.allocations || {}
+          });
+        }
+        const g = groupMap.get(r.group_id);
+        g.trips.push(r.id);
+        if (r.row_index) g.row_indices.push(r.row_index);
+      });
+
+      for (const g of groupMap.values()) {
+        const members = adaptedDbTrips.filter(r => g.trips.includes(r.id));
+        const totalCuocRa = members.reduce((s, r) => s + (r.cuoc_ra || 0), 0);
+        const totalToll = members.reduce((s, r) => s + (r.tien_duong || 0), 0);
+        const totalFuel = members.reduce((s, r) => s + (r.dau_liters || 0), 0);
+        if (totalCuocRa > 0) {
+          g.shared_costs.push({ type: 'CUOC_RA', amount: totalCuocRa, label: 'Cước thuê xe ngoài dùng chung' });
+        }
+        if (totalToll > 0) {
+          g.shared_costs.push({ type: 'TIEN_DUONG', amount: totalToll, label: 'Vé cầu đường BOT dùng chung' });
+        }
+        if (totalFuel > 0) {
+          g.shared_costs.push({ type: 'DAU_LITERS', amount: 0, liters: totalFuel, label: 'Dầu cấp dùng chung' });
+        }
+      }
+
+      const groups = Array.from(groupMap.values());
+      const base = {
+        filename: dbTrips[0]?.source_file || 'Dữ liệu hệ thống',
+        sheet_name: dbTrips[0]?.source_sheet || 'Sheet1',
+        rows: adaptedDbTrips,
+        groups,
+        rawMerges: [],
+        stats: {
+          total_rows: adaptedDbTrips.length,
+          total_revenue_vat_inc: adaptedDbTrips.reduce((s, r) => s + (r.cuoc_goc || 0), 0),
+          count_2025_typos_normalized: 0,
+          count_2026_normal: adaptedDbTrips.length,
+          total_fuel_liters: adaptedDbTrips.reduce((s, r) => s + (r.dau_liters || 0), 0),
+          total_toll_bot: adaptedDbTrips.reduce((s, r) => s + (r.tien_duong || 0), 0),
+          total_subcontractor_cost: adaptedDbTrips.reduce((s, r) => s + (r.cuoc_ra || 0), 0),
+          total_incurred_expense: adaptedDbTrips.reduce((s, r) => s + (r.phat_sinh || 0), 0),
+          total_known_direct_cost: adaptedDbTrips.reduce((s, r) => s + (r.direct_cost || 0), 0),
+          profit_before_salary_and_fuel: adaptedDbTrips.reduce((s, r) => s + (r.trip_profit || 0), 0)
+        }
+      };
+
+      const result = this.refreshBusinessData(base, adaptedDbTrips);
+      this.cachedData = result;
+      return result;
+    } catch (e) {
+      console.warn('[ExcelMonthService] Lỗi tra cứu SQLite:', e.message);
+      return {
+        filename: 'Lỗi',
+        sheet_name: '',
+        rows: [],
+        groups: [],
+        rawMerges: [],
+        stats: { total_rows: 0 }
+      };
+    }
   }
 
   refreshBusinessData(base, inputRows) {

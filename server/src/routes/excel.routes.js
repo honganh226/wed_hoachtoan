@@ -31,7 +31,8 @@ router.post('/preview', upload.single('file'), (req, res) => {
     const preview = ExcelImportService.parseAndPreview({
       buffer: req.file.buffer,
       filename: req.file.originalname,
-      mapping: req.body.mapping ? JSON.parse(req.body.mapping) : null
+      mapping: req.body.mapping ? JSON.parse(req.body.mapping) : null,
+      sheetName: req.body.sheet_name || req.body.sheetName || null
     });
     const previewId=crypto.randomUUID();
     db.prepare('INSERT INTO import_previews VALUES(?,?,?,?)').run(previewId,req.user.username,JSON.stringify(preview),Date.now());
@@ -54,7 +55,6 @@ router.post('/commit', (req, res) => {
     if(!stored||Date.now()-stored.created_at>24*60*60*1000)return errorResponse(res,'Bản xem trước hết hạn. Tải lại file.',400);
     const preview=JSON.parse(stored.payload);
     const {filename,sheet_name:sheetName}=preview;
-    if(preview.baseline_file)return successResponse(res,{inserted_count:0,already_imported:true},'File tháng 1 đã có trong nguồn tổng; không nhập trùng.');
     const rows=preview.rows.filter(r=>!r.duplicate_candidate||req.body.confirm_duplicates===true);
     if(!rows.length)return successResponse(res,{inserted_count:0,already_imported:true},'Không có dòng mới; các dòng nghi trùng được giữ để đối chiếu.');
     const ipAddress = req.ip || req.connection.remoteAddress;

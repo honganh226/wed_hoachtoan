@@ -1230,11 +1230,12 @@ export async function fetchUnclassifiedItemsApi() {
 /**
  * Tải file Excel lên để xem trước và đối chiếu chống trùng
  */
-export async function previewExcelImportApi(file, mapping) {
+export async function previewExcelImportApi(file, mapping, sheetName = null) {
   const token = getAuthToken();
   const formData = new FormData();
   formData.append('file', file);
-  if(mapping)formData.append('mapping',JSON.stringify(mapping));
+  if (mapping) formData.append('mapping', JSON.stringify(mapping));
+  if (sheetName) formData.append('sheet_name', sheetName);
 
   const headers = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -1280,4 +1281,25 @@ export async function rollbackExcelBatchApi(batchId, requestId = null) {
     headers: { ...authHeaders(), ...(requestId ? { 'Idempotency-Key': requestId } : {}) }
   });
   return safeJson(res);
+}
+
+/**
+ * Giám đốc làm sạch toàn bộ dữ liệu nghiệp vụ cũ
+ */
+export async function resetAllBusinessDataApi(reason) {
+  const token = getAuthToken();
+  const res = await fetch('/api/v1/manage/reset-business-data', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      confirm_token: 'CONFIRM_RESET_ALL_BUSINESS_DATA',
+      reason: reason || 'Giám đốc làm sạch dữ liệu nghiệp vụ cũ để chuẩn bị nhập Excel mới'
+    })
+  });
+  const result = await safeJson(res);
+  if (result.success) window.dispatchEvent(new Event('business-data-changed'));
+  return result;
 }

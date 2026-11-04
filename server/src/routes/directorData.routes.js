@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 import { requireRole } from '../middlewares/rbac.middleware.js';
-import { metadata, listEntity, saveEntity, deleteEntity, history, undoChange } from '../services/directorData.service.js';
+import { metadata, listEntity, saveEntity, deleteEntity, history, undoChange, resetBusinessData } from '../services/directorData.service.js';
 const router = Router();
 router.use(authenticateToken, requireRole('DIRECTOR'));
 function handler(fn) {
@@ -13,6 +13,11 @@ function handler(fn) {
     }
   };
 }
+router.post('/reset-business-data', handler(req => resetBusinessData({
+  user: req.user,
+  reason: req.body?.reason,
+  confirmToken: req.body?.confirm_token
+})));
 router.get('/metadata', handler(() => metadata()));
 router.get('/history', handler(() => history()));
 router.post('/history/:id/undo', handler(req => undoChange(req.params.id, req.user)));
