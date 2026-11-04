@@ -157,6 +157,10 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
     try {
       const values = {};
       for (const f of config.fields) {
+        if (entity === 'trips' && f.key === 'cuoc_vao' && draft.cuoc_goc !== undefined) {
+          values.cuoc_vao = draft.cuoc_goc === '' ? 0 : Number(draft.cuoc_goc);
+          continue;
+        }
         let v = draft[f.key];
         if (['money', 'number'].includes(f.type)) v = v === '' ? (f.key === 'base_salary_override' ? null : 0) : Number(v);
         values[f.key] = v;
@@ -311,9 +315,9 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
         {shown.length} bản ghi · Cước vào là chưa VAT (+8% VAT, -17% nội bộ). Chi phí nhóm ô gộp vẫn cần phân bổ trước khi chốt lãi từng cuốc.
       </p>
 
-      <div className="space-y-2">
+      <div data-testid="manage-rows-list" className="space-y-2">
         {shown.slice(0, 200).map(row => (
-          <div key={row.id} className="bg-white border rounded-lg p-3 flex gap-3 items-start hover:border-slate-300 transition-colors">
+          <div key={row.id} data-testid="manage-row-card" className="bg-white border rounded-lg p-3 flex gap-3 items-start hover:border-slate-300 transition-colors">
             <div className="flex-1 min-w-0">
               <p className="font-semibold break-words">
                 {row.customer_name || row.full_name || row.plate_number || row.route_name || row.name || row.title || meta?.references?.drivers?.find(d => d.id === row.driver_id)?.label || row.id}
