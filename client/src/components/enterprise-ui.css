@@ -191,6 +191,8 @@
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .ha-table-scroll:focus-visible {
@@ -203,5 +205,10 @@
   .ha-table-scroll > table .text-right,
   .ha-table-scroll > table .font-mono {
     white-space: nowrap;
+  }
+
+  /* Ensure modals and dialogs stay scrollable when mobile soft keyboard is open */
+  .fixed.inset-0 {
+    overflow-y: auto;
   }
 }

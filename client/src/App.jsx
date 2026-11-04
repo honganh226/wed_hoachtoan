@@ -850,7 +850,7 @@ export default function App() {
             {/* PHÂN HỆ CÔNG NỢ DOANH NGHIỆP & TIỀN PHƠI (GIÁM ĐỐC, KẾ TOÁN & THƯ KÝ) */}
             {(isDirector || isAccountant || isSecretary) && (activeTab === 'debts') && (
               <div className="space-y-5 animate-fade-in">
-                <DirectorDebtsView assistantFocus={debtAssistantFocus} onAssistantFocusConsumed={() => setDebtAssistantFocus(null)} onAssistantContext={setAssistantContext} />
+                <DirectorDebtsView assistantFocus={debtAssistantFocus} onAssistantFocusConsumed={() => setDebtAssistantFocus(null)} onAssistantContext={setAssistantContext} onOpenBatchPayment={(cust) => { setBatchPaymentCustomer(cust || ""); setIsBatchPaymentOpen(true); }} />
               </div>
             )}
 
@@ -1056,6 +1056,9 @@ export default function App() {
               assistantFocus={assistantFocus}
               onAssistantFocusConsumed={() => setAssistantFocus(null)}
               onAssistantContext={setAssistantContext}
+              onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
+              onOpenEirModal={() => setIsEirModalOpen(true)}
+              onOpenExcelImport={() => setIsExcelImportOpen(true)}
             />
           </div>
         )}

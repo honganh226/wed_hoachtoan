@@ -141,6 +141,14 @@ export default function TripCreateModal({
       : containerSizeSelect;
 
   useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isOpen) onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
     if (isOpen) {
       setErr(null);
       setMsg(null);
@@ -462,8 +470,24 @@ export default function TripCreateModal({
       setSubmitting(true);
       setErr(null);
 
-      if (!tripDate) throw new Error('Ngày chạy xe là bắt buộc');
-      if (!customerName.trim()) throw new Error('Khách hàng / Chủ hàng là bắt buộc');
+      if (!tripDate || !String(tripDate).trim()) {
+        setErr('Vui lòng chọn Ngày Chạy Cuốc Xe (*).');
+        const dateEl = document.getElementById('trip-create-date-input');
+        if (dateEl) {
+          dateEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          dateEl.focus();
+        }
+        return;
+      }
+      if (!customerName || !customerName.trim()) {
+        setErr('Vui lòng nhập hoặc chọn Khách Hàng / Chủ Hàng (*).');
+        const custEl = document.getElementById('trip-create-customer-input');
+        if (custEl) {
+          custEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          custEl.focus();
+        }
+        return;
+      }
 
       const isSub = vehicleSource === 'SUBCONTRACTOR';
 
@@ -565,51 +589,60 @@ export default function TripCreateModal({
   };
 
   const formatVnd = (amount) => {
-    return new Intl.NumberFormat('vi-VN').format(Math.round(Number(amount) || 0)) + ' ₫';
+    return new Intl.NumberFormat('vi-VN').format(Math.round(Number(amount) || 0)) + ' đ';
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[95vh]">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-1.5 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-5xl w-full my-auto shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[calc(100dvh-0.75rem)] sm:max-h-[95dvh]">
         {/* Header */}
-        <div className="px-4 sm:px-5 py-3.5 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-blue-600 rounded-xl text-white">
-              {duplicateFromTrip ? <Copy className="w-4 h-4" /> : <PlusCircle className="w-4 h-4" />}
+        <div className="px-3.5 sm:px-5 py-2.5 sm:py-3.5 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center justify-between sm:justify-start space-x-2.5">
+            <div className="flex items-center space-x-2 min-w-0">
+              <div className="p-1.5 sm:p-2 bg-blue-600 rounded-xl text-white shrink-0">
+                {duplicateFromTrip ? <Copy className="w-4 h-4" /> : <PlusCircle className="w-4 h-4" />}
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-bold text-xs sm:text-base truncate sm:whitespace-normal">
+                  {duplicateFromTrip ? `Nhân Bản Chuyến Xe (${duplicateFromTrip.trip_code || duplicateFromTrip.id})` : 'Tạo Cuốc Xe Mới (VAT 8% • Trừ 17% • Nâng/Hạ • Dầu • Phơi)'}
+                </h3>
+                <p className="hidden sm:block text-[11px] text-slate-400">
+                  Cước gốc chưa VAT (×1,08 có VAT • ×0,83 sau trừ 17%) • Phí nâng/hạ công ty chịu • Tiền phơi trả hộ chủ hàng riêng
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-sm sm:text-base">
-                {duplicateFromTrip ? `Nhân Bản Chuyến Xe (${duplicateFromTrip.trip_code || duplicateFromTrip.id})` : 'Tạo Cuốc Xe Mới (Chuẩn Hóa VAT 8% • Trừ 17% • Nâng/Hạ • Dầu • Phơi)'}
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Cước gốc chưa VAT (×1,08 có VAT • ×0,83 sau trừ 17%) • Phí nâng/hạ công ty chịu • Tiền phơi trả hộ chủ hàng riêng
-              </p>
-            </div>
+            <button
+              onClick={onClose}
+              aria-label="Đóng cửa sổ"
+              className="sm:hidden shrink-0 p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
           <div className="flex items-center justify-between sm:justify-end gap-2">
-            <div className="flex items-center space-x-1 bg-slate-800 p-1 rounded-xl text-xs">
+            <div className="flex items-center space-x-1 bg-slate-800 p-1 rounded-xl text-xs w-full sm:w-auto justify-between sm:justify-start overflow-x-auto">
               <button
                 type="button"
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white shadow-xs"
+                className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold bg-blue-600 text-white shadow-xs whitespace-nowrap"
               >
                 Tạo một cuốc
               </button>
               <button
                 type="button"
                 onClick={() => { onClose(); if (onSwitchToBatch) onSwitchToBatch(); }}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-700/60 transition-all"
+                className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-700/60 transition-all whitespace-nowrap"
               >
                 Nhập nhiều cuốc
               </button>
               <button
                 type="button"
                 onClick={() => { onClose(); if (onSwitchToExcelImport) onSwitchToExcelImport(); }}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-700/60 transition-all flex items-center space-x-1"
+                className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-700/60 transition-all flex items-center space-x-1 whitespace-nowrap"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>Nhập Excel</span>
               </button>
             </div>
@@ -617,7 +650,7 @@ export default function TripCreateModal({
             <button
               onClick={onClose}
               aria-label="Đóng cửa sổ"
-              className="shrink-0 p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+              className="hidden sm:inline-flex shrink-0 p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -626,13 +659,13 @@ export default function TripCreateModal({
 
         {/* Thông báo lỗi / thành công */}
         {err && (
-          <div className="mx-4 sm:mx-5 mt-3 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center space-x-2 shrink-0">
+          <div role="alert" className="mx-3.5 sm:mx-5 mt-2.5 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center space-x-2 shrink-0">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-            <span>{err}</span>
+            <span className="font-semibold">{err}</span>
           </div>
         )}
         {msg && (
-          <div className="mx-4 sm:mx-5 mt-3 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-center space-x-2 shrink-0">
+          <div role="status" className="mx-3.5 sm:mx-5 mt-2.5 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-center space-x-2 shrink-0">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
             <span>{msg}</span>
           </div>
@@ -644,7 +677,7 @@ export default function TripCreateModal({
         </datalist>
 
         {/* Form Body Cuộn được */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
+        <form noValidate onSubmit={handleSubmit} className="p-3.5 sm:p-5 overflow-y-auto flex-1 min-h-0 space-y-4 text-xs">
           {/* KHỐI 1: THÔNG TIN CHUYẾN, XE & CONTAINER */}
           <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-slate-200/80">
@@ -681,21 +714,22 @@ export default function TripCreateModal({
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label htmlFor="trip-create-date-input" className="block text-[11px] font-bold text-slate-700 mb-1">
                   Ngày Chạy Cuốc Xe <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="trip-create-date-input"
                   type="date"
                   required
                   value={tripDate}
-                  onChange={(e) => setTripDate(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium"
+                  onChange={(e) => { setTripDate(e.target.value); if (err && err.includes('Ngày Chạy')) setErr(null); }}
+                  className={`w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium ${err && err.includes('Ngày Chạy') ? 'border-rose-500 ring-2 ring-rose-200' : 'border-slate-300'}`}
                 />
               </div>
 
               <div className="sm:col-span-2">
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-bold text-slate-700">
+                  <label htmlFor="trip-create-customer-input" className="text-[11px] font-bold text-slate-700">
                     Khách Hàng / Chủ Hàng <span className="text-rose-500">*</span>
                   </label>
                   <button
@@ -708,13 +742,14 @@ export default function TripCreateModal({
                   </button>
                 </div>
                 <input
+                  id="trip-create-customer-input"
                   type="text"
                   required
                   list="customer-suggestions"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onChange={(e) => { setCustomerName(e.target.value); if (err && err.includes('Khách Hàng')) setErr(null); }}
                   placeholder="Gõ hoặc chọn khách hàng (VD: TTP, VTM, ĐẠI THỊNH, KÊNH GIANG...)"
-                  className="w-full px-3 py-2 text-xs uppercase font-semibold border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                  className={`w-full px-3 py-2 text-xs uppercase font-semibold border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white ${err && err.includes('Khách Hàng') ? 'border-rose-500 ring-2 ring-rose-200' : 'border-slate-300'}`}
                 />
                 <datalist id="customer-suggestions">
                   {customers.map(c => <option key={c.id} value={c.name} />)}

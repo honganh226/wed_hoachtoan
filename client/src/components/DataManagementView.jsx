@@ -93,26 +93,39 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
 
   function input(f) {
     const v = draft[f.key] ?? '';
+    const fieldId = `manage-field-${f.key}`;
     const change = value => setDraft(d => {
       const next = { ...d, [f.key]: value };
       if (f.key === 'cuoc_goc') next.cuoc_vao = value;
       if (f.key === 'cuoc_vao') next.cuoc_goc = value;
       return next;
     });
-    if (f.type === 'boolean') return <label className="flex gap-2 items-center h-10"><input type="checkbox" checked={Boolean(v)} onChange={e => change(e.target.checked ? 1 : 0)} />Có</label>;
+    if (f.type === 'boolean') return <label className="flex gap-2 items-center h-10"><input id={fieldId} type="checkbox" checked={Boolean(v)} onChange={e => change(e.target.checked ? 1 : 0)} />Có</label>;
     if (f.type === 'select' || f.type === 'ref') {
       const options = f.type === 'ref' ? meta.references[f.options] || [] : f.options.map(o => ({ id: o, label: paymentLabels[o] || o }));
       return (
-        <select aria-label={f.label} className="w-full rounded-lg border p-2 bg-white min-w-0" value={v} onChange={e => change(e.target.value)}>
+        <select id={fieldId} aria-label={f.label} className="w-full rounded-lg border p-2 bg-white min-w-0" value={v} onChange={e => change(e.target.value)}>
           <option value="">Chọn…</option>
           {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
         </select>
       );
     }
+    if (['notes_r', 'phat_sinh_note', 'note', 'notes'].includes(f.key) || f.type === 'textarea') {
+      return (
+        <textarea
+          id={fieldId}
+          aria-label={f.label}
+          rows={3}
+          className="w-full rounded-lg border p-2 min-w-0 resize-y"
+          value={v}
+          onChange={e => change(e.target.value)}
+        />
+      );
+    }
     return (
       <input
+        id={fieldId}
         aria-label={f.label}
-        required={f.required}
         className="w-full rounded-lg border p-2 min-w-0"
         type={['date', 'month'].includes(f.type) ? f.type : 'text'}
         inputMode={['money', 'number'].includes(f.type) ? 'decimal' : undefined}
@@ -124,8 +137,23 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
 
   async function save(e) {
     e.preventDefault();
-    setBusy(true);
     setError('');
+    for (const f of config.fields) {
+      if (f.required) {
+        const rawVal = draft[f.key];
+        const isEmpty = rawVal === undefined || rawVal === null || String(rawVal).trim() === '';
+        if (isEmpty) {
+          setError(`Vui lòng nhập hoặc chọn "${f.label}" (*) trước khi lưu.`);
+          const el = document.getElementById(`manage-field-${f.key}`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.focus();
+          }
+          return;
+        }
+      }
+    }
+    setBusy(true);
     try {
       const values = {};
       for (const f of config.fields) {
@@ -218,6 +246,53 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
       {error && <p role="alert" className="bg-red-50 text-red-700 p-3 rounded-lg">{error}</p>}
       {notice && <p role="status" className="bg-emerald-50 text-emerald-800 p-3 rounded-lg">{notice}</p>}
 
+      {/* LỊCH SỬ THAY ĐỔI (HIỂN THỊ NGAY ĐẦU TRANG ĐỂ DỄ THAO TÁC TRÊN ĐIỆN THOẠI) */}
+      {history && (
+        <div className="bg-white border rounded-xl p-4 space-y-3 shadow-xs">
+          <div className="flex justify-between items-center">
+            <h2 className="font-bold">Lịch sử thay đổi</h2>
+            <button type="button" className="text-sm text-slate-500 hover:text-slate-800 px-2 py-1" onClick={() => setHistory(null)}>Đóng</button>
+          </div>
+          {history.length === 0 && <p className="text-sm text-slate-400">Chưa có thay đổi nào được ghi nhận.</p>}
+          <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+            {history.map(h => (
+              <div className="border-t pt-2 text-sm flex flex-wrap justify-between items-center gap-2" key={h.id}>
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium">{h.actor}</span> · {new Date(h.created_at).toLocaleString('vi-VN')}
+                  <p className="text-slate-500 break-words">{entitiesLabel(meta, h.entity)} · {h.reason}</p>
+                </div>
+                {Boolean(h.is_undone) ? (
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 font-medium shrink-0">Đã hoàn tác</span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={meta?.read_only || busy}
+                    className="border border-blue-200 text-blue-700 hover:bg-blue-50 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40 shrink-0"
+                    onClick={async () => {
+                      setBusy(true);
+                      setError('');
+                      try {
+                        await request('/history/' + h.id + '/undo', 'POST', {});
+                        setNotice('Đã hoàn tác thay đổi thành công. Báo cáo đang được cập nhật.');
+                        await load();
+                        setHistory(await request('/history'));
+                        window.dispatchEvent(new Event('business-data-changed'));
+                      } catch (e) {
+                        setError(e.message);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Hoàn tác
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {assistantPeriod && !assistantPeriod.all && (
         <div className="text-xs bg-blue-50 p-2 rounded-lg">
           Phạm vi từ trợ lý: {assistantPeriod.startDate} đến {assistantPeriod.endDate}.{' '}
@@ -277,17 +352,22 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
 
       {/* MODAL SỬA / THÊM DỮ LIỆU */}
       {editing && config && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/60 p-2 sm:p-4 flex items-center justify-center">
-          <form onSubmit={save} className="bg-white rounded-xl w-full max-w-3xl max-h-[94vh] flex flex-col shadow-2xl">
-            <div className="p-4 border-b flex justify-between items-center gap-2">
-              <h2 className="font-bold">{editing.id ? 'Sửa' : 'Thêm'} {config.label}</h2>
-              <button type="button" aria-label="Đóng chỉnh sửa" className="p-2 text-slate-500 hover:text-slate-800" onClick={() => setEditing(null)}>✕</button>
+        <div className="fixed inset-0 z-[60] bg-slate-900/60 p-1.5 sm:p-4 flex items-start sm:items-center justify-center overflow-y-auto">
+          <form noValidate onSubmit={save} className="bg-white rounded-xl w-full max-w-3xl my-auto max-h-[calc(100dvh-0.75rem)] sm:max-h-[94dvh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-3.5 sm:p-4 border-b flex justify-between items-center gap-2 shrink-0">
+              <h2 className="font-bold text-sm sm:text-base">{editing.id ? 'Sửa' : 'Thêm'} {config.label}</h2>
+              <button type="button" aria-label="Đóng chỉnh sửa" className="p-1.5 sm:p-2 text-slate-500 hover:text-slate-800" onClick={() => setEditing(null)}>✕</button>
             </div>
-            <div className="p-4 overflow-y-auto space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
+            {error && (
+              <div role="alert" className="mx-3.5 sm:mx-4 mt-2.5 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium shrink-0">
+                {error}
+              </div>
+            )}
+            <div className="p-3.5 sm:p-4 overflow-y-auto flex-1 min-h-0 space-y-4">
+              <div className="grid sm:grid-cols-2 gap-3.5 sm:gap-4">
                 {config.fields.map(f => (
                   <div key={f.key} className="min-w-0">
-                    <label className="block text-sm font-medium mb-1">{f.label}{f.required ? ' *' : ''}</label>
+                    <label htmlFor={`manage-field-${f.key}`} className="block text-sm font-medium mb-1">{f.label}{f.required ? ' *' : ''}</label>
                     {input(f)}
                   </div>
                 ))}
@@ -317,9 +397,8 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
                   <div className="font-bold text-slate-900 pt-1 border-t border-slate-200">Chênh lệch tạm tính sau trừ 17% & chi phí: {moneyText(draftFin.chenh_lech_sau_tru_17)} ₫ (Chưa trừ lương; không trừ tiền phơi trả hộ)</div>
                 </div>
               )}
-              {error && <p role="alert" className="text-red-700">{error}</p>}
             </div>
-            <div className="p-4 border-t flex flex-wrap justify-end gap-2 bg-slate-50">
+            <div className="p-3.5 sm:p-4 border-t flex flex-wrap justify-end gap-2 bg-slate-50 shrink-0">
               <button type="button" className="border rounded-lg px-4 py-2 bg-white hover:bg-slate-100" onClick={() => setEditing(null)}>Hủy</button>
               <button disabled={busy || meta?.read_only} className="bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-lg px-4 py-2 font-medium">
                 {busy ? 'Đang lưu…' : 'Lưu thay đổi'}
@@ -331,16 +410,16 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
 
       {/* MODAL XÁC NHẬN XÓA / HỦY DỮ LIỆU */}
       {deleting && (
-        <div className="fixed inset-0 z-[65] bg-slate-900/60 p-2 sm:p-4 flex items-center justify-center">
-          <div className="bg-white rounded-xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
-            <div className="p-4 border-b bg-red-50 flex justify-between items-center">
-              <h2 className="font-bold text-red-900 flex items-center gap-2">
+        <div className="fixed inset-0 z-[65] bg-slate-900/60 p-1.5 sm:p-4 flex items-start sm:items-center justify-center overflow-y-auto">
+          <div className="bg-white rounded-xl w-full max-w-lg my-auto max-h-[calc(100dvh-0.75rem)] sm:max-h-[92dvh] overflow-hidden shadow-2xl flex flex-col">
+            <div className="p-3.5 sm:p-4 border-b bg-red-50 flex justify-between items-center shrink-0">
+              <h2 className="font-bold text-red-900 flex items-center gap-2 text-sm sm:text-base">
                 <span>⚠️</span> Xác nhận Xóa / Hủy {config?.label || entity}
               </h2>
               <button type="button" aria-label="Đóng" className="p-1 text-slate-500 hover:text-slate-800" onClick={() => setDeleting(null)}>✕</button>
             </div>
-            <div className="p-4 space-y-3 text-sm">
-              <div className="bg-slate-50 p-3 rounded-lg border text-xs space-y-1">
+            <div className="p-3.5 sm:p-4 space-y-3 text-sm overflow-y-auto flex-1 min-h-0">
+              <div className="bg-slate-50 p-3 rounded-lg border text-xs space-y-1 break-words">
                 <div><b>Mã / Định danh:</b> {deleting.id}</div>
                 {deleting.customer_name && <div><b>Khách hàng:</b> {deleting.customer_name}</div>}
                 {deleting.trip_date && <div><b>Ngày chạy:</b> {deleting.trip_date}</div>}
@@ -367,9 +446,9 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
                   className="block w-full border rounded-lg p-2 mt-1 min-w-0"
                 />
               </label>
-              {error && <p role="alert" className="text-red-700 bg-red-50 p-2 rounded">{error}</p>}
+              {error && <p role="alert" className="text-red-700 bg-red-50 border border-red-200 p-2.5 rounded-lg text-xs break-words">{error}</p>}
             </div>
-            <div className="p-4 border-t flex justify-end gap-2 bg-slate-50">
+            <div className="p-3.5 sm:p-4 border-t flex flex-wrap justify-end gap-2 bg-slate-50 shrink-0">
               <button type="button" className="border rounded-lg px-4 py-2 text-sm bg-white hover:bg-slate-100" onClick={() => setDeleting(null)}>Hủy bỏ</button>
               <button
                 type="button"
@@ -381,46 +460,6 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* LỊCH SỬ THAY ĐỔI */}
-      {history && (
-        <div className="bg-white border rounded-xl p-4 space-y-3">
-          <div className="flex justify-between items-center">
-            <h2 className="font-bold">Lịch sử thay đổi</h2>
-            <button className="text-sm text-slate-500 hover:text-slate-800" onClick={() => setHistory(null)}>Đóng</button>
-          </div>
-          {history.length === 0 && <p className="text-sm text-slate-400">Chưa có thay đổi nào được ghi nhận.</p>}
-          {history.map(h => (
-            <div className="border-t pt-2 text-sm flex flex-wrap justify-between items-center gap-2" key={h.id}>
-              <div>
-                <span className="font-medium">{h.actor}</span> · {new Date(h.created_at).toLocaleString('vi-VN')}
-                <p className="text-slate-500">{entitiesLabel(meta, h.entity)} · {h.reason}</p>
-              </div>
-              {Boolean(h.is_undone) ? (
-                <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 font-medium">Đã hoàn tác</span>
-              ) : (
-                <button
-                  disabled={meta?.read_only || busy}
-                  className="border border-blue-200 text-blue-700 hover:bg-blue-50 rounded-lg px-3 py-1 text-xs disabled:opacity-40"
-                  onClick={async () => {
-                    if (!window.confirm('Hoàn tác thay đổi này? Thao tác chỉ được thực hiện một lần duy nhất.')) return;
-                    try {
-                      await request('/history/' + h.id + '/undo', 'POST', {});
-                      await load();
-                      setHistory(await request('/history'));
-                      window.dispatchEvent(new Event('business-data-changed'));
-                    } catch (e) {
-                      setError(e.message);
-                    }
-                  }}
-                >
-                  Hoàn tác
-                </button>
-              )}
-            </div>
-          ))}
         </div>
       )}
     </div>

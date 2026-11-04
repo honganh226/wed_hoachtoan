@@ -132,7 +132,10 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 export default function TripsListView({
   assistantFocus,
   onAssistantFocusConsumed,
-  onAssistantContext
+  onAssistantContext,
+  onOpenExpenseModal,
+  onOpenEirModal,
+  onOpenExcelImport
 }) {
   // 1. Dữ liệu nguồn
   const [tripsData, setTripsData] = useState([]);
@@ -652,7 +655,34 @@ export default function TripsListView({
             </p>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {onOpenExpenseModal && (
+              <button
+                type="button"
+                onClick={() => onOpenExpenseModal()}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-all active:scale-95"
+              >
+                <span>Nhập chi phí</span>
+              </button>
+            )}
+            {onOpenEirModal && (
+              <button
+                type="button"
+                onClick={() => onOpenEirModal()}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all active:scale-95"
+              >
+                <span>Ảnh EIR</span>
+              </button>
+            )}
+            {onOpenExcelImport && (
+              <button
+                type="button"
+                onClick={() => onOpenExcelImport()}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all active:scale-95"
+              >
+                <span>Xem trước Excel</span>
+              </button>
+            )}
             <button
               onClick={loadTrips}
               disabled={loading}

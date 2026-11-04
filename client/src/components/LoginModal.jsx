@@ -59,10 +59,10 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess, currentUse
 
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
+      <div className="relative w-full max-w-lg my-auto bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1.5rem)]">
         {/* Header modal */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-800/80 border-b border-slate-700">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-800/80 border-b border-slate-700 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-600/20 text-blue-400 rounded-lg border border-blue-500/30">
               <ShieldCheck className="w-6 h-6" />
@@ -85,7 +85,7 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess, currentUse
         </div>
 
         {/* Nội dung form */}
-        <div className="p-6 space-y-5">
+        <div className="p-5 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1 min-h-0">
           {error && (
             <div className="flex items-center gap-2.5 p-3 text-sm text-rose-300 bg-rose-950/40 border border-rose-800/60 rounded-xl">
               <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />

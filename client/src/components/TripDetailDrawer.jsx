@@ -124,7 +124,7 @@ export default function TripDetailDrawer({
       role="dialog"
       aria-modal="true"
       aria-label={'Chi tiết cuốc xe ' + tripCode}
-      className="fixed inset-0 z-50 overflow-hidden"
+      className="fixed inset-0 z-[60] overflow-hidden"
     >
       <div
         className="fixed inset-0 bg-slate-900/50 backdrop-blur-2xs transition-opacity"

@@ -106,7 +106,8 @@ export function normalizeEirItem(it = {}, defaultCategory = 'UNSCHEDULED') {
 export default function DirectorDebtsView({
   assistantFocus,
   onAssistantFocusConsumed,
-  onAssistantContext
+  onAssistantContext,
+  onOpenBatchPayment
 }) {
   // 1. Phân hệ chính: 'receivables' (Khách hàng) | 'phoi_advances' (Phơi) | 'payables' (Nhà xe)
   const [activeTab, setActiveTab] = useState('receivables');
@@ -512,7 +513,17 @@ export default function DirectorDebtsView({
             </p>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {onOpenBatchPayment && !isSecretary && (
+              <button
+                type="button"
+                onClick={() => onOpenBatchPayment('')}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 transition-all active:scale-95"
+              >
+                <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Thanh toán gộp</span>
+              </button>
+            )}
             <button
               onClick={loadDebts}
               disabled={loading || eirLoading}
