@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { db } from '../db/database.js';
 import { excelMonthService, invalidateExcelMonthCache } from './excelMonthService.js';
 import { createTrip, updateTrip } from './trip.service.js';
+import { broadcastPLUpdate } from './plEngine.service.js';
 import { legacyDemoIds } from './demoData.service.js';
 import { calculateFareBreakdown, calculateFuelCost, calculateTripFinancials, normalizeContainerType, toIntVnd } from '../utils/tripFinancials.js';
 import { getFuelPriceMap } from './fuelPrice.service.js';
@@ -293,6 +294,7 @@ export function saveEntity(entity,id,values,expectedVersion,user,reason=''){
   db.prepare('INSERT INTO director_history (id, entity, record_id, before_value, after_value, actor, reason, created_at, is_undone) VALUES(?,?,?,?,?,?,?,?,0)').run(randomUUID(),entity,id,JSON.stringify(old),JSON.stringify(after),user.username,reason||'Chỉnh sửa dữ liệu',now);
  })();
  invalidateExcelMonthCache();
+ try { broadcastPLUpdate('DIRECTOR_DATA_SAVED', `Cập nhật ${entity} [${id}]`); } catch (_) {}
  return listEntity(entity).find(r=>r.id===id);
 }
 export function deleteEntity(entity, id, user, reason = '', expectedVersion = null) {
@@ -533,6 +535,7 @@ export function deleteEntity(entity, id, user, reason = '', expectedVersion = nu
   })();
 
   invalidateExcelMonthCache();
+  try { broadcastPLUpdate('DIRECTOR_DATA_DELETED', `${actionResult} ${entity} [${id}]`); } catch (_) {}
   return { success: true, id, entity, action: actionResult, message: impactMessage };
 }
 
@@ -772,6 +775,7 @@ export function undoChange(historyId, user) {
   })();
 
   invalidateExcelMonthCache();
+  try { broadcastPLUpdate('DIRECTOR_DATA_UNDONE', `Hoàn tác ${h.entity} [${h.record_id}]`); } catch (_) {}
   return { success: true, historyId, message };
 }
 
