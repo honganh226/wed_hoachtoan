@@ -227,7 +227,7 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
   }) : null;
 
   return (
-    <div className="ha-data-management space-y-4 pb-20">
+    <div data-release-commit="live-mobile-ux-20261104" className="ha-data-management space-y-4 pb-20">
       <div className="bg-white border rounded-xl p-4 space-y-3">
         <h1 className="font-bold text-xl">Dữ liệu & chỉnh sửa</h1>
         <p className="text-sm text-slate-500">Tra cứu, bổ sung, sửa và xóa/hủy dữ liệu nghiệp vụ. Mọi thay đổi lưu bền vững và tự cập nhật các báo cáo.</p>
