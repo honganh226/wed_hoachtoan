@@ -185,3 +185,23 @@
 @media (prefers-reduced-motion: reduce) {
   .ha-app *, .ha-app *::before, .ha-app *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Let wide tables scroll inside their panel instead of clipping columns. */
+.ha-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ha-table-scroll:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+@media (max-width: 767px) {
+  .ha-table-scroll > table th,
+  .ha-table-scroll > table .text-right,
+  .ha-table-scroll > table .font-mono {
+    white-space: nowrap;
+  }
+}

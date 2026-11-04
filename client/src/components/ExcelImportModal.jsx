@@ -578,7 +578,7 @@ export default function ExcelImportModal({
                   </div>
                 </div>
 
-                <div className="overflow-x-auto max-h-80">
+                <div className="max-h-80 ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
                   <table className="w-full text-left text-xs border-collapse min-w-[1150px]">
                     <thead className="bg-slate-100 text-slate-600 font-semibold sticky top-0 border-b border-slate-200 text-[11px]">
                       <tr>

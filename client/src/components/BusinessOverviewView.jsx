@@ -1036,7 +1036,7 @@ export default function BusinessOverviewView({
         </div>
 
         {/* Bảng máy tính để bàn (Desktop View) */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden md:block ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
           <table className="w-full text-xs text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
@@ -1621,7 +1621,8 @@ export default function BusinessOverviewView({
                   <div className="text-xs text-slate-500">
                     Đang hiển thị <strong>{filteredDrawerTrips.length}</strong> cuốc. Bấm vào cuốc để xem đối chiếu tài chính:
                   </div>
-                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <p className="mb-1 text-xs text-slate-500 md:hidden">Vuốt ngang bảng để xem các cột bên phải.</p>
+                  <div className="border border-slate-200 rounded-xl ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
@@ -1697,7 +1698,8 @@ export default function BusinessOverviewView({
                   </div>
 
                   <div className="text-xs text-slate-500">Danh sách cuốc cấu thành:</div>
-                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <p className="mb-1 text-xs text-slate-500 md:hidden">Vuốt ngang bảng để xem các cột bên phải.</p>
+                  <div className="border border-slate-200 rounded-xl ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
@@ -1813,7 +1815,8 @@ export default function BusinessOverviewView({
                   <div className="text-xs text-slate-500">
                     Danh sách <strong>{filteredDrawerPartners.length}</strong> đối tác vận tải thuê ngoài trong kỳ:
                   </div>
-                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <p className="mb-1 text-xs text-slate-500 md:hidden">Vuốt ngang bảng để xem các cột bên phải.</p>
+                  <div className="border border-slate-200 rounded-xl ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
@@ -1924,7 +1927,8 @@ export default function BusinessOverviewView({
                       <div className="bg-slate-50 px-3 py-2 font-bold text-slate-800 border-b border-slate-200">
                         Danh sách {activeDrawer.trips?.length || 0} cuốc cấu thành nhóm
                       </div>
-                      <table className="w-full text-xs text-left border-collapse">
+                      <div className="ha-table-scroll" tabIndex={0} role="region" aria-label="Danh sách cuốc, có thể cuộn ngang">
+                        <table className="w-full text-xs text-left border-collapse">
                         <thead>
                           <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-[11px]">
                             <th className="py-2 px-3">Mã cuốc</th>
@@ -1955,6 +1959,7 @@ export default function BusinessOverviewView({
                           })}
                         </tbody>
                       </table>
+                      </div>
                     </div>
 
                     <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">

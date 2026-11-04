@@ -296,7 +296,7 @@ export default function FuelPriceManagementModal({ isOpen, onClose, onSaved }) {
                 Chưa có đơn giá dầu nào được nhập. Các cuốc có cấp dầu đang hiển thị trạng thái &quot;Chưa nhập giá dầu&quot;.
               </div>
             ) : (
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="border border-slate-200 rounded-xl ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                     <tr>

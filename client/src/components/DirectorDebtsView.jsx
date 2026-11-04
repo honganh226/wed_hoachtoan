@@ -868,7 +868,7 @@ export default function DirectorDebtsView({
                             </span>
                           </div>
 
-                          <div className="overflow-x-auto">
+                          <div className=" ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
                             <table className="w-full text-left text-xs bg-white rounded-lg border border-slate-200 overflow-hidden">
                               <thead>
                                 <tr className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
@@ -1068,7 +1068,7 @@ export default function DirectorDebtsView({
                     </p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className=" ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
@@ -1309,7 +1309,7 @@ export default function DirectorDebtsView({
                             </span>
                           </div>
 
-                          <div className="overflow-x-auto">
+                          <div className=" ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
                             <table className="w-full text-left text-xs bg-white rounded-lg border border-slate-200 overflow-hidden">
                               <thead>
                                 <tr className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">

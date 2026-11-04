@@ -337,7 +337,7 @@ export default function BatchPaymentModal({
                 </p>
               </div>
             ) : (
-              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs max-h-[260px] overflow-y-auto">
+              <div className="border border-slate-200 rounded-xl  shadow-2xs max-h-[260px] overflow-y-auto ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-100 text-slate-600 font-bold sticky top-0 border-b border-slate-200 z-10">
                     <tr>
