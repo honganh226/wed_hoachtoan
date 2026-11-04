@@ -151,7 +151,6 @@ export default function App() {
       setLastSystemView(subView);
     }
   }, [activeModule, subView]);
-  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState(() => {
@@ -476,90 +475,6 @@ export default function App() {
 
           {/* Action Buttons & Profile Controls */}
           <div className="ha-header-actions">
-            {/* Menu Dropdown Thao Tác Nghiệp Vụ Nhanh (ẨN ĐỐI VỚI LÁI XE) */}
-            {!isDriver && (
-              <div className="relative">
-                <button
-                  onClick={() => setIsActionsMenuOpen(!isActionsMenuOpen)}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold shadow-xs transition-all"
-                  title="Mở menu các thao tác nghiệp vụ"
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-                  <span className="hidden sm:inline">Tác nghiệp</span>
-                  <ChevronDown className="w-3 h-3 text-slate-400" />
-                </button>
-
-                {isActionsMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsActionsMenuOpen(false)}></div>
-                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-fade-in">
-                      <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                        Tác Nghiệp Vận Tải
-                      </div>
-                      <button
-                        onClick={() => { setIsBatchTripCreateOpen(true); setIsActionsMenuOpen(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
-                      >
-                        <Table className="w-4 h-4 text-indigo-600" />
-                        <span>Nhập nhiều cuốc</span>
-                      </button>
-                      <button
-                        onClick={() => { setIsExcelImportOpen(true); setIsActionsMenuOpen(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
-                      >
-                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                        <span>Nhập bảng kê Excel</span>
-                      </button>
-                      <button
-                        onClick={() => { setIsAiDispatchOpen(true); setIsActionsMenuOpen(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
-                      >
-                        <Sparkles className="w-4 h-4 text-purple-600" />
-                        <span>Gợi ý phân bổ xe</span>
-                      </button>
-                      <button
-                        onClick={() => { setTargetTripForAdvance(null); setIsAdvanceModalOpen(true); setIsActionsMenuOpen(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
-                      >
-                        <Wallet className="w-4 h-4 text-emerald-600" />
-                        <span>Tạm Ứng & Hoàn Ứng Lái Xe</span>
-                      </button>
-                      <button
-                        onClick={() => { setTargetTripForExpense(null); setIsExpenseModalOpen(true); setIsActionsMenuOpen(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
-                      >
-                        <Receipt className="w-4 h-4 text-amber-600" />
-                        <span>Chi Phí Thực Tế & Cảnh Báo</span>
-                      </button>
-                      <button
-                        onClick={() => { setTargetTripForEir(null); setIsEirModalOpen(true); setIsActionsMenuOpen(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
-                      >
-                        <Camera className="w-4 h-4 text-indigo-600" />
-                        <span>Phiếu Phơi EIR Mobile</span>
-                      </button>
-
-                      {/* Phân hệ Khóa Sổ & Audit Log: Chỉ Giám Đốc và Kế Toán */}
-                      {(isDirector || isAccountant) && (
-                        <>
-                          <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-t border-b border-slate-100 mt-1">
-                            Kế Toán & Quản Trị
-                          </div>
-                          <button
-                            onClick={() => { setIsPeriodLockOpen(true); setIsActionsMenuOpen(false); }}
-                            className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700"
-                          >
-                            <Lock className="w-4 h-4 text-slate-600" />
-                            <span>Khóa sổ & lịch sử</span>
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
             {/* Nút Tạo Chuyến Xe Mới (Chỉ hiển thị cho Quản lý khu, Kế toán, Giám đốc) */}
             {!isDriver && (
               <button
