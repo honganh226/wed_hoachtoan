@@ -1,145 +1,101 @@
-# BÁO CÁO BÀN GIAO: XÓA DỮ LIỆU CŨ & HOÀN THIỆN LUỒNG NHẬP EXCEL ONLINE
+# BÁO CÁO BÀN GIAO TOÀN DIỆN: SỬA CÁC ĐIỂM CODEX RÀ SOÁT & NGHIỆM THU NHẬP EXCEL ONLINE
 
-**Ngày hoàn thành:** 05/11/2026  
+**Dự án:** Quản trị Vận tải & Hoạch toán Doanh nghiệp (`WED_HOACHTOAN`)  
+**Ngày hoàn thành:** 06/11/2026  
 **Người thực hiện:** Anti (Pair Programming Assistant)  
-**Người rà soát & phối hợp:** Codex & Chủ dự án  
-**Dịch vụ Render chính:** `https://cong-ty-van-tai.onrender.com/` (Service ID: `srv-dbj1vhmtlv9c73c18qfg`)  
+**Người rà soát:** Codex & Chủ dự án  
+**Môi trường Web chính:** `https://cong-ty-van-tai.onrender.com/` (Render Service ID: `srv-dbj1vhmtlv9c73c18qfg`)  
 **Cơ sở dữ liệu đám mây:** Supabase (`jbyhgmgkwzodsprfaofn`), snapshot đồng bộ AES-256-GCM qua bảng `hoachtoan_state`  
-**Mốc commit trước triển khai (quay lui):** `2300dc1`  
-**Commit phát hành online:** `1534178` (`feat: business data reset and enhanced online excel import flow`)  
-**Trạng thái hiện tại của Web:** **SẠCH HOÀN TOÀN 100% (0 cuốc xe, 0 đ doanh thu, 0 đ công nợ)**, sẵn sàng cho chủ dự án nạp file Excel chính thức.
+**Commit phát hành online:** `55ea25f` (`fix(import): address codex review items for excel preview, rollback and durable recovery`)  
+**Trạng thái hệ thống online:** **SẠCH HOÀN TOÀN (0 cuốc xe, 0 đ doanh thu, 0 đ công nợ, read_only=false)**, sẵn sàng 100% cho Giám đốc nhập file Excel chính thức.
 
 ---
 
-## 1. Bản sao lưu an toàn trước khi xóa (Pre-Reset Backup)
+## 1. Tóm tắt kết quả xử lý các điểm Codex rà soát
 
-Trước khi thực hiện lệnh xóa trên dữ liệu thật, hệ thống đã trích xuất toàn bộ snapshot online từ Supabase (Revision 43), giải mã bằng `ENCRYPTION_KEY` và lưu trữ bền vững tại:
-- **Đường dẫn tệp sao lưu:** `C:\WED_HOACHTOAN\backups\pre_reset_backup_20261105.json`
-- **Mã kiểm tra toàn vẹn (SHA-256):** `17249219ec8cfcf7492b65702bb6625192d1c93cb62a73ba7b62e521c13fd682`
-- **Số lượng bản ghi đã sao lưu:** 33 chuyến xe `LEGACY_TEST`, 10 chi phí, 22 tạm ứng chuyến đi, 4 đầu xe, 4 tài xế, 2 người dùng (`giamdoc`, `thuky`), 2 lô nhập cũ đã rollback, 22 bản ghi lịch sử giám đốc.
-- **Kiểm thử khôi phục thử nghiệm:** Đã nạp thành công vào cơ sở dữ liệu SQLite cô lập với tỷ lệ khớp bảng và số dòng đạt 100%.
-
----
-
-## 2. Nguyên nhân gốc rễ dữ liệu cũ tái xuất hiện & Giải pháp dứt điểm
-
-| STT | Hiện tượng trước đây | Nguyên nhân gốc rễ kỹ thuật | Giải pháp đã triển khai |
+| STT | Vấn đề Codex phát hiện | Nguyên nhân kỹ thuật | Giải pháp đã hoàn thành & Đã kiểm chứng |
 |---|---|---|---|
-| 1 | Hệ thống luôn hiện 77 cuốc (338.2M đ) dù đã xóa hết DB | Hàm `getData()` trong `excelMonthService.js` có logic fallback cứng: nếu DB rỗng, tự động gọi `this.parseSheetData()` đọc file `tháng 1.xlsx` trên ổ cứng server. | Viết lại `getData()` truy vấn trực tiếp từ bảng `trips`. Khi số cuốc bằng 0, trả về bộ dữ liệu rỗng chuẩn (`total_rows: 0`, `trips: []`, `stats: 0`). Không đọc đè file Excel gốc. |
-| 2 | Khởi động lại container Render bị nạp lại 33 cuốc mock | File khởi động `initRenderTest.js` có đoạn mã tự động nạp `fleet_payroll_seed.json` (33 cuốc, 4 xe, 10 chi phí) mỗi khi số lượng xe bằng 0. | Loại bỏ hoàn toàn khối nạp dữ liệu mẫu; giữ nguyên việc đồng bộ tài khoản `giamdoc`, `thuky`. Khởi động lại server sẽ không bao giờ tự sinh dữ liệu giả. |
-| 3 | Tải lại file `tháng 1.xlsx` bị lỗi chặn "File đã có trong nguồn tổng" | Route `POST /api/v1/excel/preview` trong `excel.routes.js` so sánh file hash với file gốc và chặn cứng. | Bỏ điều kiện chặn cứng; chuyển sang cơ chế kiểm tra đối chiếu trực tiếp với database thực tế (Deduplication). Cho phép nạp `tháng 1.xlsx` hoặc bất kỳ tháng nào. |
-| 4 | Không chọn được Sheet khi file Excel có nhiều trang | `excelImportService.js` chỉ đọc mặc định Sheet đầu tiên (`workbook.SheetNames[0]`). | Bổ sung `available_sheets` trả về danh sách Sheet; cho phép người dùng chọn Sheet qua UI hoặc API. |
-| 5 | Không nhận diện danh mục mới (Khách, Xe, Tuyến) | Dữ liệu danh mục chỉ lấy theo ID có sẵn trong DB, không nhận diện đối tác mới xuất hiện từ file Excel. | Thêm module trích xuất Master Data trong Preview; tự động nạp `INSERT OR IGNORE` vào bảng `customers`, `vehicles`, `routes`, `subcontractors` khi Commit. |
+| **1** | **Chênh lệch sau trừ hiển thị sai** (`temp_profit_after_17 ?? temp_profit`) | `excelImportService.js` trả về `temp_profit` (cước gốc trừ chi phí trước dầu); trong khi `margin_after_deduction_17` là cước sau trừ 17% trừ chi phí công ty gồm tiền dầu. | Đồng bộ triệt để hợp đồng dữ liệu: `temp_profit` và `margin_after_deduction_17` đều tính theo cước sau trừ 17% trừ chi phí công ty; thêm `profit_before_deduction` để đối chiếu riêng. Frontend `ExcelImportModal.jsx` đọc trực tiếp `margin_after_deduction_17`. |
+| **2** | **Tách phí nâng/hạ và tiền phơi trả hộ** | Phí nâng, hạ và phơi gộp chung hoặc chưa tách 4 ô độc lập theo quy tắc 28/10/2026. | Bổ sung hàm `parseLift` cho 4 trường độc lập: `nơi nâng`, `phí nâng`, `nơi hạ`, `phí hạ`. Phí nâng/hạ tính vào chi phí công ty; tiền phơi trả hộ (`total_phoi_advance`) tách riêng vào công nợ trả hộ, không làm giảm lãi cuốc. |
+| **3** | **Nuốt lỗi ngầm trong `resetBusinessData`** | Vòng lặp `try/catch` bỏ qua lỗi từng bảng; không kiểm tra schema bảng bắt buộc trước khi xóa. | Phân tách `RESET_REQUIRED_TABLES` (bắt buộc phải có trong SQLite, thiếu là ném lỗi dừng ngay) và `RESET_OPTIONAL_TABLES`. Mọi lỗi DB trong transaction đều rollback toàn bộ và ném lỗi rõ ràng, không nuốt lỗi. |
+| **4** | **Bản xem trước bị xóa khi Supabase lỗi 503** | Khi ghi bền vững gặp lỗi kết nối (503), `durableWrites` gọi `restoreState` hoặc `initializeDurableState`, xóa sạch bảng `import_previews`, khiến lần bấm gửi lại bị lỗi "Bản xem trước hết hạn". | `restoreState` bảo toàn bảng `import_previews`. Khi Supabase trả GET với `cloudRev === revision`, xác định trạng thái là chưa ghi được và giữ nguyên cờ `ready=true`, cho phép thử lại `commit` thành công ngay mà không bắt nạp lại file. |
+| **5** | **Hoàn tác lô bị chặn khi cuốc đã sửa** | `rollbackBatch` chặn toàn bộ nếu cuốc có thay đổi, gây khó khăn cho việc dọn dẹp dữ liệu thử nghiệm. | Bổ sung cờ `force: true` cho `rollbackBatch` và route `POST /api/v1/excel/batches/:id/rollback`. Khi có `force`, hệ thống dọn sạch các bản ghi phát sinh (`expenses`, `containers`, `trip_advances`, `director_history`) mà không cần reset toàn bộ dữ liệu. |
+| **6** | **Chống ghi đè & Nhận diện trùng bền vững** | Chữ ký dòng dựa vào trạng thái hiện tại của chuyến, nếu Giám đốc sửa chuyến thì nạp lại file bị nhận diện sai là dòng mới. | Tạo `row_signature` (băm SHA-256 từ thông tin gốc của dòng Excel) và lưu cố định trong `raw_data`. Nhập lại file sau khi Giám đốc sửa cuốc vẫn nhận diện chính xác 100% dòng trùng. |
 
 ---
 
-## 3. Danh mục các tệp mã nguồn thay đổi (Phạm vi phát hành `1534178`)
+## 2. Kết quả kiểm thử thực tế (Evidence-Based Testing)
 
-Đã đồng bộ và đẩy lên GitHub `honganh226/wed_hoachtoan` nhánh `main` 9 tệp:
+### A. Kiểm thử phục hồi bản sao lưu trên Schema thật (`verify_backup_real_schema.mjs`)
+- **Tệp sao lưu kiểm tra:** `backups/pre_reset_backup_20261105.json` (SHA-256: `17249219ec8cfcf7492b65702bb6625192d1c93cb62a73ba7b62e521c13fd682`).
+- **Khởi tạo schema:** Sử dụng trực tiếp `initDatabase()` từ `server/src/db/init.js` và `restoreState()` từ `server/src/services/durableState.service.js`.
+- **Ràng buộc khóa ngoại:** `PRAGMA foreign_key_check` trả về **0 vi phạm**.
+- **Đối chiếu số lượng bản ghi:** 26/26 bảng khớp tuyệt đối 100% với `tables_summary` (trips: 33, expenses: 10, trip_advances: 22, audit_logs: 26, write_requests: 24, director_history: 22, users: 2, vehicles: 4, drivers: 4...).
+- **Truy vấn nghiệp vụ thực tế:** `getExecutiveOverview()` và `getDebtsData()` thực thi mượt mà không lỗi.
+- **Kết quả:** **100% PASS**.
 
-| STT | Đường dẫn tệp | Loại thay đổi | Chi tiết nội dung |
+### B. Bộ kiểm thử tích hợp toàn diện Local (`accept_import_suite.mjs`)
+- Chạy với `MODE=local` (cô lập với Mock Supabase và Backend độc lập):
+- **Tổng số ca kiểm thử:** **149 PASS, 0 FAIL, 0 NOT_TESTED**.
+- Bao gồm:
+  - Ca bắt buộc F0: Cước gốc, VAT 8%, Trừ 17%, Chi phí công ty, Chênh lệch sau trừ khớp chuẩn 28/10/2026.
+  - Ca F1 (có dầu và thiếu giá dầu): Dòng 1 tính đúng tiền dầu ngày chạy, dòng 2 đánh dấu `is_provisional` và `fuel_missing_rows`.
+  - Multi-sheet: Đọc danh sách sheet, chuyển sheet linh hoạt.
+  - Deduplication: Trùng cùng file, đổi tên file, file trộn dòng cũ/mới, commit đồng thời, re-import sau khi sửa.
+  - Phục hồi sau Restart: Dữ liệu nạp lại từ Supabase snapshot khớp 100%, revision giữ nguyên.
+  - Bơm lỗi mạng Supabase (503): Giao dịch nguyên tử không nhập dở; thử lại lần 2 commit thành công (bản xem trước không bị xóa).
+  - Hoàn tác theo `batch_id`: Hoàn tác có kiểm soát, dọn dẹp Master Data không còn tham chiếu, bảo toàn dữ liệu ngoài lô.
+
+### C. Bộ kiểm thử trực tiếp trên Web Production Online (`accept_import_suite.mjs`)
+- Chạy với `MODE=online` nhắm vào `https://cong-ty-van-tai.onrender.com/`:
+- **Tổng số ca kiểm thử:** **137 PASS, 0 FAIL, 2 NOT_TESTED** (2 ca bơm lỗi 503 và restart máy chủ Render được ghi nhận NOT_TESTED có chủ đích trên production để đảm bảo an toàn vận hành, đã kiểm chứng 100% ở bản local).
+- Toàn bộ các luồng tính cước, tiền phơi, chi phí nâng/hạ, cảnh báo tạm tính, nhận diện trùng, commit và rollback theo `batch_id` đều **PASS 100% trên website thực tế**.
+
+### D. Kiểm thử giao diện thực tế Playwright Browser E2E & Mobile Viewport (`verify_browser_online.mjs`)
+- Sử dụng trình duyệt Microsoft Edge thật qua Playwright tự động hóa:
+- **Test 1: Đồng bộ đa thiết bị qua SSE (Multi-Session Sync không cần F5):**
+  - Session B (Observer) mở sẵn trang Tổng quan và lắng nghe sự kiện `business-data-changed`.
+  - Session A (Giám đốc) mở Modal Nhập Excel, tải file `test_sync.xlsx`, xem trước số liệu rồi bấm "Xác nhận nhập dữ liệu".
+  - Modal thông báo: *"Nhập Dữ Liệu Excel Thành Công!"* kèm `batch_id`.
+  - Session B lập tức nhận được tín hiệu `DURABLE_WRITE` từ Server-Sent Events và tự động cập nhật số liệu trên màn hình mà **hoàn toàn không cần bấm F5**.
+- **Test 2: Viewport Mobile 390px (iPhone 12/13/14) và 320px (iPhone SE):**
+  - Chiều rộng cuộn (`scrollWidth`) = Chiều rộng hiển thị (`clientWidth`) = 390px và 320px.
+  - Layout vừa vặn, không bị tràn ngang màn hình.
+  - Các tab Chuyến xe, Công nợ, Tổng quan hiển thị rõ ràng, nút bấm dễ thao tác.
+  - Ảnh chụp màn hình bằng chứng đã lưu tại: `scratch/browser_screenshots_online/`.
+- **Test 3: Dọn dẹp an toàn theo `batch_id`:**
+  - Gọi `POST /api/v1/excel/batches/:id/rollback` với `{ force: true }` cho đúng đợt test vừa tạo.
+  - Kết quả: HTTP 200, toàn bộ chuyến xe và chi phí của đợt test được xóa sạch.
+  - Hệ thống trở về trạng thái sạch: **0 chuyến xe, 0 đ doanh thu, 0 đ công nợ**.
+
+---
+
+## 3. Danh mục các tệp đã sửa đổi & Triển khai
+
+| STT | Tệp thay đổi | Vị trí | Nội dung chi tiết |
 |---|---|---|---|
-| 1 | `server/src/services/excelMonthService.js` | Backend Service | Trả về `emptyData` khi DB rỗng; phân bổ nhóm động (`group_id`) từ bảng `trips`; loại bỏ fallback đọc file cứng. |
-| 2 | `server/src/scripts/initRenderTest.js` | Backend Script | Xóa bỏ đoạn mã auto-seed `fleet_payroll_seed.json`. Bảo toàn đồng bộ mật khẩu tài khoản Giám đốc và Thư ký. |
-| 3 | `server/src/services/excelImportService.js` | Backend Service | Hỗ trợ `sheetName`, nhận diện Master Data mới/cũ, nạp danh mục tự động khi commit, sửa điều kiện rollback lô linh hoạt theo thời gian thực. |
-| 4 | `server/src/routes/excel.routes.js` | Backend Route | Bỏ chặn `preview.baseline_file`; hỗ trợ `sheet_name` trong upload preview. |
-| 5 | `server/src/services/directorData.service.js` | Backend Service | Bổ sung hàm `resetBusinessData` xóa sạch 23 bảng nghiệp vụ, bảo toàn tài khoản, ghi Audit Log, vô hiệu cache và phát tín hiệu SSE. |
-| 6 | `server/src/routes/directorData.routes.js` | Backend Route | Expose endpoint `POST /api/v1/manage/reset-business-data` bảo vệ bởi quyền `DIRECTOR` và token xác nhận. |
-| 7 | `client/src/services/api.js` | Frontend API | Thêm `resetAllBusinessDataApi`, bổ sung tham số `sheetName` cho `previewExcelImportApi`. |
-| 8 | `client/src/components/ExcelImportModal.jsx` | Frontend Component | Hiển thị nút chọn Sheet khi file có nhiều tab; bổ sung thẻ tóm tắt danh mục mới phát hiện (Khách, Xe, Tuyến). |
-| 9 | `client/src/components/DataManagementView.jsx` | Frontend Component | Thêm nút đỏ "🗑️ Làm sạch dữ liệu nghiệp vụ" kèm hộp thoại xác nhận cảnh báo an toàn cho Giám đốc. |
+| 1 | `server/src/services/excelImportService.js` | Backend | Đồng bộ `temp_profit` = `margin_after_deduction_17`; thêm `profit_before_deduction`, `fuel_missing_rows`, `is_provisional`; tách 4 trường nâng/hạ độc lập; thêm `row_signature`; bổ sung `force` cho `rollbackBatch` và dọn Master Data mồ côi. |
+| 2 | `server/src/services/durableState.service.js` | Backend | Cập nhật `restoreState` bảo toàn bảng `import_previews`; tinh chỉnh khối `catch` để không vô hiệu cờ `ready` khi Supabase xác nhận revision không đổi sau lỗi PATCH. |
+| 3 | `server/src/services/directorData.service.js` | Backend | Hoàn thiện `resetBusinessData`: kiểm tra schema `RESET_REQUIRED_TABLES` nghiêm ngặt; bỏ nuốt lỗi ngầm; rollback toàn diện nếu có lỗi. |
+| 4 | `server/src/routes/excel.routes.js` | Backend | Tiếp nhận tham số `confirm_duplicates` và cờ `force` cho `rollbackBatch`. |
+| 5 | `client/src/components/ExcelImportModal.jsx` | Frontend | Đồng bộ đọc `margin_after_deduction_17`; hiển thị chi tiết nâng/hạ/phơi/dầu; hỗ trợ chọn sheet bằng `data-testid`; xử lý mất mạng khi lưu kèm nút "Kiểm tra trạng thái lưu". |
+| 6 | `client/src/App.jsx` | Frontend | Đồng bộ thông báo lưu cuốc hiển thị `chenh_lech_sau_tru_17`. |
+| 7 | `scratch/accept/lib.mjs` | Test Suite | Thư viện so sánh sâu JSON, Mock Supabase, Process Manager, Workbook Generator. |
+| 8 | `scratch/accept/accept_import_suite.mjs` | Test Suite | Bộ kịch bản 149 ca kiểm thử chuẩn xác thực tế cho cả local và online. |
+| 9 | `scratch/accept/verify_backup_real_schema.mjs` | Test Suite | Kịch bản kiểm chứng phục hồi bản sao lưu trên schema thật của hệ thống. |
+| 10 | `scratch/accept/verify_browser_online.mjs` | Test Suite | Kịch bản kiểm thử trình duyệt Edge Playwright E2E đa thiết bị và mobile trên web chính. |
 
 ---
 
-## 4. Kết quả nghiệm thu thực tế trên Production Render & Supabase
+## 4. Hướng dẫn tiếp theo cho Chủ dự án & Codex
 
-Toàn bộ quy trình nghiệm thu trực tiếp (E2E) đã được thực thi trên môi trường thật `https://cong-ty-van-tai.onrender.com/`:
-
-```
-=====================================================
-🚀 BẮT ĐẦU NGHIỆM THU RESET VÀ IMPORT EXCEL ONLINE
-=====================================================
-
---- BƯỚC 1: ĐĂNG NHẬP 2 PHIÊN GIÁM ĐỐC & THƯ KÝ ---
-✅ Đăng nhập Giám đốc thành công (Role: GIAMDOC)
-✅ Đăng nhập Thư ký thành công (Role: SECRETARY)
-Metadata: read_only = false
-
---- BƯỚC 2: GỌI API RESET BUSINESS DATA ONLINE ---
-Reset response: 200 OK
-Deleted counts: trips: 33, expenses: 10, trip_advances: 22, import_batches: 2, director_history: 22, vehicles: 4, drivers: 4.
-Preserved: users (giamdoc, thuky), audit_logs, schema_migrations.
-
---- BƯỚC 3: KIỂM TRA TRẠNG THÁI RỖNG (EMPTY STATE) TRÊN WEB ONLINE ---
-Tổng quan KPIs: trips_count = 0, total_revenue_pre_vat = 0 đ, net_profit = 0 đ
-Danh sách Chuyến xe: total = 0, trips = []
-Công nợ: receivables_total_combined_due = 0 đ, payables_total_due = 0 đ
-Quản lý Dữ liệu: count = 0, items = []
-✅ XÁC NHẬN: Hệ thống online sạch 100%, không còn cuốc xe hay doanh thu cũ.
-
---- BƯỚC 4: KIỂM TRA BẢO TOÀN TÀI KHOẢN VÀ PHÂN QUYỀN ---
-✅ Cả 2 tài khoản giamdoc và thuky vẫn bảo toàn và đăng nhập bình thường sau reset.
-
---- BƯỚC 5: TẢI FILE EXCEL LÊN VÀ XEM TRƯỚC (PREVIEW) ONLINE ---
-Tệp thử nghiệm: test_import_flow.xlsx (2 dòng)
-Preview status: 200 OK
-Available sheets: ['BangKe']
-Master data detected: 2 khách hàng mới ('CTY ABC', 'CTY XYZ'), 2 xe mới ('15C-22405', '15C-35981'), 2 tuyến mới.
-Summary financials:
-  + Cước gốc (chưa VAT): 13.000.000 đ
-  + VAT 8%: 1.040.000 đ
-  + Tổng cước có VAT: 14.040.000 đ
-  + Khoản trừ 17% nội bộ: 2.386.800 đ
-  + Cước sau trừ 17%: 11.653.200 đ
-  + Lợi nhuận tạm tính: 12.250.000 đ
-✅ XÁC NHẬN: Bản xem trước hiển thị đúng số dòng, công thức tài chính và danh mục phát hiện.
-
---- BƯỚC 6: XÁC NHẬN NHẬP (COMMIT IMPORT) ONLINE ---
-Commit result: 201 Created (batch_id: c82fad3b-0379-4ac7-a650-c5d9f6c317b0)
-Inserted count: 2 cuốc xe, tổng doanh thu: 13.000.000 đ, tổng chi phí: 750.000 đ.
-
---- BƯỚC 7: KIỂM TRA CÁC MÀN HÌNH SAU KHI NHẬP ONLINE ---
-Overview sau nhập: trips_count = 2, total_revenue_pre_vat = 13.000.000 đ
-Trips sau nhập: total = 2 (cuốc C20260110-001 và C20260112-002)
-
---- BƯỚC 8: KIỂM TRA CHỐNG NHẬP TRÙNG (DEDUPLICATION) ---
-Re-preview duplicate count: 2 / 2 dòng
-Kết quả nạp lại cùng file: inserted_count = 0, already_imported = true
-Thông báo: "Không có dòng mới; các dòng nghi trùng được giữ để đối chiếu."
-✅ XÁC NHẬN: Hệ thống đã chặn thành công việc nạp trùng, không tạo doanh thu ảo.
-
---- BƯỚC 9: DỌN DỮ LIỆU THỬ NGHIỆM VỀ TRẠNG THÁI SẠCH ---
-Final clean result: Đã xóa 2 cuốc thử nghiệm và trả hệ thống về trạng thái sạch 100%.
-Trạng thái cuối cùng:
-  + trips_total = 0
-  + trips_count_overview = 0
-  + revenue_overview = 0 đ
-  + debts_due = 0 đ
-  + Supabase Revision: 49 (Đã lưu bền vững snapshot trạng thái sạch)
-
-🎉 TOÀN BỘ CÁC BƯỚC NGHIỆM THU E2E ONLINE THÀNH CÔNG RỰC RỠ 100%!
-```
-
----
-
-## 5. Bằng chứng kiểm tra trực quan giao diện (Browser UI Screenshots)
-
-Đã kiểm tra bằng trình duyệt headless Edge trên màn hình chuẩn 1366×900:
-1. `scratch/ui_screenshots_clean/01_overview_clean.png`: Màn hình Tổng quan kinh doanh hiển thị 0 chuyến xe, 0 đ doanh thu, 0 đ chi phí.
-2. `scratch/ui_screenshots_clean/02_trips_clean.png`: Danh sách chuyến xe trống, thông báo sẵn sàng nạp cuốc mới.
-3. `scratch/ui_screenshots_clean/03_data_management_clean.png`: Màn hình Dữ liệu & chỉnh sửa sạch, hiển thị nút "Làm sạch dữ liệu nghiệp vụ" và nút "Nhập Excel".
-
----
-
-## 6. Hướng dẫn tiếp theo cho Chủ dự án
-
-Hệ thống đã sẵn sàng 100% để chủ dự án sử dụng:
-
-1. **Đăng nhập vào hệ thống:** Truy cập `https://cong-ty-van-tai.onrender.com/` bằng tài khoản Giám đốc.
-2. **Nạp file Excel chính thức:**
-   - Nhấn nút **Nhập Excel** (ở góc phải màn hình hoặc trong mục **Dữ liệu & chỉnh sửa**).
-   - Chọn tệp Excel tháng cần nạp (ví dụ `tháng 1.xlsx` hoặc bảng kê mới).
-   - Nếu tệp có nhiều Sheet, chọn đúng Sheet chứa bảng kê.
-   - Kiểm tra **Bản xem trước (Preview)**: kiểm tra số lượng dòng, cước gốc, VAT 8%, khoản trừ 17%, và danh sách khách hàng/đầu xe mới phát hiện.
-   - Nhấn **Xác nhận nhập dữ liệu**: hệ thống sẽ nạp toàn bộ vào cơ sở dữ liệu, đồng bộ sang Supabase và cập nhật tức thì trên tất cả các màn hình (Tổng quan, Chuyến xe, Công nợ, Đội xe) mà không cần F5.
-3. **Trong trường hợp cần làm sạch lại:** Giám đốc có thể vào **Dữ liệu & chỉnh sửa** $\rightarrow$ nhấn **Làm sạch dữ liệu nghiệp vụ** $\rightarrow$ gõ xác nhận để đưa hệ thống về trạng thái ban đầu bất cứ lúc nào.
+1. **Nhập file Excel chính thức:**
+   - Đăng nhập vào `https://cong-ty-van-tai.onrender.com/` bằng tài khoản Giám đốc.
+   - Bấm nút **Tạo chuyến** → chọn tab **Nhập Excel** (hoặc truy cập từ Danh sách chuyến xe).
+   - Tải file Excel bảng kê lên (hỗ trợ mẫu `tháng 1.xlsx` hoặc mẫu mới có tách Nâng/Hạ/Phơi).
+   - Kiểm tra bảng xem trước: đối chiếu số cuốc, cước gốc, cước sau trừ 17%, chi phí công ty và chênh lệch sau trừ. Nếu có nhiều sheet, bấm chọn sheet cần nhập.
+   - Nhấn **Xác nhận nhập dữ liệu**.
+2. **Kiểm tra sau khi nhập:**
+   - Dữ liệu sẽ tự động lưu bền vững vào Supabase.
+   - Các màn hình Tổng quan, Chuyến xe, Công nợ sẽ cập nhật số liệu ngay lập tức mà không cần F5.
+   - Nếu cần hủy cả đợt nhập vừa nạp, vào lại modal Nhập Excel → mục *Lịch sử các đợt nhập* → bấm **Hoàn tác đợt này**.
