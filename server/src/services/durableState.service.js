@@ -61,13 +61,20 @@ export function restoreState(state) {
   db.exec('PRAGMA foreign_keys=OFF');
   try {
     db.transaction(() => {
-      for (const name of names) db.prepare(`DELETE FROM ${name}`).run();
+      for (const name of names) {
+        if (name === 'import_previews') continue;
+        db.prepare(`DELETE FROM ${name}`).run();
+      }
       for (const name of names) {
         const columns = new Set(db.prepare(`PRAGMA table_info(${name})`).all().map(c => c.name));
         for (const row of state.tables[name] || []) {
           const keys = Object.keys(row).filter(k => columns.has(k));
           if (keys.length) {
-            db.prepare(`INSERT INTO ${name}(${keys.join(',')}) VALUES(${keys.map(() => '?').join(',')})`).run(...keys.map(k => row[k]));
+            if (name === 'import_previews') {
+              db.prepare(`INSERT OR REPLACE INTO ${name}(${keys.join(',')}) VALUES(${keys.map(() => '?').join(',')})`).run(...keys.map(k => row[k]));
+            } else {
+              db.prepare(`INSERT INTO ${name}(${keys.join(',')}) VALUES(${keys.map(() => '?').join(',')})`).run(...keys.map(k => row[k]));
+            }
           }
         }
       }
@@ -198,7 +205,7 @@ async function flushState() {
         }
       }
     } catch (checkErr) {
-      if (checkErr.message?.includes('Xung đột phiên bản')) {
+      if (checkErr.message?.includes('Xung đột phiên bản') || checkErr.message?.includes('Lưu lên Supabase không thành công')) {
         throw checkErr;
       }
       ready = false;

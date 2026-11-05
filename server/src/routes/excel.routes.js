@@ -63,8 +63,12 @@ router.post('/commit', (req, res) => {
       filename: filename || 'import_file.xlsx',
       sheetName: sheetName || 'Sheet1',
       user: req.user,
-      ipAddress
+      ipAddress,
+      confirmDuplicates: req.body.confirm_duplicates === true
     });
+    if (!result.inserted_count) {
+      return successResponse(res, result, 'Không có dòng mới để nhập (các dòng đã có từ đợt trước).', 200);
+    }
     return successResponse(res, result, `Đã nhập thành công ${result.inserted_count} cuốc xe vào hệ thống`, 201);
   } catch (err) {
     if (err.message && !err.message.includes('SqliteError')) {
@@ -96,8 +100,12 @@ router.get('/batches', (req, res) => {
  */
 router.post('/batches/:id/rollback', requireRole(USER_ROLES.DIRECTOR), (req, res) => {
   try {
-    const result=ExcelImportService.rollbackBatch({batchId:req.params.id,user:req.user});
-    return successResponse(res,result,'Đã hoàn tác đúng đợt nhập');
+    const result = ExcelImportService.rollbackBatch({
+      batchId: req.params.id,
+      user: req.user,
+      force: req.body?.force === true
+    });
+    return successResponse(res, result, 'Đã hoàn tác đúng đợt nhập');
   } catch (err) {
     if (err.message && !err.message.includes('SqliteError')) {
       return errorResponse(res, err.message, 400);

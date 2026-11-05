@@ -31,8 +31,10 @@ const FIELD_LABELS = {
   vehicle_plate: 'BIỂN SỐ XE',
   cont_40: 'LOẠI CONT 40 (40DC/HC/RF/FR)',
   cont_20: 'LOẠI CONT 20 (20DC)',
-  lift_on: 'NÂNG (Nơi nâng / Phí nâng)',
-  lift_off: 'HẠ (Nơi hạ / Phí hạ)',
+  lift_on: 'NƠI NÂNG (chữ) hoặc cột NÂNG kiểu cũ',
+  lift_on_fee_col: 'PHÍ NÂNG (số tiền)',
+  lift_off: 'NƠI HẠ (chữ) hoặc cột HẠ kiểu cũ',
+  lift_off_fee_col: 'PHÍ HẠ (số tiền)',
   phoi_nang_ha: 'PHƠI NÂNG HẠ (Trả hộ)',
   fuel_liters: 'DẦU (Lít)',
   toll_fee: 'TIỀN ĐƯỜNG',
@@ -78,6 +80,10 @@ export default function ExcelImportModal({
   const [rollingBackId, setRollingBackId] = useState(null);
 
   const fileInputRef = useRef(null);
+  const commitRequestIdRef = useRef(null);
+  const commitStartedAtRef = useRef(0);
+  const [saveStateUnknown, setSaveStateUnknown] = useState(false);
+  const [checkingSave, setCheckingSave] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -87,6 +93,8 @@ export default function ExcelImportModal({
       setCommitResult(null);
       setErr(null);
       setMsg(null);
+      commitRequestIdRef.current = null;
+      setSaveStateUnknown(false);
       loadBatches();
     }
   }, [isOpen]);
@@ -173,8 +181,14 @@ export default function ExcelImportModal({
       return;
     }
 
+    if (saveStateUnknown) {
+      setErr('Cần kiểm tra trạng thái lưu của lần gửi trước trước khi gửi lại.');
+      return;
+    }
     setSubmitting(true);
     setErr(null);
+    if (!commitRequestIdRef.current) commitRequestIdRef.current = (globalThis.crypto?.randomUUID?.() || `commit-${Date.now()}-${Math.random()}`);
+    commitStartedAtRef.current = Date.now();
 
     try {
       const res = await commitExcelImportApi({
@@ -182,10 +196,10 @@ export default function ExcelImportModal({
         preview_id: previewData.preview_id,
         filename: previewData.filename,
         sheetName: previewData.sheet_name
-      });
+      }, commitRequestIdRef.current);
 
       if (res.success) {
-        setCommitResult(res.data);
+        setCommitResult({ ...res.data, filename: previewData.filename });
         setStep(5);
         loadBatches();
         if (onImportSuccess) {
@@ -195,9 +209,36 @@ export default function ExcelImportModal({
         setErr(res.error || 'Lỗi khi nhập dữ liệu vào hệ thống.');
       }
     } catch (e) {
-      setErr(`Lỗi lưu dữ liệu: ${e.message}`);
+      // Mất kết nối sau khi gửi: chưa biết máy chủ đã lưu hay chưa -> bắt buộc kiểm tra trước khi gửi lại.
+      setSaveStateUnknown(true);
+      setErr(`Mất kết nối khi lưu (${e.message}). Chưa biết dữ liệu đã được lưu hay chưa. Bấm "Kiểm tra trạng thái lưu" trước khi gửi lại.`);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCheckSaveState = async () => {
+    setCheckingSave(true);
+    try {
+      const res = await fetchExcelBatchesApi();
+      if (!res.success) throw new Error(res.error || 'Không đọc được lịch sử đợt nhập');
+      const list = res.data || [];
+      setBatches(list);
+      const found = list.find((b) => b.status === 'ACTIVE' && b.file_name === previewData?.filename && new Date(b.created_at).getTime() >= commitStartedAtRef.current - 60000);
+      if (found) {
+        setCommitResult({ batch_id: found.id, inserted_count: found.total_rows, total_revenue: found.total_revenue, filename: previewData?.filename, recovered: true });
+        setSaveStateUnknown(false);
+        setErr(null);
+        setStep(5);
+        if (onImportSuccess) onImportSuccess({ batch_id: found.id, inserted_count: found.total_rows });
+      } else {
+        setSaveStateUnknown(false);
+        setErr('Lần gửi trước CHƯA được lưu (không thấy đợt nhập nào). Dữ liệu nghiệp vụ không bị nhập dở; có thể bấm xác nhận nhập lại.');
+      }
+    } catch (e) {
+      setErr(`Chưa kiểm tra được trạng thái lưu: ${e.message}. Vui lòng thử lại khi có mạng.`);
+    } finally {
+      setCheckingSave(false);
     }
   };
 
@@ -349,6 +390,7 @@ export default function ExcelImportModal({
                 <input
                   ref={fileInputRef}
                   type="file"
+                  data-testid="excel-file-input"
                   accept=".xlsx, .xls"
                   onChange={handleFileChange}
                   className="hidden"
@@ -466,7 +508,8 @@ export default function ExcelImportModal({
                         <button
                           key={s}
                           type="button"
-                          onClick={() => processSelectedFile(file, columnMapping, s)}
+                          data-testid={`excel-sheet-${s}`}
+                          onClick={() => processSelectedFile(file, mappingEnabled ? columnMapping : null, s)}
                           className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${previewData.sheet_name === s ? 'bg-emerald-600 text-white' : 'bg-white border text-slate-700 hover:bg-slate-100'}`}
                         >
                           {s}
@@ -532,19 +575,25 @@ export default function ExcelImportModal({
                 <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-2.5">
                   <div className="text-[10px] font-bold text-indigo-800 uppercase">4. Phí Nâng/Hạ & Phơi</div>
                   <div className="text-xs font-extrabold text-indigo-900 mt-0.5">
-                    Nâng/Hạ: {formatVnd((previewData.summary?.total_phi_nang || 0) + (previewData.summary?.total_phi_ha || 0))}
+                    Nâng: {formatVnd(previewData.summary?.total_lift_on_fee ?? 0)} · Hạ: {formatVnd(previewData.summary?.total_lift_off_fee ?? 0)}
+                  </div>
+                  <div className="text-[10px] text-slate-700 mt-0.5">
+                    Tiền dầu: {formatVnd(previewData.summary?.total_fuel_cost ?? 0)} · Đường: {formatVnd(previewData.summary?.total_tien_duong ?? 0)} · Phát sinh: {formatVnd(previewData.summary?.total_phat_sinh ?? 0)}
                   </div>
                   <div className="text-[10px] text-purple-700 font-bold mt-0.5">
-                    Phơi trả hộ: {formatVnd(previewData.summary?.total_phoi_tra_ho || 0)}
+                    Phơi trả hộ (theo dõi riêng): {formatVnd(previewData.summary?.total_phoi_advance ?? 0)}
                   </div>
                 </div>
 
                 <div className="bg-amber-50/80 border border-amber-300 rounded-xl p-2.5">
-                  <div className="text-[10px] font-bold text-amber-900 uppercase">5. Chênh Lệch Sau Trừ</div>
-                  <div className="text-sm sm:text-base font-extrabold text-amber-800 mt-0.5">
-                    {formatVnd(previewData.summary?.temp_profit_after_17 ?? previewData.summary?.temp_profit)}
+                  <div className="text-[10px] font-bold text-amber-900 uppercase">5. Chênh Lệch Sau Trừ{previewData.summary?.is_provisional ? ' (tạm tính)' : ''}</div>
+                  <div className="text-sm sm:text-base font-extrabold text-amber-800 mt-0.5" data-testid="preview-margin-after-17">
+                    {formatVnd(previewData.summary?.margin_after_deduction_17)}
                   </div>
-                  <div className="text-[10px] text-amber-700 mt-0.5">Chưa trừ lương</div>
+                  <div className="text-[10px] text-amber-700 mt-0.5">Sau trừ 17% và chi phí công ty • Chưa trừ lương</div>
+                  {previewData.summary?.provisional_note && (
+                    <div className="text-[10px] text-red-700 font-semibold mt-0.5" data-testid="preview-provisional-note">{previewData.summary.provisional_note}</div>
+                  )}
                 </div>
               </div>
 
@@ -619,7 +668,7 @@ export default function ExcelImportModal({
                 </div>
 
                 <div className="max-h-80 ha-table-scroll" tabIndex={0} role="region" aria-label="Bảng dữ liệu, có thể cuộn ngang">
-                  <table className="w-full text-left text-xs border-collapse min-w-[1150px]">
+                  <table className="w-full text-left text-xs border-collapse min-w-[1650px]">
                     <thead className="bg-slate-100 text-slate-600 font-semibold sticky top-0 border-b border-slate-200 text-[11px]">
                       <tr>
                         <th className="py-2 px-2 w-10 text-center">STT</th>
@@ -632,9 +681,15 @@ export default function ExcelImportModal({
                         <th className="py-2 px-2 text-right">Cước Gốc (Chưa VAT)</th>
                         <th className="py-2 px-2 text-right">Có VAT (×1,08)</th>
                         <th className="py-2 px-2 text-right">Sau Trừ 17%</th>
-                        <th className="py-2 px-2 text-right">Phí Nâng/Hạ</th>
+                        <th className="py-2 px-2">Nơi Nâng</th>
+                        <th className="py-2 px-2 text-right">Phí Nâng</th>
+                        <th className="py-2 px-2">Nơi Hạ</th>
+                        <th className="py-2 px-2 text-right">Phí Hạ</th>
                         <th className="py-2 px-2 text-right">Phơi Trả Hộ</th>
-                        <th className="py-2 px-2 text-center">Dầu</th>
+                        <th className="py-2 px-2 text-center">Dầu (lít)</th>
+                        <th className="py-2 px-2 text-right">Tiền Dầu</th>
+                        <th className="py-2 px-2 text-right">Tiền Đường</th>
+                        <th className="py-2 px-2 text-right">Phát Sinh</th>
                         <th className="py-2 px-2">TT / Công Nợ</th>
                       </tr>
                     </thead>
@@ -665,19 +720,23 @@ export default function ExcelImportModal({
                           <td className="py-1.5 px-2 text-right font-bold text-blue-700">
                             {formatVnd(r.cuoc_sau_tru_17 ?? Math.round((r.base_revenue || r.trip_revenue || 0) * 1.08 * 0.83))}
                           </td>
-                          <td className="py-1.5 px-2 text-right text-indigo-700 font-sans">
-                            {(r.lift_on_fee > 0 || r.lift_off_fee > 0)
-                              ? formatVnd((r.lift_on_fee || 0) + (r.lift_off_fee || 0))
-                              : (r.lift_on_location || r.lift_off_location || '-')}
-                          </td>
+                          <td className="py-1.5 px-2 text-slate-700 font-sans">{r.lift_on_location || '-'}</td>
+                          <td className="py-1.5 px-2 text-right text-indigo-700 font-sans">{formatVnd(r.lift_on_fee || 0)}</td>
+                          <td className="py-1.5 px-2 text-slate-700 font-sans">{r.lift_off_location || '-'}</td>
+                          <td className="py-1.5 px-2 text-right text-indigo-700 font-sans">{formatVnd(r.lift_off_fee || 0)}</td>
                           <td className="py-1.5 px-2 text-right text-purple-700 font-sans">
                             {r.phoi_advance_amount > 0
                               ? formatVnd(r.phoi_advance_amount)
-                              : (r.phoi_source_note || '-')}
+                              : (r.phoi_raw_source_value || '-')}
                           </td>
                           <td className="py-1.5 px-2 text-center text-sky-700 font-bold">
                             {r.fuel_liters > 0 ? `${r.fuel_liters}L` : '-'}
                           </td>
+                          <td className="py-1.5 px-2 text-right text-sky-800 font-sans">
+                            {r.fuel_liters > 0 && r.is_fuel_price_missing ? 'Chưa có giá dầu' : formatVnd(r.fuel_cost || 0)}
+                          </td>
+                          <td className="py-1.5 px-2 text-right font-sans">{formatVnd(r.toll_fee || 0)}</td>
+                          <td className="py-1.5 px-2 text-right font-sans">{formatVnd(r.other_costs || 0)}</td>
                           <td className="py-1.5 px-2 font-sans text-[10px]">
                             {r.customer_payment_status || r.payment_terms || '-'}
                           </td>
@@ -697,7 +756,7 @@ export default function ExcelImportModal({
                 <CheckCircle2 className="w-8 h-8" />
               </div>
               <div className="space-y-2">
-                <h4 className="text-lg font-bold text-slate-900">Nhập Dữ Liệu Excel Thành Công!</h4>
+                <h4 className="text-lg font-bold text-slate-900" data-testid="excel-commit-title">{commitResult.inserted_count > 0 ? 'Nhập Dữ Liệu Excel Thành Công!' : 'Không có dòng mới để nhập'}</h4>
                 <p className="text-xs text-slate-600">
                   Đã thêm thành công <strong>{commitResult.inserted_count}</strong> cuốc xe vào cơ sở dữ liệu theo chuẩn Cước gốc chưa VAT, VAT 8%, Trừ 17%, Nâng/Hạ và Tiền phơi trả hộ.
                 </p>
@@ -706,7 +765,7 @@ export default function ExcelImportModal({
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-left space-y-2 text-xs">
                 <div className="flex justify-between text-slate-600">
                   <span>Mã đợt nhập (Batch ID):</span>
-                  <span className="font-mono font-bold text-slate-800">{commitResult.batch_id}</span>
+                  <span className="font-mono font-bold text-slate-800" data-testid="excel-batch-id">{commitResult.batch_id || '—'}</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>Tên tệp nguồn:</span>
@@ -771,10 +830,22 @@ export default function ExcelImportModal({
                 Hủy bỏ
               </button>
 
+              {saveStateUnknown && (
+                <button
+                  type="button"
+                  disabled={checkingSave}
+                  data-testid="excel-check-save-state"
+                  onClick={handleCheckSaveState}
+                  className="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm disabled:opacity-50"
+                >
+                  {checkingSave ? 'Đang kiểm tra…' : 'Kiểm tra trạng thái lưu'}
+                </button>
+              )}
               {step >= 2 && step <= 4 && (
                 <button
                   type="button"
-                  disabled={submitting}
+                  disabled={submitting || saveStateUnknown}
+                  data-testid="excel-confirm-commit"
                   onClick={handleConfirmCommit}
                   className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center space-x-2 disabled:opacity-50"
                 >
@@ -786,7 +857,7 @@ export default function ExcelImportModal({
                   ) : (
                     <>
                       <Check className="w-4 h-4" />
-                      <span>Xác nhận nhập {previewData?.total_rows || 0} cuốc vào DB</span>
+                      <span>Xác nhận nhập {previewData?.new_count ?? previewData?.total_rows ?? 0} cuốc mới{previewData?.duplicate_count > 0 ? ` (bỏ qua ${previewData.duplicate_count} dòng trùng)` : ''}</span>
                     </>
                   )}
                 </button>

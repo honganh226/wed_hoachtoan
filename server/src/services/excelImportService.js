@@ -35,6 +35,33 @@ function cleanHeader(text) {
 
 export class ExcelImportService {
   /**
+   * Chữ ký dòng Excel: ổn định kể cả khi Giám đốc sửa chuyến sau khi nhập
+   * (chữ ký lưu trong raw_data lúc nhập, không đổi theo chỉnh sửa).
+   * Các dòng giống hệt nhau trong cùng file được đánh thứ tự để không gộp nhầm.
+   */
+  static assignRowSignatures(rows) {
+    const seen = new Map();
+    for (const r of rows) {
+      const base = [r.trip_date, r.customer_name, r.container_number || '', r.route_name || '', r.cuoc_goc ?? r.base_revenue ?? 0, r.vehicle_plate || ''].join('|');
+      const n = (seen.get(base) || 0) + 1;
+      seen.set(base, n);
+      r.row_signature = createHash('sha256').update(base + '#' + n).digest('hex');
+    }
+    return rows;
+  }
+
+  static loadImportedSignatures() {
+    const sigs = new Set();
+    for (const t of db.prepare("SELECT raw_data FROM trips WHERE source_type='EXCEL' AND raw_data IS NOT NULL").all()) {
+      try {
+        const sig = JSON.parse(t.raw_data)?.row_signature;
+        if (sig) sigs.add(sig);
+      } catch { /* bỏ qua raw_data không phải JSON */ }
+    }
+    return sigs;
+  }
+
+  /**
    * Tự động nhận diện vị trí các cột dựa trên dòng tiêu đề (thường là hàng 2 hoặc hàng 1)
    */
   static detectColumns(sheet) {
@@ -82,7 +109,9 @@ export class ExcelImportService {
           cont_40: null,
           cont_20: null,
           lift_on: null,
+          lift_on_fee_col: null,
           lift_off: null,
+          lift_off_fee_col: null,
           phoi_nang_ha: null,
           fuel_liters: null,
           toll_fee: null,
@@ -109,7 +138,9 @@ export class ExcelImportService {
           cont_40: 'G',
           cont_20: 'H',
           lift_on: null,
+          lift_on_fee_col: null,
           lift_off: null,
+          lift_off_fee_col: null,
           phoi_nang_ha: null,
           fuel_liters: 'I',
           toll_fee: 'J',
@@ -137,6 +168,8 @@ export class ExcelImportService {
         else if (h === '40' || h === "40'") detected.cont_40 = col;
         else if (h === '20' || h === "20'") detected.cont_20 = col;
         else if (h.includes('PHƠI NÂNG HẠ') || h.includes('TIỀN PHƠI') || h.includes('PHƠI')) detected.phoi_nang_ha = col;
+        else if (h.includes('PHÍ NÂNG') || h.includes('TIỀN NÂNG')) detected.lift_on_fee_col = col;
+        else if (h.includes('PHÍ HẠ') || h.includes('TIỀN HẠ')) detected.lift_off_fee_col = col;
         else if (h === 'NÂNG' || h.includes('NƠI NÂNG') || h.includes('CẢNG NÂNG')) detected.lift_on = col;
         else if (h === 'HẠ' || h.includes('NƠI HẠ') || h.includes('CẢNG HẠ')) detected.lift_off = col;
         else if (h.includes('DẦU')) detected.fuel_liters = col;
@@ -285,28 +318,27 @@ export class ExcelImportService {
         : { container_code: '', raw_container_type: '', needs_classification: false };
       const contSize = contNorm.container_code || (rawContCombined ? '40DC' : '');
 
-      // 4. NÂNG & HẠ (Nếu có cột riêng trong mẫu mới)
-      let liftOnLocation = null;
-      let liftOnFee = 0;
-      const liftOnVal = getCell('lift_on', r)?.v;
-      if (liftOnVal !== undefined && liftOnVal !== null && liftOnVal !== '') {
-        if (typeof liftOnVal === 'number' || /^\d+(\.\d+)?$/.test(String(liftOnVal).replace(/[,\s]/g, ''))) {
-          liftOnFee = toIntVnd(String(liftOnVal).replace(/[,\s]/g, ''));
-        } else {
-          liftOnLocation = String(liftOnVal).trim();
+      // 4. NÂNG & HẠ: 4 ô độc lập (nơi nâng, phí nâng, nơi hạ, phí hạ).
+      // Mẫu cũ chỉ có 1 cột NÂNG/HẠ: chữ -> tên nơi, số -> phí.
+      const parseLift = (placeKey, feeKey, r) => {
+        let location = null;
+        let fee = 0;
+        const placeVal = getCell(placeKey, r)?.v;
+        if (placeVal !== undefined && placeVal !== null && placeVal !== '') {
+          if (typeof placeVal === 'number' || /^\d+(\.\d+)?$/.test(String(placeVal).replace(/[,\s]/g, ''))) {
+            fee = toIntVnd(String(placeVal).replace(/[,\s]/g, ''));
+          } else {
+            location = String(placeVal).trim();
+          }
         }
-      }
-
-      let liftOffLocation = null;
-      let liftOffFee = 0;
-      const liftOffVal = getCell('lift_off', r)?.v;
-      if (liftOffVal !== undefined && liftOffVal !== null && liftOffVal !== '') {
-        if (typeof liftOffVal === 'number' || /^\d+(\.\d+)?$/.test(String(liftOffVal).replace(/[,\s]/g, ''))) {
-          liftOffFee = toIntVnd(String(liftOffVal).replace(/[,\s]/g, ''));
-        } else {
-          liftOffLocation = String(liftOffVal).trim();
+        const feeVal = getCell(feeKey, r)?.v;
+        if (feeVal !== undefined && feeVal !== null && String(feeVal).trim() !== '') {
+          fee = Math.max(0, toIntVnd(String(feeVal).replace(/[,\s]/g, '')));
         }
-      }
+        return { location, fee };
+      };
+      const { location: liftOnLocation, fee: liftOnFee } = parseLift('lift_on', 'lift_on_fee_col', r);
+      const { location: liftOffLocation, fee: liftOffFee } = parseLift('lift_off', 'lift_off_fee_col', r);
 
       // 5. PHƠI NÂNG HẠ (Tiền phơi trả hộ chủ hàng; giữ nguyên chữ "K MẤT" làm ghi chú nguồn)
       let phoiAdvanceAmount = 0;
@@ -463,6 +495,8 @@ export class ExcelImportService {
     const duplicates = [];
     const newTrips = [];
     const knownRows = excelMonthService.getData().rows;
+    this.assignRowSignatures(rows);
+    const importedSigs = this.loadImportedSignatures();
 
     for (const r of rows) {
       const candidates = knownRows.filter(
@@ -472,9 +506,9 @@ export class ExcelImportService {
           String(t.container_number || '') === String(r.container_number || '') &&
           t.route_name === r.route_name
       );
-      r.duplicate_candidate = candidates.length > 0;
+      r.duplicate_candidate = candidates.length > 0 || importedSigs.has(r.row_signature);
       if (r.duplicate_candidate) {
-        duplicates.push({ row: r, matched_trip: candidates[0].trip_code || candidates[0].id });
+        duplicates.push({ row: r, matched_trip: candidates[0] ? (candidates[0].trip_code || candidates[0].id) : 'ĐÃ NHẬP TỪ ĐỢT TRƯỚC (khớp chữ ký dòng)' });
       } else {
         newTrips.push(r);
       }
@@ -496,8 +530,14 @@ export class ExcelImportService {
     let totalDauLit = 0;
     let totalFuelCost = 0;
     let totalPhoiAdvance = 0;
+    let fuelMissingRows = 0;
+    let fuelMissingLiters = 0;
 
     for (const r of rows) {
+      if (r.is_fuel_price_missing && Number(r.fuel_liters) > 0) {
+        fuelMissingRows += 1;
+        fuelMissingLiters += Number(r.fuel_liters) || 0;
+      }
       totalCuocGoc += r.cuoc_goc;
       totalVat8 += r.vat_amount;
       totalCuocCoVat += r.cuoc_co_vat;
@@ -582,8 +622,17 @@ export class ExcelImportService {
         total_phoi_advance: totalPhoiAdvance,
         total_direct_cost: totalDirectCostBeforeFuel,
         total_company_cost: totalCompanyCost,
-        temp_profit: tempProfitBeforeDeduction,
+        // Hợp đồng dữ liệu thống nhất với trip.service/overview: temp_profit = chênh lệch sau khoản trừ 17% và chi phí công ty (chưa trừ lương).
+        temp_profit: marginAfterDeduction17,
         margin_after_deduction_17: marginAfterDeduction17,
+        // Chỉ để đối chiếu: cước gốc trừ chi phí trực tiếp trước tiền dầu (chỉ tiêu cũ).
+        profit_before_deduction: tempProfitBeforeDeduction,
+        fuel_missing_rows: fuelMissingRows,
+        fuel_missing_liters: fuelMissingLiters,
+        is_provisional: fuelMissingRows > 0,
+        provisional_note: fuelMissingRows > 0
+          ? `Tạm tính: ${fuelMissingRows} cuốc (${fuelMissingLiters} lít dầu) chưa có giá dầu ngày chạy nên tiền dầu chưa được tính vào chi phí.`
+          : null,
       },
       duplicates,
       rows,
@@ -623,7 +672,7 @@ export class ExcelImportService {
   /**
    * Thực hiện nạp toàn bộ danh sách dòng đã duyệt vào cơ sở dữ liệu
    */
-  static commitImport({ rows, filename, sheetName, fileHash = null, user, ipAddress = null }) {
+  static commitImport({ rows, filename, sheetName, fileHash = null, user, ipAddress = null, confirmDuplicates = false }) {
     if (!Array.isArray(rows) || rows.length === 0) {
       throw new Error('Không có dòng dữ liệu nào để nhập');
     }
@@ -638,9 +687,20 @@ export class ExcelImportService {
     let totalCost = 0;
     const insertedTrips = [];
 
+    const MASTER_TABLES = ['customers', 'vehicles', 'routes', 'subcontractors', 'ports'];
+    const masterBefore = {};
+    for (const t of MASTER_TABLES) masterBefore[t] = new Set(db.prepare(`SELECT id FROM ${t}`).all().map((x) => x.id));
     db.exec('BEGIN TRANSACTION;');
+    let skippedDuplicates = 0;
     try {
+      this.assignRowSignatures(rows.filter((r) => !r.row_signature));
+      const liveSigs = this.loadImportedSignatures();
       for (const r of rows) {
+        if (!confirmDuplicates && r.row_signature && liveSigs.has(r.row_signature)) {
+          skippedDuplicates += 1;
+          continue;
+        }
+        if (r.row_signature) liveSigs.add(r.row_signature);
         const baseRev = Number(r.base_revenue ?? r.cuoc_goc ?? r.trip_revenue ?? 0);
         totalRev += baseRev;
         totalCost +=
@@ -734,7 +794,15 @@ export class ExcelImportService {
         now
       );
 
-      db.prepare('UPDATE import_batches SET file_hash=? WHERE id=?').run(signature, batchId);
+      if (insertedTrips.length === 0) {
+        db.exec('ROLLBACK;');
+        return { batch_id: null, inserted_count: 0, skipped_duplicates: skippedDuplicates, already_imported: true };
+      }
+      const createdMaster = {};
+      for (const t of MASTER_TABLES) {
+        createdMaster[t] = db.prepare(`SELECT id FROM ${t}`).all().map((x) => x.id).filter((id) => !masterBefore[t].has(id));
+      }
+      db.prepare('UPDATE import_batches SET file_hash=?, notes=? WHERE id=?').run(signature, JSON.stringify({ created_master: createdMaster }), batchId);
       db.exec('COMMIT;');
     } catch (err) {
       db.exec('ROLLBACK;');
@@ -749,6 +817,7 @@ export class ExcelImportService {
     return {
       batch_id: batchId,
       inserted_count: insertedTrips.length,
+      skipped_duplicates: skippedDuplicates,
       trip_ids: insertedTrips.map((t) => t.id),
       total_revenue: totalRev,
       total_cost: totalCost,
@@ -758,13 +827,16 @@ export class ExcelImportService {
   /**
    * Hoàn tác toàn bộ các cuốc xe thuộc một đợt nhập Excel
    */
-  static rollbackBatch({ batchId, user }) {
+  static rollbackBatch({ batchId, user, force = false }) {
     if (!batchId) throw new Error('Mã đợt nhập (batchId) là bắt buộc');
 
     const batch = db.prepare('SELECT * FROM import_batches WHERE id = ?').get(batchId);
     if (!batch) throw new Error(`Không tìm thấy đợt nhập: ${batchId}`);
     if (batch.status === 'ROLLED_BACK') throw new Error(`Đợt nhập ${batchId} đã được hoàn tác trước đó.`);
 
+    let createdMaster = {};
+    try { createdMaster = JSON.parse(batch.notes || '{}').created_master || {}; } catch { createdMaster = {}; }
+    const masterCleanup = { deleted: {}, kept_in_use: {} };
     db.exec('BEGIN TRANSACTION;');
     let deletedCount = 0;
     try {
@@ -790,14 +862,14 @@ export class ExcelImportService {
           throw new Error(`Không thể hoàn tác: cuốc xe ${trip.trip_code} đã phát sinh giao dịch thu hoàn tiền phơi thực tế.`);
         }
 
-        const timeDiffMs = Math.abs(new Date(trip.updated_at).getTime() - new Date(trip.created_at).getTime());
-        const isModifiedManually = timeDiffMs > 10000;
+        const isModifiedManually = trip.updated_at !== trip.created_at;
         if (
-          trip.is_locked ||
-          isModifiedManually ||
-          db.prepare('SELECT 1 FROM trip_advances WHERE trip_id=? LIMIT 1').get(trip.id) ||
-          db.prepare('SELECT 1 FROM expenses WHERE trip_id=? AND (source_component IS NULL OR (updated_at<>created_at AND abs(strftime(\'%s\', updated_at) - strftime(\'%s\', created_at)) > 10)) LIMIT 1').get(trip.id) ||
-          db.prepare('SELECT 1 FROM director_history WHERE record_id=? LIMIT 1').get(trip.id)
+          !force &&
+          (trip.is_locked ||
+            isModifiedManually ||
+            db.prepare('SELECT 1 FROM trip_advances WHERE trip_id=? LIMIT 1').get(trip.id) ||
+            db.prepare('SELECT 1 FROM expenses WHERE trip_id=? AND (source_component IS NULL OR updated_at<>created_at) LIMIT 1').get(trip.id) ||
+            db.prepare('SELECT 1 FROM director_history WHERE record_id=? LIMIT 1').get(trip.id))
         ) {
           throw Error('Không thể hoàn tác: cuốc đã được chỉnh sửa, khóa hoặc có giao dịch liên quan.');
         }
@@ -808,14 +880,44 @@ export class ExcelImportService {
         db.prepare('DELETE FROM eir_advances WHERE trip_id=?').run(trip.id);
         db.prepare('DELETE FROM expenses WHERE trip_id=?').run(trip.id);
         db.prepare('DELETE FROM containers WHERE trip_id=?').run(trip.id);
+        db.prepare('DELETE FROM trip_advances WHERE trip_id=?').run(trip.id);
+        db.prepare('DELETE FROM director_history WHERE record_id=?').run(trip.id);
         db.prepare('DELETE FROM trips WHERE id=?').run(trip.id);
         deletedCount++;
+      }
+      // Chỉ xóa danh mục do chính đợt nhập này tạo và không còn dữ liệu nào tham chiếu.
+      const refQueries = {
+        customers: (row) => db.prepare('SELECT 1 FROM trips WHERE customer_name=? UNION ALL SELECT 1 FROM eir_advances WHERE customer_name=? LIMIT 1').get(row.name, row.name),
+        vehicles: (row) => db.prepare('SELECT 1 FROM trips WHERE vehicle_plate=? LIMIT 1').get(row.plate_number),
+        routes: (row) => db.prepare('SELECT 1 FROM trips WHERE route_name=? LIMIT 1').get(row.route_name),
+        subcontractors: (row) => db.prepare('SELECT 1 FROM trips WHERE subcontractor_name=? LIMIT 1').get(row.name),
+        ports: (row) => db.prepare('SELECT 1 FROM trips WHERE lift_on_location=? OR lift_off_location=? UNION ALL SELECT 1 FROM containers WHERE pickup_yard=? OR dropoff_yard=? LIMIT 1').get(row.name, row.name, row.name, row.name),
+      };
+      for (const [table, ids] of Object.entries(createdMaster)) {
+        if (!refQueries[table]) continue;
+        masterCleanup.deleted[table] = 0;
+        masterCleanup.kept_in_use[table] = 0;
+        for (const id of ids) {
+          const row = db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(id);
+          if (!row) continue;
+          if (refQueries[table](row)) {
+            masterCleanup.kept_in_use[table] += 1;
+          } else {
+            db.prepare(`DELETE FROM ${table} WHERE id=?`).run(id);
+            masterCleanup.deleted[table] += 1;
+          }
+        }
       }
       db.prepare(`
         UPDATE import_batches 
         SET status = 'ROLLED_BACK', notes = ? 
         WHERE id = ?
-      `).run(`Đã hoàn tác bởi ${user?.username || 'SYSTEM'} lúc ${new Date().toISOString()}`, batchId);
+      `).run(JSON.stringify({
+        rolled_back_by: user?.username || 'SYSTEM',
+        rolled_back_at: new Date().toISOString(),
+        created_master: createdMaster,
+        master_cleanup: masterCleanup,
+      }), batchId);
 
       db.exec('COMMIT;');
       invalidateExcelMonthCache();
@@ -828,6 +930,7 @@ export class ExcelImportService {
       success: true,
       batch_id: batchId,
       deleted_trips: deletedCount,
+      master_cleanup: masterCleanup,
     };
   }
 }

@@ -780,72 +780,76 @@ export function undoChange(historyId, user) {
 }
 
 
+// Bảng nghiệp vụ do db/init.js tạo sẵn: BẮT BUỘC phải tồn tại, thiếu là lỗi schema.
+// Thứ tự xóa tôn trọng quan hệ khóa ngoại (bảng con trước).
+export const RESET_REQUIRED_TABLES = [
+  'eir_refunds', 'eir_advance_history', 'eir_advances', 'expenses', 'containers',
+  'trip_advances', 'trips', 'import_batches', 'write_requests', 'driver_incentives',
+  'maintenance_proposals', 'fuel_price_history', 'fuel_prices', 'drivers', 'vehicles',
+  'customers', 'routes', 'subcontractors', 'ports'
+];
+// Bảng do dịch vụ tạo khi dùng lần đầu (CREATE TABLE IF NOT EXISTS lúc chạy): được phép chưa tồn tại.
+export const RESET_OPTIONAL_TABLES = ['director_records', 'director_history', 'import_previews', 'salary_settings'];
+
+function resetError(message, status = 500) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
 export function resetBusinessData({ user, reason, confirmToken }) {
+  if (user?.role !== 'DIRECTOR') {
+    throw resetError('Chỉ tài khoản Giám đốc được làm sạch dữ liệu nghiệp vụ.', 403);
+  }
   if (confirmToken !== 'CONFIRM_RESET_ALL_BUSINESS_DATA') {
-    const err = new Error('Mã xác nhận xóa toàn bộ dữ liệu nghiệp vụ không chính xác.');
-    err.status = 400;
-    throw err;
+    throw resetError('Mã xác nhận xóa toàn bộ dữ liệu nghiệp vụ không chính xác.', 400);
   }
 
   const now = new Date().toISOString();
   const actor = user?.username || 'DIRECTOR';
   const cleanReason = reason || 'Chủ dự án cho phép xóa toàn bộ dữ liệu nghiệp vụ cũ để chuẩn bị nhập Excel mới';
 
+  const existing = new Set(
+    db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name)
+  );
+  const missingRequired = RESET_REQUIRED_TABLES.filter((t) => !existing.has(t));
+  if (missingRequired.length) {
+    throw resetError(`Schema thiếu bảng bắt buộc: ${missingRequired.join(', ')}. Không xóa gì.`);
+  }
+  const optionalPresent = RESET_OPTIONAL_TABLES.filter((t) => existing.has(t));
+  const optionalAbsent = RESET_OPTIONAL_TABLES.filter((t) => !existing.has(t));
+  const tablesToClear = [...optionalPresent.filter((t) => ['director_records', 'director_history'].includes(t)), ...RESET_REQUIRED_TABLES, ...optionalPresent.filter((t) => ['import_previews', 'salary_settings'].includes(t))];
+
   const deletedCounts = {};
-
-  db.transaction(() => {
-    // Thứ tự xóa tôn trọng quan hệ khóa ngoại
-    const businessTables = [
-      'director_records',
-      'director_history',
-      'eir_refunds',
-      'eir_advance_history',
-      'eir_advances',
-      'expenses',
-      'containers',
-      'trip_advances',
-      'trips',
-      'import_batches',
-      'import_previews',
-      'write_requests',
-      'driver_incentives',
-      'salary_settings',
-      'maintenance_proposals',
-      'fuel_price_history',
-      'fuel_prices',
-      'drivers',
-      'vehicles',
-      'customers',
-      'routes',
-      'subcontractors',
-      'ports'
-    ];
-
-    for (const t of businessTables) {
-      try {
-        const c = db.prepare(`SELECT count(*) as c FROM ${t}`).get()?.c || 0;
+  let currentTable = null;
+  try {
+    db.transaction(() => {
+      for (const t of tablesToClear) {
+        currentTable = t;
+        const before = db.prepare(`SELECT count(*) AS c FROM ${t}`).get().c;
         db.prepare(`DELETE FROM ${t}`).run();
-        deletedCounts[t] = c;
-      } catch (tableErr) {
-        deletedCounts[t] = 0;
+        const after = db.prepare(`SELECT count(*) AS c FROM ${t}`).get().c;
+        if (after !== 0) throw new Error(`Bảng ${t} vẫn còn ${after} dòng sau khi xóa`);
+        deletedCounts[t] = before;
       }
-    }
-
-    // Ghi nhận vào audit_logs để lưu vết kiểm toán bắt buộc
-    const auditId = randomUUID();
-    db.prepare(`
-      INSERT INTO audit_logs (id, user_id, username, action, table_name, record_id, old_values, new_values, reason, created_at)
-      VALUES (?, ?, ?, 'RESET_BUSINESS_DATA', 'ALL_BUSINESS_TABLES', 'ALL', ?, ?, ?, ?)
-    `).run(
-      auditId,
-      user?.id || 'DIRECTOR',
-      actor,
-      JSON.stringify(deletedCounts),
-      JSON.stringify({ status: 'CLEAN_EMPTY_STATE' }),
-      cleanReason,
-      now
-    );
-  })();
+      currentTable = 'audit_logs';
+      db.prepare(`
+        INSERT INTO audit_logs (id, user_id, username, action, table_name, record_id, old_values, new_values, reason, created_at)
+        VALUES (?, ?, ?, 'RESET_BUSINESS_DATA', 'ALL_BUSINESS_TABLES', 'ALL', ?, ?, ?, ?)
+      `).run(
+        randomUUID(),
+        user?.id || 'DIRECTOR',
+        actor,
+        JSON.stringify(deletedCounts),
+        JSON.stringify({ status: 'CLEAN_EMPTY_STATE', optional_tables_absent: optionalAbsent }),
+        cleanReason,
+        now
+      );
+    })();
+  } catch (dbErr) {
+    // Giao dịch đã tự hoàn tác: không xóa một phần.
+    throw resetError(`Làm sạch thất bại tại bảng "${currentTable}": ${dbErr.message}. Toàn bộ thao tác đã được hoàn tác, dữ liệu giữ nguyên.`);
+  }
 
   // Xóa cấu hình phân bổ bộ nhớ & cache
   if (excelMonthService?.groupAllocations) {
@@ -865,6 +869,7 @@ export function resetBusinessData({ user, reason, confirmToken }) {
     success: true,
     message: 'Đã xóa toàn bộ dữ liệu nghiệp vụ cũ thành công. Hệ thống đã trở về trạng thái sạch.',
     deleted_counts: deletedCounts,
+    optional_tables_absent: optionalAbsent,
     timestamp: now
   };
 }

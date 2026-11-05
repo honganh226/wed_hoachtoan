@@ -1206,7 +1206,7 @@ export default function App() {
         currentUser={currentUser}
         duplicateFromTrip={duplicateTargetTrip}
         onTripCreated={(newTrip) => {
-          setMsg(`Đã lưu cuốc xe [${newTrip.trip_code}] thành công! Lãi tạm tính: ${new Intl.NumberFormat('vi-VN').format(newTrip.temp_profit || 0)} ₫`);
+          setMsg(`Đã lưu cuốc xe [${newTrip.trip_code}] thành công! Lãi tạm tính: ${new Intl.NumberFormat('vi-VN').format(newTrip.chenh_lech_sau_tru_17 ?? newTrip.temp_profit ?? 0)} ₫`);
           loadData();
           setTimeout(() => setMsg(null), 5000);
         }}
