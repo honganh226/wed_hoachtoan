@@ -857,7 +857,7 @@ export default function BusinessOverviewView({
                 {scopeFilter === 'ALL' ? 'Toàn bộ' : scopeFilter === 'XE_NHA' ? 'Xe nhà' : 'Xe ngoài'}
               </span>
             </div>
-            <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
+            <div data-testid="kpi-completed-trips" className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
               {metrics.completedCount} <span className="text-xs font-normal text-slate-500">cuốc</span>
             </div>
             <div className="text-xs text-slate-500 mt-1">
@@ -900,7 +900,7 @@ export default function BusinessOverviewView({
                 Chính thức
               </span>
             </div>
-            <div className="text-2xl font-bold font-mono text-blue-900 tabular-nums">
+            <div data-testid="kpi-revenue-after-deduction" className="text-2xl font-bold font-mono text-blue-900 tabular-nums">
               {formatVnd(metrics.totalCuocSauTru17)}
             </div>
             <div className="text-xs text-slate-500 mt-1 truncate">
@@ -943,7 +943,7 @@ export default function BusinessOverviewView({
                 Chưa tính dầu
               </span>
             </div>
-            <div className="text-2xl font-bold font-mono text-amber-950 tabular-nums">
+            <div data-testid="kpi-company-cost" className="text-2xl font-bold font-mono text-amber-950 tabular-nums">
               {formatVnd(metrics.totalChiPhiCongTy)}
             </div>
             <div className="text-xs text-slate-500 mt-1 truncate">
@@ -993,6 +993,7 @@ export default function BusinessOverviewView({
               </span>
             </div>
             <div
+              data-testid="kpi-net-profit"
               className={`text-2xl font-bold font-mono tabular-nums ${
                 metrics.totalChenhLechSauTru17 >= 0 ? 'text-emerald-800' : 'text-rose-700'
               }`}

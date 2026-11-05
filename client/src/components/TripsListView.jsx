@@ -995,6 +995,8 @@ export default function TripsListView({
                   return (
                     <tr
                       key={t.id || index}
+                      data-testid={`trip-row-${t.id}`}
+                      data-trip-customer={t.customer_name}
                       onClick={() => setSelectedTrip(t)}
                       className={`cursor-pointer transition-colors hover:bg-blue-50/50 ${
                         isSelected ? 'bg-blue-50/80 font-medium' : index % 2 === 1 ? 'bg-slate-50/30' : 'bg-white'

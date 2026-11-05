@@ -176,6 +176,7 @@ export default function ExcelImportModal({
   };
 
   const handleConfirmCommit = async () => {
+    if (submitting) return;
     if (!previewData || !previewData.rows || previewData.rows.length === 0) {
       setErr('Không có dữ liệu cuốc xe nào để nhập.');
       return;
