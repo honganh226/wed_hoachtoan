@@ -761,114 +761,16 @@ export async function updateDriverIncentiveApi(payload) {
   return res.json();
 }
 
+// ================= FLEET VEHICLES APIS =================
+
 /**
- * Lấy dữ liệu cá nhân cho App Lái xe (Driver View)
- * @param {string} [month] - YYYY-MM
+ * Lấy danh sách đội xe, tài xế phụ trách và hạn đăng kiểm/bảo hiểm (Chỉ đọc)
  */
-export async function fetchDriverPersonalAppViewApi(month = '') {
-  const query = month ? `?month=${encodeURIComponent(month)}` : '';
-  const res = await fetch(`${API_BASE}/payroll/driver-me${query}`, {
+export async function fetchFleetVehiclesApi() {
+  const res = await fetch(`${API_BASE}/data/fleet-vehicles`, {
     headers: authHeaders()
   });
-  return res.json();
-}
-
-// ================= MAINTENANCE & FLEET APIS (TASK 6.2) =================
-
-/**
- * Lấy tổng quan tình trạng đội xe, chu kỳ thay dầu, cảnh báo hạn đăng kiểm/bảo hiểm/bằng lái
- */
-export async function fetchMaintenanceOverviewApi() {
-  const res = await fetch(`${API_BASE}/maintenance/overview`, {
-    headers: authHeaders()
-  });
-  return res.json();
-}
-
-/**
- * Lấy danh sách đề xuất bảo dưỡng
- */
-export async function fetchMaintenanceProposalsApi(params = {}) {
-  const search = new URLSearchParams();
-  if (params.status) search.append('status', params.status);
-  if (params.vehicleId) search.append('vehicleId', params.vehicleId);
-  const query = search.toString() ? `?${search.toString()}` : '';
-
-  const res = await fetch(`${API_BASE}/maintenance/proposals${query}`, {
-    headers: authHeaders()
-  });
-  return res.json();
-}
-
-/**
- * Tạo đề xuất bảo dưỡng mới
- */
-export async function createMaintenanceProposalApi(payload) {
-  const res = await fetch(`${API_BASE}/maintenance/proposals`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(payload)
-  });
-  return res.json();
-}
-
-/**
- * Phê duyệt đề xuất bảo dưỡng (Chỉ DIRECTOR)
- */
-export async function approveMaintenanceProposalApi(id) {
-  const res = await fetch(`${API_BASE}/maintenance/proposals/${id}/approve`, {
-    method: 'PUT',
-    headers: authHeaders()
-  });
-  return res.json();
-}
-
-/**
- * Từ chối đề xuất bảo dưỡng (Chỉ DIRECTOR)
- */
-export async function rejectMaintenanceProposalApi(id, reason = '') {
-  const res = await fetch(`${API_BASE}/maintenance/proposals/${id}/reject`, {
-    method: 'PUT',
-    headers: authHeaders(),
-    body: JSON.stringify({ reason })
-  });
-  return res.json();
-}
-
-/**
- * Nghiệm thu hoàn tất bảo dưỡng, xuất xưởng & ghi nhận chi phí CỐ ĐỊNH
- */
-export async function completeMaintenanceProposalApi(id, payload = {}) {
-  const res = await fetch(`${API_BASE}/maintenance/proposals/${id}/complete`, {
-    method: 'PUT',
-    headers: authHeaders(),
-    body: JSON.stringify(payload)
-  });
-  return res.json();
-}
-
-/**
- * Đổi trực tiếp trạng thái xe (ACTIVE | IDLE | MAINTENANCE)
- */
-export async function updateVehicleStatusApi(id, status) {
-  const res = await fetch(`${API_BASE}/maintenance/vehicles/${id}/status`, {
-    method: 'PUT',
-    headers: authHeaders(),
-    body: JSON.stringify({ status })
-  });
-  return res.json();
-}
-
-/**
- * Cập nhật số Km đồng hồ ODO xe
- */
-export async function updateVehicleKmApi(id, kmData = {}) {
-  const res = await fetch(`${API_BASE}/maintenance/vehicles/${id}/km`, {
-    method: 'PUT',
-    headers: authHeaders(),
-    body: JSON.stringify(kmData)
-  });
-  return res.json();
+  return safeJson(res);
 }
 
 // ================= AI ASSISTANT & GUARDRAILS APIS (TASK 6.3) =================

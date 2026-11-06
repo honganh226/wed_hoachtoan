@@ -200,10 +200,8 @@ export function getRoleSuggestions(role = USER_ROLES.DRIVER) {
   switch (role) {
     case USER_ROLES.DIRECTOR:
       return [
-        '📊 Tổng hợp doanh thu, thực thu và công nợ tháng này?',
-        '🚛 Đội xe hiện tại có bao nhiêu xe đang chạy, bao nhiêu xe nằm xưởng?',
-        '⚠️ Có xe nào quá hạn hoặc sắp hết hạn đăng kiểm / bảo hiểm không?',
-        '🔧 Tình hình các đề xuất bảo dưỡng xe đang chờ duyệt?',
+        '📊 Tổng hợp doanh thu, thực thu và công nợ tháng này?',,
+        '⚠️ Có xe nào quá hạn hoặc sắp hết hạn đăng kiểm / bảo hiểm không?',,
         '🎯 Tài xế nào đang chậm tiến độ KPI cần nhắc nhở?'
       ];
 
@@ -220,7 +218,6 @@ export function getRoleSuggestions(role = USER_ROLES.DRIVER) {
       return [
         '🚛 Tình trạng các xe và tài xế trong khu vực phụ trách?',
         '🎯 Tiến độ hoàn thành KPI cuốc xe của các anh em lái xe?',
-        '⚠️ Có xe nào trong đội sắp đến kỳ thay dầu máy không?',
         '📦 Tuyến đường nào đang có nhiều cuốc xe nhất tuần này?'
       ];
 

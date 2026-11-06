@@ -10,7 +10,7 @@
  * ============================================================
  */
 import { db } from '../db/database.js';
-import { calculateExpiryAlert, calculateOilChangeStatus } from './maintenance.service.js';
+import { calculateExpiryAlert, calculateOilChangeStatus } from './fleet.service.js';
 
 /**
  * Đề xuất phân bổ xe & tài xế dựa trên 4 tiêu chí vàng

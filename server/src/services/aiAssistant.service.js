@@ -13,18 +13,15 @@ import {
   trips,
   expenses,
   tripAdvances,
-  maintenanceProposals,
   customers,
   routes,
   USER_ROLES,
   VEHICLE_STATUSES,
-  MAINTENANCE_STATUSES,
   EIR_STATUSES
 } from '../db/schema.js';
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { evaluateGuardrails, removeVietnameseTones } from './aiGuard.service.js';
-import { getFleetMaintenanceOverview } from './maintenance.service.js';
-import { getDriverPersonalAppView } from './payroll.service.js';
+import { listFleetVehicles } from './fleet.service.js';
 import { calculatePL } from './plEngine.service.js';
 import { getPendingEirTrips } from './eir.service.js';
 import { recordAuditLog } from './audit.service.js';
@@ -44,25 +41,22 @@ async function gatherRoleContext(user = {}) {
   const context = { role, timestamp: new Date().toISOString() };
 
   try {
-    // 1. Dữ liệu Đội xe & Bảo dưỡng (Ai cũng có thể biết tình hình xe chung, trừ chi tiết nhạy cảm)
-    const fleetOverview = await getFleetMaintenanceOverview(user);
+    // 1. Dữ liệu Đội xe (chỉ đọc; Ai cũng có thể biết tình hình xe chung, trừ chi tiết nhạy cảm)
+    const fleetOverview = listFleetVehicles(user);
     context.fleet = {
       totalVehicles: fleetOverview.summary.totalVehicles,
       activeCount: fleetOverview.summary.activeCount,
       idleCount: fleetOverview.summary.idleCount,
-      maintenanceCount: fleetOverview.summary.maintenanceCount,
-      oilAlertCount: fleetOverview.summary.oilAlertCount,
-      totalAlertCount: fleetOverview.summary.totalAlertCount,
-      pendingProposalsCount: fleetOverview.summary.pendingProposalsCount,
+      inactiveCount: fleetOverview.summary.inactiveCount,
+      totalAlertCount: fleetOverview.summary.alertCount,
       vehicles: fleetOverview.vehicles.map((v) => ({
         plate: v.plate_number,
         status: v.status,
         driver: v.driver_name,
-        currentKm: v.current_km,
-        oilLabel: v.oilStatus.label,
-        oilAlert: v.oilStatus.isAlert,
         inspectionLabel: v.inspectionAlert.label,
         inspectionAlert: v.inspectionAlert.isAlert,
+        insuranceLabel: v.insuranceAlert.label,
+        insuranceAlert: v.insuranceAlert.isAlert,
         licenseLabel: v.licenseAlert?.label,
         licenseAlert: v.licenseAlert?.isAlert
       }))
@@ -84,15 +78,6 @@ async function gatherRoleContext(user = {}) {
         tripCount: pl.trips_overview.total_trips
       };
 
-      // Đề xuất bảo dưỡng chờ duyệt
-      const pendingProposals = db.prepare(
-        'SELECT * FROM maintenance_proposals WHERE status = ?'
-      ).all(MAINTENANCE_STATUSES.PENDING);
-      context.pendingMaintenance = pendingProposals.map((p) => ({
-        title: p.title,
-        cost: formatVND(p.estimated_cost),
-        proposedBy: p.proposed_by
-      }));
     }
 
     if (role === USER_ROLES.DIRECTOR || role === USER_ROLES.ACCOUNTANT) {
@@ -117,27 +102,6 @@ async function gatherRoleContext(user = {}) {
       }));
     }
 
-    // 3. Dữ liệu riêng của LÁI XE (DRIVER)
-    if (role === USER_ROLES.DRIVER) {
-      try {
-        const driverPayroll = getDriverPersonalAppView({ user });
-        if (driverPayroll) {
-          context.driverSelf = {
-            fullName: driverPayroll.driver.full_name,
-            phone: driverPayroll.driver.phone,
-            vehiclePlate: driverPayroll.driver.vehicle_plate,
-            completedTrips: driverPayroll.trips_summary.total_trips,
-            tripSalary: formatVND(driverPayroll.payroll.trip_salary),
-            baseSalary: formatVND(driverPayroll.payroll.base_salary),
-            advanceTotal: formatVND(driverPayroll.payroll.deductions),
-            netEstimated: formatVND(driverPayroll.payroll.net_salary),
-            licenseExpiry: driverPayroll.driver.license_expiry
-          };
-        }
-      } catch (err) {
-        console.warn('[AI_DRIVER_PAYROLL_WARN]', err.message);
-      }
-    }
   } catch (err) {
     console.warn('[AI_CONTEXT_WARNING]', err.message);
   }
@@ -157,46 +121,40 @@ function generateLocalTransportResponse(prompt, context, user) {
     return `Chào bạn! Tôi là **Trợ Lý Ảo Vận Tải AI** trực thuộc Hệ thống Điều Vận Container WED_HOACHTOAN.
 
 Tôi có thể hỗ trợ bạn 24/7 với các nghiệp vụ:
-- 🚛 **Đội xe & Bảo dưỡng:** Tra cứu tình trạng xe (🟢 Đang chạy, 🟡 Đứng bãi, 🔴 Nằm xưởng), cảnh báo hạn đăng kiểm, bảo hiểm xe, chu kỳ thay dầu máy ODO.
+- 🚛 **Đội xe:** Tra cứu tình trạng xe (🟢 Đang chạy, 🟡 Đứng bãi), cảnh báo hạn đăng kiểm, bảo hiểm xe và bằng lái.
 - 📋 **Tác nghiệp Chuyến:** Kiểm tra cuốc xe, tra cứu tuyến đường, cảnh báo đọng phơi EIR quá 3 ngày.
 - 📦 **Nghiệp vụ Container:** Thuật toán kiểm tra số cont theo chuẩn ISO 6346, quy chuẩn cont kẹp 2x20', nhận diện thuế VAT \`[V]\` / \`[NV]\`.
-${role === USER_ROLES.DIRECTOR ? '- 📊 **Tài chính Ban Giám đốc:** Báo cáo P&L Real-time, dòng tiền Kỳ vọng vs Thực thu vs Công nợ, phê duyệt đề xuất bảo dưỡng xe.' : ''}
-${role === USER_ROLES.DRIVER ? '- 💵 **Cá nhân Tài xế:** Kiểm tra số chuyến xe đã chạy, tạm ứng, lương công chuyến và hạn bằng lái của bạn.' : ''}
+${role === USER_ROLES.DIRECTOR ? '- 📊 **Tài chính Ban Giám đốc:** Báo cáo P&L Real-time, dòng tiền Kỳ vọng vs Thực thu vs Công nợ.' : ''}
 
 Bạn cần tra cứu thông tin gì hôm nay?`;
   }
 
-  // 2. Tra cứu Đội Xe & Xe nằm xưởng / đang chạy / chờ việc
-  if (norm.includes('xe') && (norm.includes('doi xe') || norm.includes('bao nhieu') || norm.includes('nam xuong') || norm.includes('dang chay') || norm.includes('dung bai') || norm.includes('cho viec') || norm.includes('tinh trang'))) {
+  // 2. Tra cứu Đội Xe đang chạy / chờ việc
+  if (norm.includes('xe') && (norm.includes('doi xe') || norm.includes('bao nhieu') || norm.includes('dang chay') || norm.includes('dung bai') || norm.includes('cho viec') || norm.includes('tinh trang'))) {
     if (context.fleet) {
       const f = context.fleet;
       let text = `🚛 **TÌNH HÌNH ĐỘI XE HIỆN TẠI (Tổng số: ${f.totalVehicles} đầu xe):**\n\n`;
       text += `- 🟢 **Đang hoạt động trên đường:** ${f.activeCount} xe\n`;
       text += `- 🟡 **Chờ việc / Đang đứng bãi:** ${f.idleCount} xe\n`;
-      text += `- 🔴 **Nằm xưởng bảo dưỡng:** ${f.maintenanceCount} xe\n\n`;
-
-      if (f.maintenanceCount > 0) {
-        const inMaint = f.vehicles.filter((v) => v.status === VEHICLE_STATUSES.MAINTENANCE);
-        text += `*Xe nằm xưởng:* ${inMaint.map((v) => `\`${v.plate}\` (${v.driver || 'Chưa gán tài xế'})`).join(', ')}\n\n`;
-      }
-
+      if (f.inactiveCount > 0) text += `- ⚪ **Tạm ngừng:** ${f.inactiveCount} xe\n`;
+      text += `\n`;
       text += `*Chi tiết các xe trong đội:*\n`;
       f.vehicles.forEach((v) => {
-        const icon = v.status === 'ACTIVE' ? '🟢' : v.status === 'IDLE' ? '🟡' : '🔴';
-        text += `- ${icon} **${v.plate}** (${v.driver || 'Trống'}): ODO ${v.currentKm.toLocaleString('vi-VN')} km | ${v.oilLabel}\n`;
+        const icon = v.status === 'ACTIVE' ? '🟢' : v.status === 'IDLE' ? '🟡' : '⚪';
+        text += `- ${icon} **${v.plate}** (${v.driver || 'Trống'}): Đăng kiểm ${v.inspectionLabel}\n`;
       });
 
       return text;
     }
   }
 
-  // 3. Cảnh báo Hạn Đăng kiểm, Bảo hiểm, Bằng lái, Thay dầu ODO
-  if (norm.includes('canh bao') || norm.includes('dang kiem') || norm.includes('bao hiem') || norm.includes('thay dau') || norm.includes('het han') || norm.includes('qua han')) {
+  // 3. Cảnh báo Hạn Đăng kiểm, Bảo hiểm, Bằng lái
+  if (norm.includes('canh bao') || norm.includes('dang kiem') || norm.includes('bao hiem') || norm.includes('het han') || norm.includes('qua han')) {
     if (context.fleet) {
       const f = context.fleet;
-      const alerts = f.vehicles.filter((v) => v.inspectionAlert || v.oilAlert || v.licenseAlert);
+      const alerts = f.vehicles.filter((v) => v.inspectionAlert || v.insuranceAlert || v.licenseAlert);
 
-      let text = `⚠️ **TRUNG TÂM GIÁM SÁT CẢNH BÁO HẠN XE & KỸ THUẬT:**\n\n`;
+      let text = `⚠️ **CẢNH BÁO HẠN GIẤY TỜ XE & BẰNG LÁI:**\n\n`;
 
       if (alerts.length === 0) {
         text += `✅ Toàn bộ đội xe đang trong trạng thái an toàn, không có xe nào quá hạn hoặc sắp đến hạn khẩn cấp (< 15 ngày).\n`;
@@ -205,14 +163,11 @@ Bạn cần tra cứu thông tin gì hôm nay?`;
         alerts.forEach((v) => {
           text += `🔹 **Xe ${v.plate}** (Lái xe: ${v.driver || 'N/A'}):\n`;
           if (v.inspectionAlert) text += `  - 📋 Đăng kiểm: **${v.inspectionLabel}**\n`;
-          if (v.oilAlert) text += `  - 🛢️ Dầu máy ODO: **${v.oilLabel}**\n`;
+          if (v.insuranceAlert) text += `  - 🛡️ Bảo hiểm: **${v.insuranceLabel}**\n`;
           if (v.licenseAlert) text += `  - 🪪 Bằng lái tài xế: **${v.licenseLabel}**\n`;
         });
       }
 
-      if (role === USER_ROLES.DIRECTOR && f.pendingProposalsCount > 0) {
-        text += `\n🚨 *Lưu ý Ban Giám đốc:* Đang có **${f.pendingProposalsCount} đề xuất bảo dưỡng** đang chờ Giám đốc duyệt tại phân hệ Quản lý Đội xe.`;
-      }
 
       return text;
     }
@@ -228,7 +183,7 @@ Bạn cần tra cứu thông tin gì hôm nay?`;
       text += `- 📑 **Công nợ khách hàng chưa thu:** ${fin.receivables}\n`;
       text += `- ⚖️ **Tổng chi phí vận hành:** ${fin.totalExpenses}\n`;
       text += `  + Chi phí biến động (Nâng, hạ, BOT, Dầu): ${fin.variableExpenses}\n`;
-      text += `  + Chi phí cố định (Bảo dưỡng, khấu hao, bảo hiểm): ${fin.fixedExpenses}\n`;
+      text += `  + Chi phí cố định (sửa chữa, khấu hao, bảo hiểm): ${fin.fixedExpenses}\n`;
       text += `- 💰 **Lợi nhuận gộp ước tính:** **${fin.grossProfit}** (Biên lợi nhuận: ${fin.grossMargin})\n\n`;
 
       if (context.topDebtors && context.topDebtors.length > 0) {
@@ -264,27 +219,6 @@ Bạn cần tra cứu thông tin gì hôm nay?`;
     return text;
   }
 
-  // 6. Lương & Chuyến xe của LÁI XE (Chỉ cho bản thân lái xe)
-  if (role === USER_ROLES.DRIVER && (norm.includes('luong') || norm.includes('chuyen') || norm.includes('tam ung') || norm.includes('bang lai') || norm.includes('thu nhap') || norm.includes('chay duoc'))) {
-    if (context.driverSelf) {
-      const d = context.driverSelf;
-      let text = `🚚 **THÔNG TIN CÁ NHÂN & THU NHẬP LÁI XE:**\n\n`;
-      text += `Xin chào anh **${d.fullName}** (Số điện thoại: ${d.phone || 'Chưa cập nhật'})\n`;
-      text += `- 🚛 Xe phụ trách: **${d.vehiclePlate || 'Chưa gán xe cố định'}**\n`;
-      text += `- 📦 Số chuyến đã chạy trong tháng: **${d.completedTrips} chuyến**\n`;
-      text += `- 💰 Lương cứng định mức: ${d.baseSalary}\n`;
-      text += `- 🚚 Lương công chuyến lũy kế: ${d.tripSalary}\n`;
-      text += `- 💸 Tổng tiền đã tạm ứng: ${d.advanceTotal}\n`;
-      text += `- 💵 **Ước tính thực lĩnh tạm tính:** **${d.netEstimated}**\n\n`;
-
-      if (d.licenseExpiry) {
-        text += `🪪 *Hạn bằng lái xe của anh:* Ngày **${d.licenseExpiry}**.\n`;
-      }
-      text += `\n*Lưu ý:* Đây là số liệu tạm tính theo các cuốc đã nộp phơi và hoàn ứng. Bảng lương chính thức sẽ được Giám đốc chốt vào cuối kỳ.`;
-      return text;
-    }
-  }
-
   // 7. Kiến thức chuẩn ISO 6346 & Cont kẹp 2x20'
   if (norm.includes('iso') || norm.includes('so cont') || norm.includes('kiem tra cont') || norm.includes('cont kep') || norm.includes('2x20')) {
     return `📦 **QUY CHUẨN NGHIỆP VỤ CONTAINER TẠI CÔNG TY:**
@@ -303,24 +237,13 @@ Bạn cần tra cứu thông tin gì hôm nay?`;
    - \`[NV]\`: Giá cước chưa bao gồm thuế VAT.`;
   }
 
-  // 8. Đề xuất bảo dưỡng xe
-  if (norm.includes('bao duong') || norm.includes('sua chua') || norm.includes('thay lop')) {
-    let text = `🔧 **QUY TRÌNH BẢO DƯỠNG & SỬA CHỮA ĐỘI XE:**\n\n`;
-    text += `1. **Khởi tạo đề xuất:** Lái xe, Quản lý khu hoặc Kế toán có thể tạo đề xuất bảo dưỡng (Thay dầu máy, Thay lốp, Định kỳ, Sửa chữa) kèm dự toán chi phí.\n`;
-    text += `2. **Phê duyệt độc quyền:** **100% đề xuất phải được Giám đốc (DIRECTOR) duyệt** trước khi xe vào xưởng.\n`;
-    text += `3. **Nằm xưởng:** Khi duyệt, xe tự động chuyển sang trạng thái 🔴 **NẰM XƯỞNG (MAINTENANCE)**.\n`;
-    text += `4. **Nghiệm thu xuất xưởng:** Khi sửa xong, bấm Hoàn thành -> Nhập chi phí thực tế (VND nguyên) -> Hệ thống tự động ghi nhận vào Chi phí Cố định (Fixed Expenses) và đưa xe về bãi 🟡 **CHỜ VIỆC (IDLE)**.\n`;
-    return text;
-  }
-
   // Phản hồi mặc định thông minh
   return `Tôi đã ghi nhận yêu cầu: *"${prompt}"*. 
 
 Hiện tại theo dữ liệu vận hành mới nhất:
-- Đội xe có **${context.fleet?.totalVehicles || 4} đầu xe** (${context.fleet?.activeCount || 0} đang chạy, ${context.fleet?.idleCount || 0} đứng bãi, ${context.fleet?.maintenanceCount || 0} nằm xưởng).
+- Đội xe có **${context.fleet?.totalVehicles || 4} đầu xe** (${context.fleet?.activeCount || 0} đang chạy, ${context.fleet?.idleCount || 0} đứng bãi).
 - Hệ thống áp dụng tiền tệ chuẩn số nguyên VND Integer và kiểm soát khóa sổ kỳ an toàn.
-${role === USER_ROLES.DIRECTOR ? '- Bạn có thể hỏi tôi về Báo cáo P&L, Dòng tiền thực thu vs Công nợ, hoặc phê duyệt Đề xuất bảo dưỡng.' : ''}
-${role === USER_ROLES.DRIVER ? '- Bạn có thể hỏi tôi về Số chuyến đã chạy, Lương tạm tính hoặc Hạn bằng lái của mình.' : ''}
+${role === USER_ROLES.DIRECTOR ? '- Bạn có thể hỏi tôi về Báo cáo P&L, Dòng tiền thực thu vs Công nợ.' : ''}
 
 Bạn vui lòng chọn một trong các gợi ý ở trên hoặc nhập câu hỏi chi tiết hơn để tôi hỗ trợ chính xác nhất nhé!`;
 }

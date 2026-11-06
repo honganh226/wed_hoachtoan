@@ -30,7 +30,6 @@ import expenseRoutes from './routes/expense.routes.js';
 import plRoutes from './routes/pl.routes.js';
 import kpiRoutes from './routes/kpi.routes.js';
 import payrollRoutes from './routes/payroll.routes.js';
-import maintenanceRoutes from './routes/maintenance.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import helpRoutes from './routes/help.routes.js';
 import businessRoutes from './routes/business.routes.js';
@@ -140,7 +139,10 @@ app.use('/api/v1/expenses', expenseRoutes);
 app.use('/api/v1/pl', plRoutes);
 app.use('/api/v1/kpi', kpiRoutes);
 app.use('/api/v1/payroll', payrollRoutes);
-app.use('/api/v1/maintenance', maintenanceRoutes);
+// Tính năng Bảo dưỡng xe đã ngừng sử dụng (06/11/2026): trả 410 để client cũ nhận thông báo rõ ràng, không lặp yêu cầu.
+app.use('/api/v1/maintenance', (req, res) => {
+  res.status(410).json({ success: false, code: 'FEATURE_DISCONTINUED', error: 'Tính năng Bảo dưỡng xe đã ngừng sử dụng. Chi phí sửa chữa nhập tại mục Chi phí.' });
+});
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/help', helpRoutes);
 app.use('/api/v1/business', businessRoutes);

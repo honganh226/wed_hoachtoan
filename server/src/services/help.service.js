@@ -95,7 +95,7 @@ export const GLOSSARY_TERMS = [
     name: 'Phân loại chi phí vận hành (Fixed vs Variable Expenses)',
     category: 'tài_chính',
     badge: 'P&L Quản trị',
-    shortDesc: 'Chi phí cố định (bảo dưỡng xe, bến bãi, đăng kiểm) vs Chi phí biến động (dầu, BOT, nâng hạ).',
+    shortDesc: 'Chi phí cố định (sửa chữa xe, bến bãi, đăng kiểm) vs Chi phí biến động (dầu, BOT, nâng hạ).',
     fullDesc: 'Chi phí cố định (FIXED): Phân bổ dài hạn như tiền thuê bãi, sửa chữa đại tu máy móc, bảo hiểm, đăng kiểm; Chi phí biến động (VARIABLE): Gắn liền trực tiếp theo từng cuốc xe cụ thể như tiền dầu, vé trạm thu phí BOT, phí nâng vỏ, hạ vỏ, tiền chọn vỏ đẹp.',
     formula: 'Tổng chi phí = Chi phí cố định + Chi phí biến động. Tỷ suất biến động = (Chi phí biến động / Tổng chi phí) * 100.',
     example: 'Chuyến xe đi Lào Cai: Dầu 2.500.000 ₫ + BOT 850.000 ₫ là Chi phí biến động; Tiền thay dầu máy 1.800.000 ₫ là Chi phí cố định.'
@@ -118,7 +118,7 @@ export const GLOSSARY_TERMS = [
     category: 'tài_chính',
     badge: 'Executive Dashboard',
     shortDesc: 'Động cơ Server-Sent Events tự động nhảy số doanh thu, chi phí, lợi nhuận gộp theo giây.',
-    fullDesc: 'Mỗi khi kế toán bấm Lưu chuyến, thủ quỹ xuất Tạm ứng, hoặc Giám đốc duyệt Chi phí bảo dưỡng, Backend phát ngay tín hiệu broadcast SSE qua endpoint /api/v1/pl/events. Dashboard Giám đốc tự động cập nhật số liệu mà không cần tải lại trang.',
+    fullDesc: 'Mỗi khi kế toán bấm Lưu chuyến, thủ quỹ xuất Tạm ứng, hoặc Giám đốc nhập chi phí, Backend phát ngay tín hiệu broadcast SSE qua endpoint /api/v1/pl/events. Dashboard Giám đốc tự động cập nhật số liệu mà không cần tải lại trang.',
     formula: 'Lợi nhuận gộp = Doanh thu thuần - Tổng chi phí thực tế. Biên lợi nhuận (%) = (Lợi nhuận gộp / Doanh thu) * 100.',
     example: 'Kế toán vừa nhập cước cuốc xe 3.500.000 ₫ -> Màn hình Giám đốc lập tức tăng số tiền kỳ vọng và lợi nhuận tương ứng.'
   },
@@ -135,12 +135,12 @@ export const GLOSSARY_TERMS = [
   },
   {
     id: 'vehicle_status_3_colors',
-    term: 'Ma Trận Xe 3 Màu',
+    term: 'Trạng Thái Xe',
     name: 'Trạng thái hoạt động đội xe trực quan',
     category: 'đội_xe',
     badge: 'Điều độ phương tiện',
-    shortDesc: '🟢 ACTIVE (Đang chạy) • 🟡 IDLE (Đứng bãi) • 🔴 MAINTENANCE (Nằm xưởng).',
-    fullDesc: 'Đội xe được phân loại 3 màu: Màu Xanh lá (Xe đang chạy trên đường, có cuốc DISPATCHED hoặc RUNNING); Màu Vàng (Xe rảnh đứng bãi, sẵn sàng nhận lệnh điều phối); Màu Đỏ (Xe nằm xưởng sửa chữa, 100% lệnh vào xưởng và ra xưởng do Giám đốc duyệt).',
+    shortDesc: '🟢 ACTIVE (Đang chạy) • 🟡 IDLE (Đứng bãi).',
+    fullDesc: 'Đội xe được phân loại theo trạng thái: Màu Xanh lá (Xe đang chạy trên đường, có cuốc DISPATCHED hoặc RUNNING); Màu Vàng (Xe rảnh đứng bãi, sẵn sàng nhận lệnh điều phối).',
     formula: 'Trạng thái được cập nhật tự động theo vòng đời cuốc xe hoặc thủ công bởi Giám đốc/Quản lý bãi.',
     example: 'Xe 15C-22405 đang hoàn thành chuyến và về bãi Đình Vũ -> Hệ thống chuyển trạng thái sang Vàng (IDLE).'
   },
@@ -191,8 +191,7 @@ export const SOP_STEPS = [
     details: [
       'Vào phân hệ Tạm Ứng từ thanh tác nghiệp hoặc mở từ cuốc xe vừa tạo.',
       'Nhập số tiền xuất quỹ (số nguyên VND), ghi rõ lý do tạm ứng (vd: Tiền dầu tuyến Lào Cai + Vé BOT cao tốc).',
-      'Hệ thống lưu vết ngày giờ xuất quỹ và ghi nhận vào công nợ tạm ứng của riêng lái xe đó.',
-      'Lái xe có thể mở App Lái Xe trên điện thoại để kiểm tra số tiền tạm ứng đã nhận.'
+      'Hệ thống lưu vết ngày giờ xuất quỹ và ghi nhận vào công nợ tạm ứng của riêng lái xe đó.'
     ]
   },
   {
@@ -210,10 +209,10 @@ export const SOP_STEPS = [
   {
     step: 4,
     title: 'Chụp Ảnh Phiếu Phơi EIR Bằng Điện Thoại',
-    role: 'Lái xe / Điều độ bãi',
+    role: 'Điều độ bãi / Kế toán',
     shortDesc: 'Ghi lại biên lai hạ vỏ container tại bãi cảng, chống đọng chứng từ.',
     details: [
-      'Lái xe sau khi giao vỏ tại cảng dùng camera điện thoại chụp phiếu phơi EIR trực tiếp trong App.',
+      'Nhân viên điều độ / kế toán nhận phiếu phơi EIR từ lái xe, chụp bằng điện thoại và tải lên hệ thống.',
       'Hệ thống tự động nén ảnh chất lượng cao xuống ~200KB bằng Canvas, tiết kiệm 95% dung lượng lưu trữ.',
       'Cập nhật trạng thái phiếu phơi: Đã trả / Chưa trả.',
       'Hệ thống theo dõi tự động: Nếu sau 3 ngày kể từ khi trả hàng mà chưa có ảnh phơi, cảnh báo 🔴 Đỏ đọng phơi sẽ nổi lên trên Dashboard.'
@@ -239,8 +238,7 @@ export const SOP_STEPS = [
     details: [
       'Khi chi phí và chứng từ đã đầy đủ, cuốc xe chuyển sang trạng thái COMPLETED.',
       'Engine P&L Real-time tự động phát sóng tín hiệu Server-Sent Events (SSE) đến toàn bộ màn hình đang mở.',
-      'Dashboard Giám đốc tự động nhảy số: Doanh thu kỳ vọng, Chi phí biến động, Lợi nhuận gộp và Tỷ suất biên lợi nhuận.',
-      'Số km xe chạy tự động cộng dồn vào đồng hồ ODO để theo dõi chu kỳ thay dầu 10.000 km.'
+      'Dashboard Giám đốc tự động nhảy số: Doanh thu kỳ vọng, Chi phí biến động, Lợi nhuận gộp và Tỷ suất biên lợi nhuận.'
     ]
   },
   {
@@ -266,7 +264,6 @@ export const RBAC_MATRIX = [
     scope: 'Toàn hệ thống 100% (Full quyền)',
     permissions: [
       'Xem và điều hành toàn bộ 100% chuyến xe, doanh thu, lợi nhuận ròng P&L và quỹ tiền mặt.',
-      'Quyền ĐỘC QUYỀN phê duyệt đề xuất sửa chữa, bảo dưỡng xe (100% lệnh duyệt thuộc Giám đốc).',
       'Quyền ĐỘC QUYỀN phê duyệt khoản thưởng động viên bí mật trong bảng lương tài xế.',
       'Quyền kích hoạt và mở Khóa Sổ Kỳ (Period Lock) kế toán.',
       'Quyền 1-Click Sao Lưu Database (.sqlite) và 1-Click Reset Database dữ liệu.',
@@ -284,7 +281,7 @@ export const RBAC_MATRIX = [
       'Xuất phiếu tạm ứng, quyết toán hoàn ứng và nhập chi phí thực tế (dầu, BOT, nâng hạ).',
       'Xác nhận thanh toán gộp theo bảng kê (Batch Payment) cho khách hàng.',
       'Xem tiến độ nộp phiếu phơi EIR và giám sát cảnh báo đọng phơi > 3 ngày.',
-      'Bị CHẶN: Không xem được quỹ tiền mặt, không thấy khoản thưởng động viên bảo mật của Giám đốc, không được Reset DB hay duyệt bảo dưỡng lớn.'
+      'Bị CHẶN: Không xem được quỹ tiền mặt, không thấy khoản thưởng động viên bảo mật của Giám đốc, không được Reset DB.'
     ]
   },
   {
@@ -296,22 +293,7 @@ export const RBAC_MATRIX = [
     permissions: [
       'Tạo chuyến xe và điều phối đầu xe, tài xế trong khu phụ trách (vd: Khu Tuân).',
       'Theo dõi tiến độ giao nhận cont, hỗ trợ tài xế nộp ảnh phiếu phơi EIR.',
-      'Gửi đề xuất bảo dưỡng, thay dầu, sửa chữa vỏ xe gửi lên Giám đốc phê duyệt.',
       'Bị CHẶN: Tuyệt đối không nhìn thấy cuốc xe, doanh thu hay chi phí của khu vực khác.'
-    ]
-  },
-  {
-    roleKey: 'DRIVER',
-    roleName: '🚛 Lái Xe (Driver)',
-    badgeColor: 'purple',
-    account: 'liem / driver123 (Lái xe Vũ Văn Liêm)',
-    scope: 'Giao diện tối ưu di động (Chỉ thấy chuyến và bảng lương của riêng mình)',
-    permissions: [
-      'Xem danh sách chuyến xe được giao, chi tiết điểm nâng, điểm hạ và số cont.',
-      'Dùng camera điện thoại chụp ảnh phiếu phơi EIR gửi về cảng (tự động nén ảnh).',
-      'Tra cứu lịch sử tạm ứng và số tiền hoàn ứng của cá nhân.',
-      'Xem bảng lương cá nhân (Lương cứng + Lương chuyến + Thưởng đã duyệt - Tạm ứng).',
-      'Bị CHẶN: Tuyệt đối không xem được doanh thu cước của công ty, không thấy cuốc xe hay lương của lái xe khác (Bảo vệ bởi AI Guardrails).'
     ]
   }
 ];

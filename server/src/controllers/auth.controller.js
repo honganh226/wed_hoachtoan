@@ -40,6 +40,16 @@ export async function login(req, res) {
       return errorResponse(res, 'Tên đăng nhập hoặc mật khẩu không chính xác.', 401);
     }
 
+    // Giao diện tài xế đã ngừng sử dụng: giữ nguyên tài khoản nhưng không cấp phiên đăng nhập.
+    // Không chuyển sang màn hình quản trị và không cấp thêm quyền.
+    if (user.role === 'DRIVER') {
+      return res.status(403).json({
+        success: false,
+        code: 'DRIVER_UI_DISCONTINUED',
+        error: 'Giao diện tài xế đã ngừng sử dụng. Tài khoản của bạn vẫn được lưu giữ; vui lòng liên hệ Giám đốc hoặc Kế toán để được hỗ trợ.'
+      });
+    }
+
     // Payload ký JWT tuân thủ Hợp đồng kỹ thuật (Mục C - RBAC Payload Contract)
     const payload = {
       id: user.id,
@@ -108,7 +118,7 @@ export function getDemoAccounts(req, res) {
     const accounts = db.prepare(`
       SELECT id, username, full_name, role, area_id, phone 
       FROM users 
-      WHERE is_active = 1
+      WHERE is_active = 1 AND role <> 'DRIVER'
       ORDER BY 
         CASE role
           WHEN 'DIRECTOR' THEN 1

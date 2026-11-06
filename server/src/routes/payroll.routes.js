@@ -7,7 +7,6 @@
  * Các Endpoint:
  * - GET  /api/v1/payroll/summary      : Bảng lương tổng hợp toàn đội theo tháng (RBAC)
  * - POST /api/v1/payroll/incentive    : Cập nhật khoản động viên GĐ (DIRECTOR only)
- * - GET  /api/v1/payroll/driver-me    : Dữ liệu cá nhân cho App Tài xế (Mobile App View)
  * ============================================================
  */
 
@@ -18,8 +17,7 @@ import { USER_ROLES } from '../db/schema.js';
 import { successResponse, errorResponse } from '../utils/response.js';
 import {
   getPayrollSummary,
-  upsertDriverIncentive,
-  getDriverPersonalAppView
+  upsertDriverIncentive
 } from '../services/payroll.service.js';
 
 const router = express.Router();
@@ -72,24 +70,6 @@ router.post('/incentive', authenticateToken, requireRole(USER_ROLES.DIRECTOR), (
   } catch (err) {
     console.error('[API PAYROLL INCENTIVE ERROR]', err);
     return errorResponse(res, err.message, 400);
-  }
-});
-
-/**
- * GET /api/v1/payroll/driver-me
- * Dành riêng cho App Lái xe (Driver View): xem chuyến xe, phơi và lương cá nhân
- */
-router.get('/driver-me', authenticateToken, (req, res) => {
-  try {
-    const { month } = req.query;
-    const data = getDriverPersonalAppView({
-      user: req.user,
-      periodMonth: month || null
-    });
-    return successResponse(res, data, `Tải dữ liệu app lái xe tháng ${data.period_month} thành công`);
-  } catch (err) {
-    console.error('[API DRIVER APP VIEW ERROR]', err);
-    return errorResponse(res, err.message, 500);
   }
 });
 

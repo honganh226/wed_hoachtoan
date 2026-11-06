@@ -49,8 +49,7 @@ import TimeFilterPills from './components/TimeFilterPills.jsx';
 import KpiAdjustTable from './components/KpiAdjustTable.jsx';
 import BatchPaymentModal from './components/BatchPaymentModal.jsx';
 import PayrollView from './components/PayrollView.jsx';
-import DriverApp from './components/DriverApp.jsx';
-import MaintenanceView from './components/MaintenanceView.jsx';
+import FleetVehiclesView from './components/FleetVehiclesView.jsx';
 import AiChatBox from './components/AiChatBox.jsx';
 import HelpCenterPage from './components/HelpCenterPage.jsx';
 import AiDispatchModal from './components/AiDispatchModal.jsx';
@@ -144,7 +143,7 @@ export default function App() {
   const [lastFleetView, setLastFleetView] = useState(null);
   const [lastSystemView, setLastSystemView] = useState('help');
   useEffect(() => {
-    if (activeModule === 'fleet' && ['vehicles', 'kpi', 'payroll', 'driver_app'].includes(subView)) {
+    if (activeModule === 'fleet' && ['vehicles', 'kpi', 'payroll'].includes(subView)) {
       setLastFleetView(subView);
     }
     if (activeModule === 'system' && ['help', 'backup'].includes(subView)) {
@@ -268,7 +267,11 @@ export default function App() {
     } else if (tab === 'vehicles' || tab === 'maintenance') {
       setActiveModule('fleet');
       setSubView('vehicles');
-      setActiveTab('maintenance');
+      setActiveTab('vehicles');
+    } else if (tab === 'driver_app') {
+      setActiveModule('fleet');
+      setSubView('vehicles');
+      setActiveTab('vehicles');
     } else if (tab === 'payroll') {
       setActiveModule('fleet');
       setSubView('payroll');
@@ -282,9 +285,7 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     if (currentUser.role === 'DRIVER') {
-      setActiveModule('fleet');
-      setSubView('driver_app');
-      setActiveTab('driver_app');
+      return;
     } else if (currentUser.role === 'AREA_MANAGER') {
       // Quản lý khu không xem P&L, tự động điều hướng sang Chuyến xe
       if (activeModule === 'overview') {
@@ -293,7 +294,7 @@ export default function App() {
       }
       if (activeModule === 'fleet' && subView !== 'vehicles') {
         setSubView('vehicles');
-        setActiveTab('maintenance');
+        setActiveTab('vehicles');
       }
       if (activeModule === 'system' && subView !== 'help') {
         setSubView('help');
@@ -306,16 +307,11 @@ export default function App() {
       }
       if (activeModule === 'fleet' && subView !== 'vehicles') {
         setSubView('vehicles');
-        setActiveTab('maintenance');
+        setActiveTab('vehicles');
       }
       if (activeModule === 'system' && subView !== 'help') {
         setSubView('help');
         setActiveTab('help');
-      }
-    } else if (currentUser.role === 'ACCOUNTANT') {
-      if (activeModule === 'fleet' && subView === 'driver_app') {
-        setSubView('payroll');
-        setActiveTab('payroll');
       }
     }
   }, [currentUser?.role]);
@@ -330,11 +326,7 @@ export default function App() {
         setAuthToken(res.data.token);
         setStoredUser(res.data.user);
         setCurrentUser(res.data.user);
-        if (res.data.user.role === 'DRIVER') {
-          setActiveModule('fleet');
-          setSubView('driver_app');
-          setActiveTab('driver_app');
-        } else if (res.data.user.role === 'AREA_MANAGER') {
+        if (res.data.user.role === 'AREA_MANAGER') {
           setActiveModule('trips');
           setSubView('trips');
           setActiveTab('trips');
@@ -621,8 +613,20 @@ export default function App() {
             </div>
           </div>
         ) : isDriver ? (
-          <div className="space-y-5 animate-fade-in">
-            <DriverApp currentUser={currentUser} />
+          <div className="max-w-md mx-auto my-12 p-6 bg-white rounded-xl border border-slate-200 shadow-sm text-center space-y-4 animate-fade-in">
+            <div className="w-12 h-12 mx-auto rounded-full bg-amber-50 text-amber-600 flex items-center justify-center text-xl">
+              🚛
+            </div>
+            <h3 className="text-base font-bold text-slate-800">Giao diện lái xe đã ngừng sử dụng</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Tính năng dành riêng cho lái xe đã dừng theo quyết định điều hành. Toàn bộ chuyến xe, tạm ứng và bảng kê do Quản lý khu, Kế toán và Giám đốc điều phối tập trung.
+            </p>
+            <button
+              onClick={handleLogout}
+              className="w-full py-2 px-4 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition"
+            >
+              Đăng xuất
+            </button>
           </div>
         ) : (
           <>
@@ -725,11 +729,11 @@ export default function App() {
               {activeModule === 'fleet' && (
                 <div className="pt-1.5 border-t border-slate-100 flex items-center overflow-x-auto no-scrollbar">
                   <div className="inline-flex p-0.5 bg-slate-50 rounded-lg space-x-1 shrink-0">
-                    {/* Tab Con: Đội xe (Trạng thái xe, ODO, kiểm định) */}
+                    {/* Tab Con: Đội xe (Danh mục xe, tài xế phụ trách, hạn giấy tờ) */}
                     <button
-                      onClick={() => { setSubView('vehicles'); setActiveTab('maintenance'); }}
+                      onClick={() => { setSubView('vehicles'); setActiveTab('vehicles'); }}
                       className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all shrink-0 ${
-                        subView === 'vehicles' || activeTab === 'maintenance'
+                        subView === 'vehicles' || activeTab === 'vehicles'
                           ? 'bg-white text-slate-900 font-semibold shadow-xs border border-slate-200/80'
                           : 'text-slate-500 hover:text-slate-800'
                       }`}
@@ -762,20 +766,6 @@ export default function App() {
                         }`}
                       >
                         Bảng lương
-                      </button>
-                    )}
-
-                    {/* Tab Con: Xem giao diện tài xế (chỉ Director dùng test) */}
-                    {isDirector && (
-                      <button
-                        onClick={() => { setSubView('driver_app'); setActiveTab('driver_app'); }}
-                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all shrink-0 ${
-                          subView === 'driver_app' || activeTab === 'driver_app'
-                            ? 'bg-white text-slate-900 font-semibold shadow-xs border border-slate-200/80'
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        Giao diện tài xế
                       </button>
                     )}
                   </div>
@@ -913,17 +903,10 @@ export default function App() {
               </div>
             )}
 
-            {/* PHÂN HỆ XEM GIẢ LẬP APP LÁI XE (DÀNH CHO GIÁM ĐỐC TEST) */}
-            {isDirector && activeTab === 'driver_app' && (
+            {/* PHÂN HỆ QUẢN LÝ ĐỘI XE & HẠN GIẤY TỜ (GIÁM ĐỐC, KẾ TOÁN, QUẢN LÝ KHU) */}
+            {(activeTab === 'vehicles' || activeTab === 'maintenance' || activeTab === 'all') && (
               <div className="space-y-5">
-                <DriverApp currentUser={currentUser} />
-              </div>
-            )}
-
-            {/* PHÂN HỆ QUẢN LÝ ĐỘI XE & BẢO DƯỠNG (GIÁM ĐỐC, KẾ TOÁN, QUẢN LÝ KHU) */}
-            {(activeTab === 'maintenance' || activeTab === 'all') && (
-              <div className="space-y-5">
-                <MaintenanceView currentUser={currentUser} />
+                <FleetVehiclesView currentUser={currentUser} />
               </div>
             )}
 

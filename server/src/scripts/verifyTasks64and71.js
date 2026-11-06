@@ -177,9 +177,9 @@ async function runTests() {
   });
 
   it('2.4. Ma trận phân quyền RBAC mô tả chuẩn xác 4 vai trò của hệ thống', () => {
-    assert.strictEqual(RBAC_MATRIX.length, 4, 'RBAC matrix phải có 4 vai trò');
+    assert.strictEqual(RBAC_MATRIX.length, 3, 'RBAC matrix có 3 vai trò quản trị');
     const roles = RBAC_MATRIX.map(r => r.roleKey);
-    assert.deepStrictEqual(roles, ['DIRECTOR', 'ACCOUNTANT', 'AREA_MANAGER', 'DRIVER']);
+    assert.deepStrictEqual(roles, ['DIRECTOR', 'ACCOUNTANT', 'AREA_MANAGER']);
     RBAC_MATRIX.forEach(r => {
       assert.ok(r.account, 'Phải có tài khoản demo');
       assert.ok(r.scope, 'Phải có phạm vi dữ liệu');

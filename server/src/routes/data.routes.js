@@ -12,6 +12,7 @@ import { importExcelData } from '../scripts/importExcel.js';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 import { requireRole } from '../middlewares/rbac.middleware.js';
 import { USER_ROLES } from '../db/schema.js';
+import { listFleetVehicles } from '../services/fleet.service.js';
 
 const router = Router();
 
@@ -113,7 +114,23 @@ router.post('/seed', authenticateToken, requireRole(USER_ROLES.DIRECTOR), async 
 /**
  * GET /api/v1/data/vehicles
  */
-router.get('/vehicles', (req, res) => {
+const FLEET_READ_ROLES = [USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT, USER_ROLES.AREA_MANAGER, USER_ROLES.SECRETARY];
+const CATALOG_READ_ROLES = FLEET_READ_ROLES;
+
+/**
+ * GET /api/v1/data/fleet-vehicles
+ * Danh sách đội xe chỉ đọc (xe, tài xế phụ trách, hạn đăng kiểm/bảo hiểm/bằng lái).
+ * Quản lý khu chỉ thấy xe thuộc khu vực của mình. Thay thế phân hệ Bảo dưỡng xe đã gỡ.
+ */
+router.get('/fleet-vehicles', requireRole(FLEET_READ_ROLES), (req, res) => {
+  try {
+    return successResponse(res, listFleetVehicles(req.user), 'Lấy danh sách đội xe thành công');
+  } catch (err) {
+    return serverErrorResponse(res, err);
+  }
+});
+
+router.get('/vehicles', requireRole(CATALOG_READ_ROLES), (req, res) => {
   try {
     const vehicles = db.prepare(`
       SELECT v.*, d.full_name as driver_name, d.phone as driver_phone
@@ -130,7 +147,7 @@ router.get('/vehicles', (req, res) => {
 /**
  * GET /api/v1/data/drivers
  */
-router.get('/drivers', (req, res) => {
+router.get('/drivers', requireRole(CATALOG_READ_ROLES), (req, res) => {
   try {
     const drivers = db.prepare(`
       SELECT d.*, v.plate_number as default_plate

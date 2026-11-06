@@ -44,18 +44,6 @@
   ],
   "shortcuts": [
     {
-      "name": "App Lái Xe",
-      "short_name": "Lái Xe",
-      "description": "Mở nhanh giao diện tác nghiệp cuốc xe cho Lái xe",
-      "url": "/?tab=driver_app",
-      "icons": [
-        {
-          "src": "/icons/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
       "name": "Tạo Chuyến Xe Mới",
       "short_name": "+ Chuyến Mới",
       "description": "Tạo nhanh chuyến xe container mới",

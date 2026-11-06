@@ -5,7 +5,7 @@
  * ============================================================
  */
 
-import { getPayrollSummary, upsertDriverIncentive, getDriverPersonalAppView } from '../services/payroll.service.js';
+import { getPayrollSummary, upsertDriverIncentive } from '../services/payroll.service.js';
 import { db } from '../db/database.js';
 import { USER_ROLES } from '../db/schema.js';
 
@@ -108,5 +108,5 @@ console.log(`       - Thực lĩnh tháng: ${appView.payroll.net_salary.toLocale
 
 console.log('\n================================================================');
 console.log(`🎉 TỔNG KẾT KIỂM THỬ TASK 6.1: ${passed}/${total} TIÊU CHÍ PASS 100%`);
-console.log('💼 BẢNG LƯƠNG 3 THÀNH PHẦN VÀ APP LÁI XE SẴN SÀNG TÍCH HỢP GIAO DIỆN!');
+console.log('💼 BẢNG LƯƠNG 3 THÀNH PHẦN SẴN SÀNG TÍCH HỢP GIAO DIỆN!');
 console.log('================================================================\n');
