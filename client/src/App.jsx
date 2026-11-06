@@ -133,11 +133,15 @@ export default function App() {
   const [activeModule, setActiveModule] = useState(() => {
     if (initialUrlTab === 'debts') return 'debts';
     if (initialUrlTab === 'trips') return 'trips';
+    if (initialUrlTab === 'vehicles' || initialUrlTab === 'maintenance' || initialUrlTab === 'kpi' || initialUrlTab === 'payroll') return 'fleet';
     return 'overview';
   });
   const [subView, setSubView] = useState(() => {
     if (initialUrlTab === 'debts') return 'debts';
     if (initialUrlTab === 'trips') return 'trips';
+    if (initialUrlTab === 'vehicles' || initialUrlTab === 'maintenance') return 'vehicles';
+    if (initialUrlTab === 'kpi') return 'kpi';
+    if (initialUrlTab === 'payroll') return 'payroll';
     return 'business_overview';
   });
   const [lastFleetView, setLastFleetView] = useState(null);
@@ -155,6 +159,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState(() => {
     if (initialUrlTab === 'debts') return 'debts';
     if (initialUrlTab === 'trips') return 'trips';
+    if (initialUrlTab === 'vehicles' || initialUrlTab === 'maintenance') return 'vehicles';
+    if (initialUrlTab === 'kpi') return 'kpi';
+    if (initialUrlTab === 'payroll') return 'payroll';
     return 'business_overview';
   }); // Mặc định hiển thị Bản mẫu Tổng quan Đợt 1
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
@@ -686,11 +693,11 @@ export default function App() {
                   {/* Tab Đội Xe & Lương (Luôn đánh dấu chọn khi xem bất kỳ tab con nào của mục này) */}
                   <button
                     onClick={() => {
-                      const permittedViews = isAreaManager ? ['vehicles'] : isAccountant ? ['vehicles', 'kpi', 'payroll'] : ['vehicles', 'kpi', 'payroll', 'driver_app'];
+                      const permittedViews = isAreaManager ? ['vehicles'] : ['vehicles', 'kpi', 'payroll'];
                       const nextView = permittedViews.includes(lastFleetView) ? lastFleetView : (isAccountant ? 'payroll' : 'vehicles');
                       setActiveModule('fleet');
                       setSubView(nextView);
-                      setActiveTab(nextView === 'vehicles' ? 'maintenance' : nextView);
+                      setActiveTab(nextView);
                     }}
                     className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                       activeModule === 'fleet'
