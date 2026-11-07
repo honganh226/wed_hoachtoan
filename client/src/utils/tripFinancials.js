@@ -290,3 +290,161 @@ export function calculateTripFinancials(params = {}) {
 }
 
 export const computeTripFinancials = calculateTripFinancials;
+
+/**
+ * Xác định tháng hạch toán chuẩn (YYYY-MM) của một chuyến xe.
+ * Ưu tiên đọc từ tên sheet nguồn (T1-26, T7-2026 , T11-2026...) để bảo toàn đúng kỳ bảng kê
+ * ngay cả khi ô ngày nguồn có lỗi đánh máy năm (2025 hoặc 2027).
+ */
+export function getTripAccountingMonth(trip) {
+  const sheet = String(trip?.source_sheet || '').trim();
+  const mMatch = sheet.match(/^T(\d{1,2})[-_]/i);
+  if (mMatch) {
+    return `2026-${String(parseInt(mMatch[1], 10)).padStart(2, '0')}`;
+  }
+  const d = String(trip?.trip_date || '').trim();
+  if (/^2025-01/.test(d)) return '2026-01';
+  if (/^\d{4}-\d{2}/.test(d)) {
+    return d.slice(0, 7);
+  }
+  return '';
+}
+
+/**
+ * Tính toán đầy đủ tất cả các thông số sản lượng, doanh thu, chi phí, chênh lệch, công nợ và tiền phơi
+ * cho một tập hợp chuyến xe (theo từng tháng hoặc cả năm).
+ */
+export function computeAggregateMetrics(tripsList = []) {
+  let totalCuocGoc = 0;
+  let totalVat8 = 0;
+  let totalCuocCoVat = 0;
+  let totalKhoanTru17 = 0;
+  let totalCuocSauTru17 = 0;
+  let totalChiPhiCongTy = 0;
+  let totalToll = 0;
+  let totalCuocRa = 0;
+  let totalPhatSinh = 0;
+  let totalPhiNang = 0;
+  let totalPhiHa = 0;
+  let totalFuelLiters = 0;
+  let totalTienDau = 0;
+  let missingFuelPriceTrips = 0;
+  let totalPhoiTraHo = 0;
+  let totalPhoiDaHoan = 0;
+  let totalPhoiConPhaiThu = 0;
+  let totalDaThuKhach = 0;
+  let totalDoiTruKhach = 0;
+  let totalConPhaiThuKhach = 0;
+  let houseTripsCount = 0;
+  let subTripsCount = 0;
+
+  const housePlatesSet = new Set();
+  const subPartnersSet = new Set();
+  const customersSet = new Set();
+
+  tripsList.forEach((t) => {
+    const f = calculateTripFinancials({
+      base_revenue: t.cuoc_goc ?? t.base_revenue ?? t.cuoc_vao ?? 0,
+      lift_on_fee: t.phi_nang ?? t.lift_on_fee ?? 0,
+      lift_off_fee: t.phi_ha ?? t.lift_off_fee ?? 0,
+      port_fee: t.port_fee ?? 0,
+      fuel_liters: t.dau_liters ?? t.dau_lit ?? t.fuel_liters ?? 0,
+      fuel_unit_price: t.don_gia_dau ?? t.fuel_unit_price ?? null,
+      fuel_cost: t.tien_dau ?? t.fuel_cost ?? null,
+      toll_fee: t.tien_duong ?? t.toll_fee ?? 0,
+      subcontractor_cost: t.cuoc_ra ?? t.subcontractor_cost ?? 0,
+      other_costs: t.phat_sinh ?? t.other_costs ?? 0,
+      phoi_advance_amount: t.phoi_tra_ho ?? t.phoi_advance_amount ?? 0,
+      phoi_refunded_amount: t.phoi_da_hoan ?? t.phoi_refunded_amount ?? 0,
+    });
+
+    if (t.is_subcontractor) {
+      subTripsCount += 1;
+      const pName = t.subcontractor_name || t.vehicle_plate;
+      if (pName && pName !== 'ĐÃ TT' && pName !== 'MẸ ĐÃ TT') {
+        subPartnersSet.add(pName);
+      }
+    } else {
+      houseTripsCount += 1;
+      const plate = t.vehicle_plate || t.so_xe;
+      if (plate && plate !== 'Xe ngoài' && plate !== 'ĐÃ TT' && plate !== 'MẸ ĐÃ TT') {
+        housePlatesSet.add(plate);
+      }
+    }
+
+    if (t.customer_name) {
+      customersSet.add(t.customer_name);
+    }
+
+    totalCuocGoc += f.cuoc_goc;
+    totalVat8 += f.vat_amount;
+    totalCuocCoVat += f.cuoc_co_vat;
+    totalKhoanTru17 += f.khoan_tru_17;
+    totalCuocSauTru17 += f.cuoc_sau_tru_17;
+    totalChiPhiCongTy += f.chi_phi_cong_ty;
+    totalToll += f.tien_duong;
+    totalCuocRa += f.cuoc_ngoai;
+    totalPhatSinh += f.chi_phi_khac;
+    totalPhiNang += f.phi_nang;
+    totalPhiHa += f.phi_ha;
+    totalFuelLiters += f.fuel_liters;
+    totalTienDau += f.fuel_cost;
+    if (f.is_fuel_price_missing) missingFuelPriceTrips += 1;
+
+    const phoiAdv = Number(t.phoi_total_advance ?? t.phoi_tra_ho ?? t.phoi_advance_amount ?? 0);
+    const phoiDue = Number(t.phoi_balance_due ?? t.phoi_con_phai_thu ?? 0);
+    const phoiRef = Number(t.phoi_total_refunded ?? t.phoi_da_hoan ?? Math.max(0, phoiAdv - phoiDue));
+
+    totalPhoiTraHo += phoiAdv;
+    totalPhoiConPhaiThu += phoiDue;
+    totalPhoiDaHoan += phoiRef;
+
+    totalDaThuKhach += Number(t.received_amount ?? 0);
+    totalDoiTruKhach += Number(t.offset_amount ?? 0);
+    totalConPhaiThuKhach += Number(t.fare_balance_base ?? 0);
+  });
+
+  const totalChenhLechSauTru17 = totalCuocSauTru17 - totalChiPhiCongTy;
+  const totalChenhLechTruocTruCoVat = totalCuocCoVat - totalChiPhiCongTy;
+
+  let journeyCount = tripsList.length;
+  if (tripsList.length > 0) {
+    const singleCount = tripsList.filter((t) => !t.is_grouped).length;
+    const groupCount = new Set(tripsList.filter((t) => t.is_grouped).map((t) => t.group_id)).size;
+    journeyCount = singleCount + groupCount;
+  }
+
+  return {
+    completedCount: tripsList.length,
+    journeyCount,
+    houseTripsCount,
+    subTripsCount,
+    activeVehiclesCount: housePlatesSet.size,
+    subPartnersCount: subPartnersSet.size,
+    customersCount: customersSet.size,
+    totalCuocGoc,
+    totalVat8,
+    totalCuocCoVat,
+    totalKhoanTru17,
+    totalCuocSauTru17,
+    totalChiPhiCongTy,
+    totalChenhLechSauTru17,
+    totalChenhLechTruocTruCoVat,
+    totalToll,
+    totalCuocRa,
+    totalPhatSinh,
+    totalPhiNang,
+    totalPhiHa,
+    totalNangHaPhatSinh: totalPhiNang + totalPhiHa + totalPhatSinh,
+    totalFuelLiters,
+    totalTienDau,
+    missingFuelPriceTrips,
+    totalPhoiTraHo,
+    totalPhoiDaHoan,
+    totalPhoiConPhaiThu,
+    totalDaThuKhach,
+    totalDoiTruKhach,
+    totalConPhaiThuKhach,
+  };
+}
+

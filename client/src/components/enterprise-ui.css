@@ -212,3 +212,38 @@
     overflow-y: auto;
   }
 }
+
+
+/* Print support for Business Statistics & Monthly Reports */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  header,
+  nav,
+  aside,
+  .ha-header,
+  .ha-mobile-nav,
+  button,
+  [data-no-print="true"] {
+    display: none !important;
+  }
+  .ha-table-scroll {
+    overflow: visible !important;
+  }
+  #printable-business-report-area {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}

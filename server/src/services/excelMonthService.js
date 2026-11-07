@@ -810,9 +810,34 @@ export class ExcelMonthService {
    * Tính toán dữ liệu Công nợ (Phải thu khách hàng: Cước vận chuyển + Tiền phơi trả hộ & Phải trả nhà xe)
    * TUYỆT ĐỐI KHÔNG TỰ THÊM GIAO DỊCH NGOÀI DỮ LIỆU ĐÃ LƯU
    */
+  getAccountingMonth(r) {
+    const sheet = String(r?.source_sheet || '').trim();
+    const mMatch = sheet.match(/^T(\d{1,2})[-_]/i);
+    if (mMatch) {
+      return `2026-${String(parseInt(mMatch[1], 10)).padStart(2, '0')}`;
+    }
+    const d = String(r?.trip_date || '').trim();
+    if (/^2025-01/.test(d)) return '2026-01';
+    if (/^\d{4}-\d{2}/.test(d)) return d.slice(0, 7);
+    return '';
+  }
+
+  matchesDateRange(r, start_date, end_date) {
+    if (!start_date && !end_date) return true;
+    const fullMonthMatch = start_date && end_date && String(start_date).match(/^2026-(\d{2})-01$/);
+    if (fullMonthMatch) {
+      const m = fullMonthMatch[1];
+      const expectedLastDay = new Date(2026, parseInt(m, 10), 0).getDate();
+      if (end_date === `2026-${m}-${expectedLastDay}`) {
+        return this.getAccountingMonth(r) === `2026-${m}`;
+      }
+    }
+    return (!start_date || r.trip_date >= start_date) && (!end_date || r.trip_date <= end_date);
+  }
+
   getDebtsData(filter = {}) {
     const data = this.getData();
-    const rows = data.rows.filter(r => (!filter.start_date || r.trip_date >= filter.start_date) && (!filter.end_date || r.trip_date <= filter.end_date));
+    const rows = data.rows.filter(r => this.matchesDateRange(r, filter.start_date, filter.end_date));
 
     // 1. Phải thu theo khách hàng (Tách rõ: Công nợ cước, Công nợ tiền phơi trả hộ, Tổng phải thu)
     const customerMap = new Map();
@@ -1085,7 +1110,7 @@ export class ExcelMonthService {
     } else if (filter.period === 'january' || filter.period === 'month') {
       filteredTrips = rows.filter(r => r.trip_date.startsWith('2026-01'));
     } else if (filter.start_date && filter.end_date) {
-      filteredTrips = rows.filter(r => r.trip_date >= filter.start_date && r.trip_date <= filter.end_date);
+      filteredTrips = rows.filter(r => this.matchesDateRange(r, filter.start_date, filter.end_date));
     }
 
     if (filter.area && filter.area !== 'ALL') {

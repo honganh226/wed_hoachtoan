@@ -20,7 +20,7 @@ import {
   Info
 } from 'lucide-react';
 import { fetchBusinessTripsApi, fetchBusinessGroupsApi } from '../services/api.js';
-import { calculateTripFinancials, toIntVnd } from '../utils/tripFinancials.js';
+import { calculateTripFinancials, toIntVnd, getTripAccountingMonth } from '../utils/tripFinancials.js';
 import { formatVnd } from '../data/unifiedBusinessData';
 import TripDetailDrawer from './TripDetailDrawer.jsx';
 
@@ -302,16 +302,16 @@ export default function TripsListView({
     });
   }, [dateFilter, rangeStart, rangeEnd, mappedTrips.length, onAssistantContext]);
 
-  // 1. Lọc theo kỳ ngày chạy
+  // 1. Lọc theo kỳ ngày chạy (ưu tiên tháng hạch toán theo sheet chuẩn)
   const scopedTrips = useMemo(() => {
     return mappedTrips.filter((trip) => {
       const date = trip.trip_date || '';
       if (dateFilter === 'all') return true;
       if (dateFilter.startsWith('month_')) {
         const m = dateFilter.slice(6);
-        return date.startsWith(`2026-${m}`);
+        return getTripAccountingMonth(trip) === `2026-${m}`;
       }
-      if (dateFilter === 'month') return date >= '2026-01-01' && date <= '2026-01-31';
+      if (dateFilter === 'month') return getTripAccountingMonth(trip) === '2026-01';
       if (dateFilter === 'day_09') return date === '2026-01-09';
       if (dateFilter === 'day_08') return date === '2026-01-08';
       if (dateFilter === 'range') return date >= rangeStart && date <= rangeEnd;
@@ -321,10 +321,22 @@ export default function TripsListView({
 
   // Các nhãn số lượng động cho bộ lọc kỳ và bộ lọc trạng thái (không viết cứng số lượng)
   const filterCounts = useMemo(() => {
-    const monthCount = mappedTrips.filter((t) => (t.trip_date || '').startsWith('2026-01')).length;
+    const monthCount = mappedTrips.filter((t) => getTripAccountingMonth(t) === '2026-01').length;
     const day09Count = mappedTrips.filter((t) => t.trip_date === '2026-01-09').length;
     const day08Count = mappedTrips.filter((t) => t.trip_date === '2026-01-08').length;
     const allCount = mappedTrips.length;
+    const byMonth = {};
+    for (let i = 1; i <= 12; i += 1) {
+      const mKey = String(i).padStart(2, '0');
+      byMonth[mKey] = 0;
+    }
+    mappedTrips.forEach((t) => {
+      const ym = getTripAccountingMonth(t);
+      if (ym && ym.startsWith('2026-')) {
+        const mKey = ym.slice(5, 7);
+        if (byMonth[mKey] !== undefined) byMonth[mKey] += 1;
+      }
+    });
 
     const paidCount = scopedTrips.filter((t) => t.is_customer_paid).length;
     const tuoiCount = scopedTrips.filter((t) => t.is_tuoi).length;
@@ -339,6 +351,7 @@ export default function TripsListView({
       day09Count,
       day08Count,
       allCount,
+      byMonth,
       paidCount,
       tuoiCount,
       offsetCount,
@@ -718,38 +731,26 @@ export default function TripsListView({
             Toàn bộ ({filterCounts.allCount} cuốc)
           </button>
 
-          <button
-            onClick={() => setDateFilter('month_11')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'month_11'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Tháng 11/2026
-          </button>
-
-          <button
-            onClick={() => setDateFilter('month_10')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'month_10'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Tháng 10/2026
-          </button>
-
-          <button
-            onClick={() => setDateFilter('month')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'month'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Tháng 01/2026
-          </button>
+          {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((mKey) => {
+            const count = filterCounts.byMonth?.[mKey] ?? 0;
+            const filterVal = mKey === '01' && dateFilter === 'month' ? 'month' : `month_${mKey}`;
+            const isSelected = dateFilter === `month_${mKey}` || (mKey === '01' && dateFilter === 'month');
+            return (
+              <button
+                key={mKey}
+                onClick={() => setDateFilter(`month_${mKey}`)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  isSelected
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : count > 0
+                    ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
+                }`}
+              >
+                T{parseInt(mKey, 10)} ({count})
+              </button>
+            );
+          })}
 
           {dateFilter === 'range' && (
             <div className="flex items-center space-x-2 text-xs bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">

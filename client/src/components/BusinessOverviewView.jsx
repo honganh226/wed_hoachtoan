@@ -20,7 +20,8 @@ import {
   Building2,
   Calendar,
   Eye,
-  Check
+  Check,
+  Printer
 } from 'lucide-react';
 import {
   formatVnd,
@@ -34,10 +35,11 @@ import {
   fetchBusinessDebtsApi,
   saveBusinessGroupAllocationApi
 } from '../services/api.js';
-import { computeTripFinancials } from '../utils/tripFinancials.js';
+import { computeTripFinancials, getTripAccountingMonth } from '../utils/tripFinancials.js';
 import TripDetailDrawer from './TripDetailDrawer.jsx';
 import FuelPriceManagementModal from './FuelPriceManagementModal.jsx';
 import PhoiRefundModal from './PhoiRefundModal.jsx';
+import MonthlyBusinessReportSection from './MonthlyBusinessReportSection.jsx';
 
 export default function BusinessOverviewView({
   onNavigateTab,
@@ -72,9 +74,10 @@ export default function BusinessOverviewView({
   // 3. COLLAPSIBLE LƯU Ý NGHIỆP VỤ & RỦI RO
   const [notesCollapsibleOpen, setNotesCollapsibleOpen] = useState(true);
 
-  // 4. MODALS (GIÁ DẦU & TIỀN PHƠI)
+  // 4. MODALS (GIÁ DẦU, TIỀN PHƠI & BÁO CÁO IN TRỰC QUAN)
   const [fuelModalOpen, setFuelModalOpen] = useState(false);
   const [phoiModalTarget, setPhoiModalTarget] = useState(null);
+  const [printModalOpen, setPrintModalOpen] = useState(false);
   const isFirstMountDebts = useRef(true);
 
   // Khóa định danh kỳ hiện tại để tránh race-condition và không bao giờ hiển thị công nợ kỳ cũ
@@ -279,7 +282,7 @@ export default function BusinessOverviewView({
     }
   };
 
-  // 1. Tập cuốc theo bộ lọc ngày
+  // 1. Tập cuốc theo bộ lọc ngày (ưu tiên tháng hạch toán theo sheet chuẩn)
   const scopedTrips = useMemo(() => {
     return tripsData.filter((trip) => {
       if (
@@ -290,9 +293,11 @@ export default function BusinessOverviewView({
       if (dateFilter === 'all') return true;
       if (dateFilter.startsWith('month_')) {
         const m = dateFilter.slice(6);
-        return Boolean(trip.trip_date && trip.trip_date.startsWith(`2026-${m}`));
+        return getTripAccountingMonth(trip) === `2026-${m}`;
       }
-      if (dateFilter === 'month' && !trip.trip_date?.startsWith('2026-01')) return false;
+      if (dateFilter === 'month') {
+        return getTripAccountingMonth(trip) === '2026-01';
+      }
       if (dateFilter === 'day_09' && trip.trip_date !== '2026-01-09') return false;
       if (dateFilter === 'day_08' && trip.trip_date !== '2026-01-08') return false;
       return true;
@@ -738,7 +743,16 @@ export default function BusinessOverviewView({
         </div>
 
         {/* Nút hành động đầu trang */}
-        <div className="flex items-center gap-2 self-start md:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+          <button
+            type="button"
+            data-testid="open-print-report-header-btn"
+            onClick={() => setPrintModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+          >
+            <Printer size={14} />
+            <span>In báo cáo trực quan</span>
+          </button>
           <button
             type="button"
             onClick={() => setFuelModalOpen(true)}
@@ -769,7 +783,8 @@ export default function BusinessOverviewView({
             onChange={(e) => setDateFilter(e.target.value)}
             className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-medium focus:outline-hidden focus:ring-1 focus:ring-slate-400"
           >
-            <option value="all">Tất cả thời gian (Toàn bộ 11 tháng)</option>
+            <option value="all">Tất cả thời gian (Cả năm 2026)</option>
+            <option value="month_12">Tháng 12/2026</option>
             <option value="month_11">Tháng 11/2026</option>
             <option value="month_10">Tháng 10/2026</option>
             <option value="month_09">Tháng 09/2026</option>
@@ -939,10 +954,10 @@ export default function BusinessOverviewView({
                 type: 'COST_BREAKDOWN',
                 title: `Phân rã chi phí: ${
                   scopeFilter === 'ALL'
-                    ? 'Toàn công ty (77 cuốc)'
+                    ? `Toàn công ty (${effectiveTrips.length} cuốc)`
                     : scopeFilter === 'XE_NHA'
-                    ? 'Đội xe nhà (57 cuốc)'
-                    : 'Xe thuê ngoài (20 cuốc)'
+                    ? `Đội xe nhà (${effectiveTrips.length} cuốc)`
+                    : `Xe thuê ngoài (${effectiveTrips.length} cuốc)`
                 }`,
                 subtitle: `Tổng chi phí ghi nhận: ${formatVnd(metrics.totalChiPhiCongTy)}`,
                 scope: scopeFilter,
@@ -968,7 +983,7 @@ export default function BusinessOverviewView({
               {scopeFilter === 'XE_NHA'
                 ? `BOT: ${formatTrieuDong(metrics.totalToll)}M • Phát sinh: ${formatVnd(metrics.totalPhatSinh)}`
                 : scopeFilter === 'THUE_NGOAI'
-                ? `Thuê ngoài: ${formatTrieuDong(metrics.totalCuocRa)}M (20 cuốc)`
+                ? `Thuê ngoài: ${formatTrieuDong(metrics.totalCuocRa)}M (${effectiveTrips.length} cuốc)`
                 : `BOT: ${formatTrieuDong(metrics.totalToll)}M • Thuê ngoài: ${formatTrieuDong(metrics.totalCuocRa)}M`}
             </div>
           </div>
@@ -1029,6 +1044,22 @@ export default function BusinessOverviewView({
           </div>
         </div>
       </div>
+
+      {/* ============================================================ */}
+      {/* KHỐI BÁO CÁO THỐNG KÊ TỪNG THÁNG (1–12) & IN BÁO CÁO TRỰC QUAN */}
+      {/* ============================================================ */}
+      <MonthlyBusinessReportSection
+        tripsData={tripsData}
+        scopeFilter={scopeFilter}
+        dateFilter={dateFilter}
+        onSelectDateFilter={(nextFilter) => setDateFilter(nextFilter)}
+        onOpenMonthDrawer={(drawerCfg) => openDrawer(drawerCfg)}
+        houseTrucks={houseTrucks}
+        subcontractorPartners={subcontractorPartners}
+        subcontractorTotals={subcontractorTotals}
+        printModalOpen={printModalOpen}
+        setPrintModalOpen={setPrintModalOpen}
+      />
 
       {/* ============================================================ */}
       {/* KHỐI 1: HIỆU QUẢ VẬN HÀNH ĐỘI XE NHÀ (ƯU TIÊN HÀNG ĐẦU CỦA GIÁM ĐỐC) */}
