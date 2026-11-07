@@ -24,13 +24,55 @@ import { fetchBusinessDebtsApi, fetchEirRemindersApi } from '../services/api.js'
 import PhoiRefundModal from './PhoiRefundModal.jsx';
 import TripDetailDrawer from './TripDetailDrawer.jsx';
 
+const MONTHS_LIST = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+const QUARTERS_LIST = [
+  { key: 'q_1', label: 'Quý 1', start: '2026-01-01', end: '2026-03-31' },
+  { key: 'q_2', label: 'Quý 2', start: '2026-04-01', end: '2026-06-30' },
+  { key: 'q_3', label: 'Quý 3', start: '2026-07-01', end: '2026-09-30' },
+  { key: 'q_4', label: 'Quý 4', start: '2026-10-01', end: '2026-12-31' }
+];
+
 // Ánh xạ kỳ thời gian sang khoảng ngày YYYY-MM-DD
-function getPeriodRange(filterKey, customStart, customEnd) {
+function getPeriodRange(filterKey, customStart, customEnd, exactDate) {
   if (filterKey === 'month') return { start_date: '2026-01-01', end_date: '2026-01-31' };
+  if (filterKey && filterKey.startsWith('month_')) {
+    const m = filterKey.slice(6);
+    const lastDay = new Date(2026, parseInt(m, 10), 0).getDate();
+    return { start_date: `2026-${m}-01`, end_date: `2026-${m}-${String(lastDay).padStart(2, '0')}` };
+  }
+  if (filterKey && filterKey.startsWith('q_')) {
+    const qObj = QUARTERS_LIST.find((q) => q.key === filterKey);
+    if (qObj) return { start_date: qObj.start, end_date: qObj.end };
+  }
+  if (filterKey === 'single_day') {
+    const d = exactDate || customStart || '2026-01-09';
+    return { start_date: d, end_date: d };
+  }
   if (filterKey === 'day_09') return { start_date: '2026-01-09', end_date: '2026-01-09' };
   if (filterKey === 'day_08') return { start_date: '2026-01-08', end_date: '2026-01-08' };
-  if (filterKey === 'range') return { start_date: customStart, end_date: customEnd };
+  if (filterKey === 'range') {
+    const s = customStart || '2026-01-01';
+    const e = customEnd || s;
+    return s <= e ? { start_date: s, end_date: e } : { start_date: e, end_date: s };
+  }
   return {}; // 'all'
+}
+
+function getPeriodDisplayLabel(filterKey, customStart, customEnd, exactDate) {
+  if (filterKey === 'all') return 'Toàn bộ năm 2026 (T1–T12)';
+  if (filterKey === 'month') return 'Tháng 01/2026';
+  if (filterKey && filterKey.startsWith('month_')) {
+    return `Tháng ${filterKey.slice(6)}/2026`;
+  }
+  if (filterKey && filterKey.startsWith('q_')) {
+    const qObj = QUARTERS_LIST.find((q) => q.key === filterKey);
+    return qObj ? `${qObj.label}/2026` : 'Theo quý';
+  }
+  if (filterKey === 'single_day') return `Ngày ${exactDate || customStart}`;
+  if (filterKey === 'day_09') return 'Ngày 09/01/2026';
+  if (filterKey === 'day_08') return 'Ngày 08/01/2026';
+  if (filterKey === 'range') return `Từ ${customStart} đến ${customEnd}`;
+  return 'Toàn bộ kỳ';
 }
 
 function toIntVnd(val) {
@@ -112,10 +154,12 @@ export default function DirectorDebtsView({
   // 1. Phân hệ chính: 'receivables' (Khách hàng) | 'phoi_advances' (Phơi) | 'payables' (Nhà xe)
   const [activeTab, setActiveTab] = useState('receivables');
 
-  // 2. Bộ lọc kỳ thời gian
-  const [dateFilter, setDateFilter] = useState('all'); // 'month' | 'day_09' | 'day_08' | 'range' | 'all'
+  // 2. Bộ lọc kỳ thời gian (Toàn bộ, T1..T12, Quý 1..4, Ngày cụ thể, Khoảng ngày)
+  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'month_01'..'month_12' | 'q_1'..'q_4' | 'single_day' | 'range'
+  const [exactDate, setExactDate] = useState('2026-01-09');
   const [rangeStart, setRangeStart] = useState('2026-01-01');
-  const [rangeEnd, setRangeEnd] = useState('2026-01-31');
+  const [rangeEnd, setRangeEnd] = useState('2026-11-30');
+  const [periodStatsCache, setPeriodStatsCache] = useState(null);
 
   // 3. Tìm kiếm và lọc trạng thái
   const [searchQuery, setSearchQuery] = useState('');
@@ -153,9 +197,9 @@ export default function DirectorDebtsView({
   })();
 
   const currentPeriodKey = useMemo(() => {
-    const range = getPeriodRange(dateFilter, rangeStart, rangeEnd);
+    const range = getPeriodRange(dateFilter, rangeStart, rangeEnd, exactDate);
     return `${dateFilter}:${range.start_date || 'ALL'}:${range.end_date || 'ALL'}`;
-  }, [dateFilter, rangeStart, rangeEnd]);
+  }, [dateFilter, rangeStart, rangeEnd, exactDate]);
 
   // Tải dữ liệu công nợ và tiền phơi từ backend (tách biệt lỗi để không gộp chung)
   const loadDebts = useCallback(async () => {
@@ -165,7 +209,7 @@ export default function DirectorDebtsView({
     setEirLoading(true);
     setEirError(null);
 
-    const range = getPeriodRange(dateFilter, rangeStart, rangeEnd);
+    const range = getPeriodRange(dateFilter, rangeStart, rangeEnd, exactDate);
 
     try {
       if (isSecretary) {
@@ -196,6 +240,9 @@ export default function DirectorDebtsView({
       // Xử lý công nợ khách hàng và nhà xe
       if (debtsRes && debtsRes.success && debtsRes.data) {
         setDebts(debtsRes.data);
+        if (debtsRes.data.period_stats) {
+          setPeriodStatsCache(debtsRes.data.period_stats);
+        }
         setDebtsPeriodKey(currentPeriodKey);
         setLoadError(null);
       } else {
@@ -221,7 +268,7 @@ export default function DirectorDebtsView({
         setEirLoading(false);
       }
     }
-  }, [dateFilter, rangeStart, rangeEnd, currentPeriodKey, isSecretary]);
+  }, [dateFilter, rangeStart, rangeEnd, exactDate, currentPeriodKey, isSecretary]);
 
   // Hàm thử lại tải riêng tiền phơi khi API phơi gặp sự cố
   const retryLoadEir = useCallback(async () => {
@@ -273,14 +320,12 @@ export default function DirectorDebtsView({
 
   // Cập nhật ngữ cảnh cho Trợ lý theo chuẩn startDate/endDate/all
   useEffect(() => {
-    const periods = {
-      month: { startDate: '2026-01-01', endDate: '2026-01-31', kind: 'month', label: 'Tháng 01/2026' },
-      day_09: { startDate: '2026-01-09', endDate: '2026-01-09', kind: 'day_09', label: 'Ngày 09/01' },
-      day_08: { startDate: '2026-01-08', endDate: '2026-01-08', kind: 'day_08', label: 'Ngày 08/01' },
-      range: { startDate: rangeStart, endDate: rangeEnd, kind: 'range', label: `${rangeStart} → ${rangeEnd}` },
-      all: { startDate: null, endDate: null, all: true, kind: 'all', label: 'Toàn bộ' }
-    };
-    const period = periods[dateFilter] || periods.month;
+    const range = getPeriodRange(dateFilter, rangeStart, rangeEnd, exactDate);
+    const label = getPeriodDisplayLabel(dateFilter, rangeStart, rangeEnd, exactDate);
+    const period =
+      dateFilter === 'all'
+        ? { startDate: null, endDate: null, all: true, kind: 'all', label: 'Toàn bộ' }
+        : { startDate: range.start_date || null, endDate: range.end_date || null, kind: dateFilter, label };
 
     const q = searchQuery.trim().toLowerCase();
     const entity = q ? { kind: activeTab === 'payables' ? 'subcontractor' : 'customer', value: q } : null;
@@ -291,7 +336,7 @@ export default function DirectorDebtsView({
       period,
       entity
     });
-  }, [activeTab, dateFilter, rangeStart, rangeEnd, searchQuery, onAssistantContext]);
+  }, [activeTab, dateFilter, rangeStart, rangeEnd, exactDate, searchQuery, onAssistantContext]);
 
   // Kiểm tra tính hợp lệ của dữ liệu theo kỳ
   const isDataCurrent = Boolean(debts && debtsPeriodKey === currentPeriodKey && !loading && !loadError);
@@ -437,6 +482,20 @@ export default function DirectorDebtsView({
     const q = searchQuery.toLowerCase().trim();
     let list = allReminderItems;
 
+    if (dateFilter !== 'all') {
+      const r = getPeriodRange(dateFilter, rangeStart, rangeEnd, exactDate);
+      if (r.start_date && r.end_date) {
+        const fullMonthMatch = String(r.start_date).match(/^2026-(\d{2})-01$/);
+        const mPrefix = fullMonthMatch ? `T${parseInt(fullMonthMatch[1], 10)}-` : null;
+        list = list.filter((it) => {
+          const advDate = String(it.advance_date || '').slice(0, 10);
+          const tripId = String(it.trip_id || '');
+          if (mPrefix && tripId.toUpperCase().startsWith(mPrefix)) return true;
+          return advDate >= r.start_date && advDate <= r.end_date;
+        });
+      }
+    }
+
     if (filterStatus === 'UNPAID') {
       list = list.filter((it) => it.balance_due > 0);
     } else if (filterStatus === 'PAID') {
@@ -459,7 +518,7 @@ export default function DirectorDebtsView({
     }
 
     return list;
-  }, [allReminderItems, filterStatus, searchQuery]);
+  }, [allReminderItems, dateFilter, rangeStart, rangeEnd, exactDate, filterStatus, searchQuery]);
 
   // Tóm tắt chỉ số tài chính Phải thu khách hàng (khớp chuẩn API total_receivable_with_vat)
   const recSummary = {
@@ -536,52 +595,196 @@ export default function DirectorDebtsView({
           </div>
         </div>
 
-        {/* BỘ LỌC KỲ THỜI GIAN */}
-        <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-slate-500 flex items-center space-x-1 mr-1">
-            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-            <span>Kỳ công nợ:</span>
-          </span>
+        {/* BỘ LỌC KỲ CÔNG NỢ NÂNG CẤP: ĐỦ 12 THÁNG (T1-T12), 4 QUÝ, TÌM THEO NGÀY & KHOẢNG NGÀY */}
+        <div
+          data-testid="debts-period-filter-panel"
+          className="mt-3.5 pt-3.5 border-t border-slate-200/80 space-y-2.5"
+        >
+          {/* HÀNG 1: CHỌN NHANH TOÀN BỘ NĂM, CÁC QUÝ & TỪNG THÁNG TRONG NĂM (T1 - T12) */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-bold text-slate-700 flex items-center space-x-1 mr-1">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              <span>Kỳ công nợ theo tháng:</span>
+            </span>
 
-          <button
-            onClick={() => setDateFilter('all')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'all'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Toàn bộ kỳ
-          </button>
+            <button
+              type="button"
+              data-testid="debts-period-btn-all"
+              onClick={() => setDateFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                dateFilter === 'all'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              Toàn bộ kỳ{periodStatsCache?.total_all_trips ? ` (${periodStatsCache.total_all_trips})` : ''}
+            </button>
 
-          <button
-            onClick={() => setDateFilter('month')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'month'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Tháng 01/2026
-          </button>
+            {MONTHS_LIST.map((mKey) => {
+              const mCount = periodStatsCache?.month_trip_counts?.[mKey];
+              const isSelected =
+                dateFilter === `month_${mKey}` || (mKey === '01' && dateFilter === 'month');
+              return (
+                <button
+                  key={mKey}
+                  type="button"
+                  data-testid={`debts-period-btn-month-${mKey}`}
+                  onClick={() => setDateFilter(`month_${mKey}`)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    isSelected
+                      ? 'bg-blue-700 text-white font-bold shadow-xs ring-2 ring-blue-200'
+                      : mCount === 0
+                      ? 'bg-slate-50 text-slate-400 hover:bg-slate-100 border border-slate-200/60'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                  title={`Xem công nợ Tháng ${mKey}/2026`}
+                >
+                  <span>Tháng {parseInt(mKey, 10)}</span>
+                  {mCount !== undefined && (
+                    <span
+                      className={`text-[10px] font-mono ${
+                        isSelected ? 'text-blue-100' : 'text-slate-500'
+                      }`}
+                    >
+                      ({mCount})
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
-          {dateFilter === 'range' && (
-            <div className="flex items-center space-x-2 text-xs bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
-              <input
-                type="date"
-                value={rangeStart}
-                onChange={(e) => setRangeStart(e.target.value)}
-                className="border border-slate-300 rounded px-1.5 py-0.5 text-xs bg-white"
-              />
-              <span className="text-slate-400">→</span>
-              <input
-                type="date"
-                value={rangeEnd}
-                onChange={(e) => setRangeEnd(e.target.value)}
-                className="border border-slate-300 rounded px-1.5 py-0.5 text-xs bg-white"
-              />
+          {/* HÀNG 2: TRA CỨU THEO NGÀY CỤ THỂ, KHOẢNG NGÀY (TỪ NGÀY -> ĐẾN NGÀY) & THEO QUÝ */}
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/80 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Chọn theo Quý */}
+              <div className="flex items-center gap-1 pr-2 border-r border-slate-200">
+                <span className="text-[11px] font-semibold text-slate-500">Theo quý:</span>
+                {QUARTERS_LIST.map((q) => (
+                  <button
+                    key={q.key}
+                    type="button"
+                    data-testid={`debts-period-btn-${q.key}`}
+                    onClick={() => setDateFilter(q.key)}
+                    className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                      dateFilter === q.key
+                        ? 'bg-teal-700 text-white font-bold shadow-2xs'
+                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {q.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tìm theo 1 Ngày cụ thể */}
+              <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
+                <button
+                  type="button"
+                  data-testid="debts-period-btn-single-day"
+                  onClick={() => setDateFilter('single_day')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    dateFilter === 'single_day'
+                      ? 'bg-indigo-700 text-white font-bold shadow-2xs'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>Tìm theo ngày:</span>
+                </button>
+                <input
+                  type="date"
+                  data-testid="debts-input-exact-date"
+                  value={exactDate}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setExactDate(e.target.value);
+                      setDateFilter('single_day');
+                    }
+                  }}
+                  className={`border rounded-md px-2 py-1 text-xs font-mono transition-all ${
+                    dateFilter === 'single_day'
+                      ? 'border-indigo-600 bg-indigo-50/40 text-indigo-950 font-bold ring-1 ring-indigo-500'
+                      : 'border-slate-300 bg-white text-slate-700'
+                  }`}
+                />
+              </div>
+
+              {/* Tìm theo Khoảng ngày (Từ ngày -> Đến ngày) */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  data-testid="debts-period-btn-range"
+                  onClick={() => setDateFilter('range')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                    dateFilter === 'range'
+                      ? 'bg-amber-600 text-white font-bold shadow-2xs'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Khoảng ngày:
+                </button>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    data-testid="debts-input-range-start"
+                    value={rangeStart}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setRangeStart(e.target.value);
+                        setDateFilter('range');
+                      }
+                    }}
+                    className={`border rounded-md px-2 py-1 text-xs font-mono ${
+                      dateFilter === 'range'
+                        ? 'border-amber-600 bg-amber-50/30 text-slate-900 font-bold'
+                        : 'border-slate-300 bg-white text-slate-700'
+                    }`}
+                  />
+                  <span className="text-slate-400 font-bold">→</span>
+                  <input
+                    type="date"
+                    data-testid="debts-input-range-end"
+                    value={rangeEnd}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setRangeEnd(e.target.value);
+                        setDateFilter('range');
+                      }
+                    }}
+                    className={`border rounded-md px-2 py-1 text-xs font-mono ${
+                      dateFilter === 'range'
+                        ? 'border-amber-600 bg-amber-50/30 text-slate-900 font-bold'
+                        : 'border-slate-300 bg-white text-slate-700'
+                    }`}
+                  />
+                </div>
+              </div>
             </div>
-          )}
+
+            {/* Nhãn hiển thị kỳ đang lọc & Nút xóa bộ lọc kỳ */}
+            <div className="flex items-center gap-2">
+              <span
+                data-testid="debts-active-period-badge"
+                className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200 font-semibold text-[11px]"
+              >
+                Đang xem: {getPeriodDisplayLabel(dateFilter, rangeStart, rangeEnd, exactDate)}
+                {isDataCurrent && debts?.period_stats?.scoped_trips !== undefined
+                  ? ` • ${debts.period_stats.scoped_trips} chuyến`
+                  : ''}
+              </span>
+              {dateFilter !== 'all' && (
+                <button
+                  type="button"
+                  data-testid="debts-btn-reset-period"
+                  onClick={() => setDateFilter('all')}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-semibold cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                  <span>Xem toàn bộ</span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

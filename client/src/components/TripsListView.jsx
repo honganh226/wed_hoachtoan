@@ -144,9 +144,10 @@ export default function TripsListView({
   const [error, setError] = useState(null);
 
   // 2. Bộ lọc
-  const [dateFilter, setDateFilter] = useState('all'); // 'month' | 'day_09' | 'day_08' | 'range' | 'all'
+  const [dateFilter, setDateFilter] = useState('all'); // 'month' | 'month_01'..'month_12' | 'single_day' | 'range' | 'all'
+  const [exactDate, setExactDate] = useState('2026-01-09');
   const [rangeStart, setRangeStart] = useState('2026-01-01');
-  const [rangeEnd, setRangeEnd] = useState('2026-01-31');
+  const [rangeEnd, setRangeEnd] = useState('2026-11-30');
   const [vehicleFilter, setVehicleFilter] = useState('ALL'); // 'ALL' | 'INTERNAL_ALL' | 'SUBCONTRACTOR_ALL' | plate | subName
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'PAID' | 'TUOI' | 'UNPAID' | 'OFFSET'
   const [warningFilter, setWarningFilter] = useState('ALL'); // 'ALL' | 'MISSING_FUEL' | 'GROUP'
@@ -312,12 +313,13 @@ export default function TripsListView({
         return getTripAccountingMonth(trip) === `2026-${m}`;
       }
       if (dateFilter === 'month') return getTripAccountingMonth(trip) === '2026-01';
+      if (dateFilter === 'single_day') return date === exactDate;
       if (dateFilter === 'day_09') return date === '2026-01-09';
       if (dateFilter === 'day_08') return date === '2026-01-08';
       if (dateFilter === 'range') return date >= rangeStart && date <= rangeEnd;
       return true; // 'all'
     });
-  }, [mappedTrips, dateFilter, rangeStart, rangeEnd]);
+  }, [mappedTrips, dateFilter, exactDate, rangeStart, rangeEnd]);
 
   // Các nhãn số lượng động cho bộ lọc kỳ và bộ lọc trạng thái (không viết cứng số lượng)
   const filterCounts = useMemo(() => {
@@ -752,23 +754,69 @@ export default function TripsListView({
             );
           })}
 
-          {dateFilter === 'range' && (
-            <div className="flex items-center space-x-2 text-xs bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+          <div className="flex flex-wrap items-center gap-2 ml-auto pt-1 sm:pt-0">
+            <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 text-xs">
+              <button
+                type="button"
+                onClick={() => setDateFilter('single_day')}
+                className={`px-2 py-0.5 rounded font-semibold cursor-pointer ${
+                  dateFilter === 'single_day'
+                    ? 'bg-indigo-700 text-white'
+                    : 'text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Theo ngày:
+              </button>
+              <input
+                type="date"
+                value={exactDate}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setExactDate(e.target.value);
+                    setDateFilter('single_day');
+                  }
+                }}
+                className="border border-slate-300 rounded px-1.5 py-0.5 text-xs bg-white font-mono"
+              />
+            </div>
+
+            <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 text-xs">
+              <button
+                type="button"
+                onClick={() => setDateFilter('range')}
+                className={`px-2 py-0.5 rounded font-semibold cursor-pointer ${
+                  dateFilter === 'range'
+                    ? 'bg-amber-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Khoảng ngày:
+              </button>
               <input
                 type="date"
                 value={rangeStart}
-                onChange={(e) => setRangeStart(e.target.value)}
-                className="border border-slate-300 rounded px-1.5 py-0.5 text-xs bg-white"
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setRangeStart(e.target.value);
+                    setDateFilter('range');
+                  }
+                }}
+                className="border border-slate-300 rounded px-1.5 py-0.5 text-xs bg-white font-mono"
               />
               <span className="text-slate-400">→</span>
               <input
                 type="date"
                 value={rangeEnd}
-                onChange={(e) => setRangeEnd(e.target.value)}
-                className="border border-slate-300 rounded px-1.5 py-0.5 text-xs bg-white"
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setRangeEnd(e.target.value);
+                    setDateFilter('range');
+                  }
+                }}
+                className="border border-slate-300 rounded px-1.5 py-0.5 text-xs bg-white font-mono"
               />
             </div>
-          )}
+          </div>
         </div>
       </div>
 

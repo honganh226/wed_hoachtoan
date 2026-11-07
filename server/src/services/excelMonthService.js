@@ -999,7 +999,26 @@ export class ExcelMonthService {
     const totalSubPaid = subcontractorPayables.reduce((s, c) => s + c.total_paid, 0);
     const totalSubDue = subcontractorPayables.reduce((s, c) => s + c.balance_due, 0);
 
+    // Tổng hợp số chuyến theo từng tháng trong năm (01..12) để UI hiển thị trên các nút chọn tháng
+    const monthTripCounts = {};
+    for (let i = 1; i <= 12; i += 1) {
+      const mKey = String(i).padStart(2, '0');
+      monthTripCounts[mKey] = 0;
+    }
+    data.rows.forEach(r => {
+      const ym = this.getAccountingMonth(r);
+      if (ym && ym.startsWith('2026-')) {
+        const mKey = ym.slice(5, 7);
+        if (monthTripCounts[mKey] !== undefined) monthTripCounts[mKey] += 1;
+      }
+    });
+
     return {
+      period_stats: {
+        total_all_trips: data.rows.length,
+        scoped_trips: rows.length,
+        month_trip_counts: monthTripCounts
+      },
       receivables: {
         total_receivable: totalReceivable,
         total_receivable_pre_vat: totalReceivable,
