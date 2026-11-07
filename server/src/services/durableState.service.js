@@ -105,7 +105,7 @@ async function remote(method, suffix = '', body) {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(60000)
+    signal: AbortSignal.timeout(120000)
   });
   if (!response.ok) {
     throw Error(`Không thể lưu database bền vững (HTTP ${response.status})`);
@@ -163,55 +163,58 @@ async function flushState() {
   const now = new Date().toISOString();
   let patchSuccess = false;
 
-  try {
-    const rows = await remote('PATCH', `?id=eq.main&revision=eq.${revision}&select=revision,write_id,payload_hash`, {
-      revision: next,
-      payload: encryptedPayload,
-      write_id: writeId,
-      payload_hash: payloadHash,
-      updated_at: now
-    });
-    if (rows && rows.length === 1) {
-      patchSuccess = true;
-      revision = next;
-      return;
-    }
-  } catch (err) {
-    // Xử lý timeout hoặc rớt mạng khi PATCH:
-    // Tuyệt đối không coi cloud revision === next là thành công nếu write_id hoặc hash không khớp!
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const checkRows = await remote('GET', '?id=eq.main&select=revision,write_id,payload_hash');
-      if (checkRows && checkRows.length > 0) {
-        const cloudRev = Number(checkRows[0].revision);
-        const cloudWriteId = checkRows[0].write_id;
-        const cloudHash = checkRows[0].payload_hash;
+      const rows = await remote('PATCH', `?id=eq.main&revision=eq.${revision}&select=revision,write_id,payload_hash`, {
+        revision: next,
+        payload: encryptedPayload,
+        write_id: writeId,
+        payload_hash: payloadHash,
+        updated_at: now
+      });
+      if (rows && rows.length === 1) {
+        patchSuccess = true;
+        revision = next;
+        return;
+      }
+    } catch (err) {
+      // Xử lý timeout hoặc rớt mạng khi PATCH:
+      // Kiểm tra xem lượt ghi đã thực sự đến Supabase chưa trước khi kết luận lỗi
+      try {
+        const checkRows = await remote('GET', '?id=eq.main&select=revision,write_id,payload_hash');
+        if (checkRows && checkRows.length > 0) {
+          const cloudRev = Number(checkRows[0].revision);
+          const cloudWriteId = checkRows[0].write_id;
+          const cloudHash = checkRows[0].payload_hash;
 
-        if (cloudRev === next) {
-          if (cloudWriteId === writeId || (cloudHash && cloudHash === payloadHash)) {
-            // Đúng là lượt ghi này đã lưu thành công trước khi mất phản hồi
-            patchSuccess = true;
-            revision = next;
-            return;
-          } else {
-            // Phiên khác đã ghi payload khác với cùng revision dự kiến!
+          if (cloudRev === next) {
+            if (cloudWriteId === writeId || (cloudHash && cloudHash === payloadHash)) {
+              patchSuccess = true;
+              revision = next;
+              return;
+            } else {
+              ready = false;
+              throw Error('Xung đột phiên bản: Supabase đã được cập nhật bởi một phiên khác với nội dung khác.');
+            }
+          } else if (cloudRev > next) {
             ready = false;
-            throw Error('Xung đột phiên bản: Supabase đã được cập nhật bởi một phiên khác với nội dung khác.');
+            throw Error(`Xung đột phiên bản: Supabase đã có revision mới hơn (${cloudRev} > ${next}).`);
           }
-        } else if (cloudRev > next) {
-          ready = false;
-          throw Error(`Xung đột phiên bản: Supabase đã có revision mới hơn (${cloudRev} > ${next}).`);
-        } else if (cloudRev === revision) {
-          throw Error('Lưu lên Supabase không thành công (timeout hoặc mất kết nối).');
+        }
+      } catch (checkErr) {
+        if (checkErr.message?.includes('Xung đột phiên bản')) {
+          throw checkErr;
         }
       }
-    } catch (checkErr) {
-      if (checkErr.message?.includes('Xung đột phiên bản') || checkErr.message?.includes('Lưu lên Supabase không thành công')) {
-        throw checkErr;
+
+      if (attempt < 3) {
+        console.warn(`[DURABLE STATE] Lần ghi ${attempt}/3 gặp lỗi mạng (${err.message}). Thử lại sau ${attempt * 2}s...`);
+        await new Promise(r => setTimeout(r, attempt * 2000));
+        continue;
       }
-      ready = false;
-      throw Error('Chưa thể xác định trạng thái lưu bền vững trên Supabase do mất kết nối. Tạm khóa ghi để tránh xung đột.');
+
+      throw Error('Lưu lên Supabase không thành công (timeout hoặc mất kết nối).');
     }
-    throw Error(sanitizeError(err.message));
   }
 
   if (!patchSuccess) {
