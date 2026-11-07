@@ -113,7 +113,7 @@ export default function DirectorDebtsView({
   const [activeTab, setActiveTab] = useState('receivables');
 
   // 2. Bộ lọc kỳ thời gian
-  const [dateFilter, setDateFilter] = useState('month'); // 'month' | 'day_09' | 'day_08' | 'range' | 'all'
+  const [dateFilter, setDateFilter] = useState('all'); // 'month' | 'day_09' | 'day_08' | 'range' | 'all'
   const [rangeStart, setRangeStart] = useState('2026-01-01');
   const [rangeEnd, setRangeEnd] = useState('2026-01-31');
 
@@ -544,39 +544,6 @@ export default function DirectorDebtsView({
           </span>
 
           <button
-            onClick={() => setDateFilter('month')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'month'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Tháng 01/2026
-          </button>
-
-          <button
-            onClick={() => setDateFilter('day_09')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'day_09'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Ngày 09/01/2026
-          </button>
-
-          <button
-            onClick={() => setDateFilter('day_08')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'day_08'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Ngày 08/01/2026
-          </button>
-
-          <button
             onClick={() => setDateFilter('all')}
             className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
               dateFilter === 'all'
@@ -585,6 +552,17 @@ export default function DirectorDebtsView({
             }`}
           >
             Toàn bộ kỳ
+          </button>
+
+          <button
+            onClick={() => setDateFilter('month')}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+              dateFilter === 'month'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Tháng 01/2026
           </button>
 
           {dateFilter === 'range' && (

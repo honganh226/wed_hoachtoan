@@ -338,9 +338,6 @@ export class ExcelImportService {
         continue;
       }
 
-      const stt = parseInt(sttCell?.v, 10);
-      if (isNaN(stt) || stt <= 0) continue;
-
       // Monthly templates may pre-number otherwise completely empty rows.
       const hasRowData = Object.entries(colMap).some(([key, col]) => {
         if (key === 'stt' || typeof col !== 'string' || !/^[A-Z]+$/.test(col)) return false;
@@ -348,8 +345,32 @@ export class ExcelImportService {
         return cell?.f || (cell?.v != null && String(cell.v).trim() !== '');
       });
       if (!hasRowData) {
-        skippedEmptyRows.push(r);
+        if (sttCell?.v != null && String(sttCell.v).trim() !== '') {
+          skippedEmptyRows.push(r);
+        }
         continue;
+      }
+
+      // Check if it's a summary/footer row (e.g. "TỔNG", "THÁNG 8 -")
+      const colAVal = String(sheet[`A${r}`]?.v || '').trim().toUpperCase();
+      const colBVal = String(sheet[`B${r}`]?.v || '').trim().toUpperCase();
+      if ((colAVal.startsWith('TỔNG') || colBVal.startsWith('TỔNG') || colBVal.startsWith('THÁNG')) && !getCell('container_number', r)?.v) {
+        continue;
+      }
+
+      let stt = parseInt(sttCell?.v, 10);
+      const sttSource = sttCell?.v != null ? String(sttCell.v).trim() : null;
+      if (isNaN(stt) || stt <= 0) {
+        // If STT is missing or not a number, row is only valid if it has date AND core trip data
+        const hasCoreTripData = Boolean(
+          getCell('customer_name', r)?.v ||
+          getCell('container_number', r)?.v ||
+          getCell('base_revenue', r)?.v
+        );
+        if (!hasCoreTripData) {
+          continue;
+        }
+        stt = rows.length + 1;
       }
 
       // 1. Ngày tháng
@@ -523,7 +544,7 @@ export class ExcelImportService {
         source_cells: sourceCellsByRow.get(r) || {},
         source_row: r,
         stt,
-        stt_source: stt,
+        stt_source: sttSource || stt,
         raw_date: rawDate,
         trip_date: normalizedDate,
         customer_name: customer,

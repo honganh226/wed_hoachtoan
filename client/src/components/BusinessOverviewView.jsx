@@ -57,7 +57,7 @@ export default function BusinessOverviewView({
   const [loadError, setLoadError] = useState(null);
 
   // 1. BỘ LỌC TOÀN TRANG: THỜI GIAN & PHẠM VI (SCOPE)
-  const [dateFilter, setDateFilter] = useState('month'); // 'month' | 'day_09' | 'day_08' | 'all' | 'range'
+  const [dateFilter, setDateFilter] = useState('all'); // 'month' | 'day_09' | 'day_08' | 'all' | 'range'
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
   const [scopeFilter, setScopeFilter] = useState('ALL'); // 'ALL' | 'XE_NHA' | 'THUE_NGOAI'
@@ -85,6 +85,12 @@ export default function BusinessOverviewView({
 
   // Chuyển đổi bộ lọc thời gian thành khoảng ngày hợp lệ cho API
   const getPeriodRange = useCallback((filterKey, start, end) => {
+    if (filterKey === 'all') return {};
+    if (filterKey.startsWith('month_')) {
+      const m = filterKey.slice(6);
+      const lastDay = new Date(2026, parseInt(m, 10), 0).getDate();
+      return { start_date: `2026-${m}-01`, end_date: `2026-${m}-${lastDay}` };
+    }
     if (filterKey === 'month') return { start_date: '2026-01-01', end_date: '2026-01-31' };
     if (filterKey === 'day_09') return { start_date: '2026-01-09', end_date: '2026-01-09' };
     if (filterKey === 'day_08') return { start_date: '2026-01-08', end_date: '2026-01-08' };
@@ -92,8 +98,7 @@ export default function BusinessOverviewView({
       if (start && end) return { start_date: start, end_date: end };
       return {};
     }
-    if (filterKey === 'all') return {};
-    return { start_date: '2026-01-01', end_date: '2026-01-31' };
+    return {};
   }, []);
 
   // Tải dữ liệu công nợ theo đúng kỳ đang chọn
@@ -283,6 +288,10 @@ export default function BusinessOverviewView({
       )
         return false;
       if (dateFilter === 'all') return true;
+      if (dateFilter.startsWith('month_')) {
+        const m = dateFilter.slice(6);
+        return Boolean(trip.trip_date && trip.trip_date.startsWith(`2026-${m}`));
+      }
       if (dateFilter === 'month' && !trip.trip_date?.startsWith('2026-01')) return false;
       if (dateFilter === 'day_09' && trip.trip_date !== '2026-01-09') return false;
       if (dateFilter === 'day_08' && trip.trip_date !== '2026-01-08') return false;
@@ -717,7 +726,7 @@ export default function BusinessOverviewView({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-slate-900">
-              Tổng quan kinh doanh {dateFilter === 'month' ? 'Tháng 01/2026' : ''}
+              Tổng quan kinh doanh {dateFilter === 'all' ? '(Toàn bộ 11 tháng)' : dateFilter.startsWith('month_') ? `Tháng ${parseInt(dateFilter.slice(6), 10)}/2026` : dateFilter === 'month' ? 'Tháng 01/2026' : ''}
             </h1>
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-slate-100 text-slate-700 border border-slate-200">
               Chuẩn điều hành
@@ -760,11 +769,20 @@ export default function BusinessOverviewView({
             onChange={(e) => setDateFilter(e.target.value)}
             className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-medium focus:outline-hidden focus:ring-1 focus:ring-slate-400"
           >
-            <option value="month">Tháng 01/2026 (Toàn bộ bảng kê)</option>
-            <option value="day_09">Ngày 09/01/2026</option>
-            <option value="day_08">Ngày 08/01/2026</option>
+            <option value="all">Tất cả thời gian (Toàn bộ 11 tháng)</option>
+            <option value="month_11">Tháng 11/2026</option>
+            <option value="month_10">Tháng 10/2026</option>
+            <option value="month_09">Tháng 09/2026</option>
+            <option value="month_08">Tháng 08/2026</option>
+            <option value="month_07">Tháng 07/2026</option>
+            <option value="month_06">Tháng 06/2026</option>
+            <option value="month_05">Tháng 05/2026</option>
+            <option value="month_04">Tháng 04/2026</option>
+            <option value="month_03">Tháng 03/2026</option>
+            <option value="month_02">Tháng 02/2026</option>
+            <option value="month_01">Tháng 01/2026</option>
+            <option value="month">Tháng 01/2026 (Mẫu cũ)</option>
             <option value="range">Khoảng ngày tùy chọn</option>
-            <option value="all">Tất cả thời gian</option>
           </select>
 
           {dateFilter === 'range' && (

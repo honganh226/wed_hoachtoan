@@ -144,7 +144,7 @@ export default function TripsListView({
   const [error, setError] = useState(null);
 
   // 2. Bộ lọc
-  const [dateFilter, setDateFilter] = useState('month'); // 'month' | 'day_09' | 'day_08' | 'range' | 'all'
+  const [dateFilter, setDateFilter] = useState('all'); // 'month' | 'day_09' | 'day_08' | 'range' | 'all'
   const [rangeStart, setRangeStart] = useState('2026-01-01');
   const [rangeEnd, setRangeEnd] = useState('2026-01-31');
   const [vehicleFilter, setVehicleFilter] = useState('ALL'); // 'ALL' | 'INTERNAL_ALL' | 'SUBCONTRACTOR_ALL' | plate | subName
@@ -306,6 +306,11 @@ export default function TripsListView({
   const scopedTrips = useMemo(() => {
     return mappedTrips.filter((trip) => {
       const date = trip.trip_date || '';
+      if (dateFilter === 'all') return true;
+      if (dateFilter.startsWith('month_')) {
+        const m = dateFilter.slice(6);
+        return date.startsWith(`2026-${m}`);
+      }
       if (dateFilter === 'month') return date >= '2026-01-01' && date <= '2026-01-31';
       if (dateFilter === 'day_09') return date === '2026-01-09';
       if (dateFilter === 'day_08') return date === '2026-01-08';
@@ -606,14 +611,14 @@ export default function TripsListView({
 
   // Kiểm tra có điều kiện lọc nào đang hoạt động
   const isFilteringActive =
-    dateFilter !== 'month' ||
+    dateFilter !== 'all' ||
     vehicleFilter !== 'ALL' ||
     statusFilter !== 'ALL' ||
     warningFilter !== 'ALL' ||
     Boolean(searchTerm.trim());
 
   const handleResetFilters = () => {
-    setDateFilter('month');
+    setDateFilter('all');
     setVehicleFilter('ALL');
     setStatusFilter('ALL');
     setWarningFilter('ALL');
@@ -703,39 +708,6 @@ export default function TripsListView({
           </span>
 
           <button
-            onClick={() => setDateFilter('month')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'month'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Tháng 01/2026 ({filterCounts.monthCount} cuốc)
-          </button>
-
-          <button
-            onClick={() => setDateFilter('day_09')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'day_09'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Ngày 09/01 ({filterCounts.day09Count} cuốc)
-          </button>
-
-          <button
-            onClick={() => setDateFilter('day_08')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-              dateFilter === 'day_08'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Ngày 08/01 ({filterCounts.day08Count} cuốc)
-          </button>
-
-          <button
             onClick={() => setDateFilter('all')}
             className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
               dateFilter === 'all'
@@ -744,6 +716,39 @@ export default function TripsListView({
             }`}
           >
             Toàn bộ ({filterCounts.allCount} cuốc)
+          </button>
+
+          <button
+            onClick={() => setDateFilter('month_11')}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+              dateFilter === 'month_11'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Tháng 11/2026
+          </button>
+
+          <button
+            onClick={() => setDateFilter('month_10')}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+              dateFilter === 'month_10'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Tháng 10/2026
+          </button>
+
+          <button
+            onClick={() => setDateFilter('month')}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+              dateFilter === 'month'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Tháng 01/2026
           </button>
 
           {dateFilter === 'range' && (
