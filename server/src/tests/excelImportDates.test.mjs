@@ -22,6 +22,20 @@ function parse(headers,rows,merges=[]) {
   return service.parseAndPreview({buffer:XLSX.write(wb,{type:'buffer',bookType:'xlsx'}),filename:'bang-ke-test.xlsx'});
 }
 const tests=[
+ ['Nhóm ô gộp không bị gộp lẫn giữa các sheet tháng',()=>{
+   const wb=XLSX.utils.book_new();
+   for(const name of ['T8-2026','T9-2026']) {
+     const sheet=XLSX.utils.aoa_to_sheet([['STT','NGÀY','CHỦ HÀNG','TUYẾN','CƯỚC VÀO','LOẠI'],[1,'07/09/2026','A','HP-HN',1000000,'40HC'],[2,null,'B','HP-HN',2000000,'40FR']]);
+     sheet['!merges']=[{s:{r:1,c:1},e:{r:2,c:1}}];XLSX.utils.book_append_sheet(wb,sheet,name);
+   }
+   const buffer=XLSX.write(wb,{type:'buffer',bookType:'xlsx'});
+   const a=service.parseAndPreview({buffer,filename:'kehoach.xlsx',sheetName:'T8-2026'});
+   const b=service.parseAndPreview({buffer,filename:'kehoach.xlsx',sheetName:'T9-2026'});
+   assert.notEqual(a.rows[0].group_id,b.rows[0].group_id);
+   assert.equal(a.rows[0].group_id,a.rows[1].group_id);
+   assert.equal(a.rows[0].container_type_raw,'40HC');
+   assert.equal(a.rows[1].source_cells.F3.value,'40FR');
+ }],
  ['Sheet tổng hợp đầu file cho chọn bảng chuyến trước khi đọc',()=>{
    const wb=XLSX.utils.book_new();
    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['STT','THÁNG','TỔNG CƯỚC'],[1,'THÁNG 1',1000000]]),'SỐ LIỆU NĂM');

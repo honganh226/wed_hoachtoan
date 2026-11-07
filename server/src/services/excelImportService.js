@@ -179,7 +179,7 @@ export class ExcelImportService {
         else if (h.includes('TUYẾN')) detected.route_name = col;
         else if (h.includes('SỐ CONT') || h.includes('MÃ CONT') || h === 'CONT') detected.container_number = col;
         else if (h === 'BKS' || h.includes('BIỂN SỐ') || h.includes('SỐ XE')) detected.vehicle_plate = col;
-        else if (h.includes('LOẠI CONT') || h.includes('LOẠI CONTAINER') || h.includes('KIỂU CONT')) detected.container_type_col = col;
+        else if (h === 'LOẠI' || h.includes('LOẠI CONT') || h.includes('LOẠI CONTAINER') || h.includes('KIỂU CONT')) detected.container_type_col = col;
         else if (h === '40' || h === "40'") detected.cont_40 = col;
         else if (h === '20' || h === "20'") detected.cont_20 = col;
         else if (h.includes('PHƠI NÂNG HẠ') || h.includes('TIỀN PHƠI') || h.includes('PHƠI')) detected.phoi_nang_ha = col;
@@ -307,6 +307,13 @@ export class ExcelImportService {
     const isThang1Structure = fileHash === baselineHash;
     const fuelMap = getFuelPriceMap();
 
+    const sourceCellsByRow = new Map();
+    for (const [address, cell] of Object.entries(sheet)) {
+      if (!/^[A-Z]+\d+$/.test(address) || (cell.v == null && !cell.f)) continue;
+      const rowNumber = XLSX.utils.decode_cell(address).r + 1;
+      if (!sourceCellsByRow.has(rowNumber)) sourceCellsByRow.set(rowNumber, {});
+      sourceCellsByRow.get(rowNumber)[address] = { value: cell.v ?? null, ...(cell.f ? { formula: cell.f } : {}) };
+    }
     const rows = [];
     const skippedEmptyRows = [];
     const startRow = colMap.data_start_row || 3;
@@ -507,12 +514,13 @@ export class ExcelImportService {
       let rowMergedGroup = null;
       for (const m of merges) {
         if (r - 1 >= m.s.r && r - 1 <= m.e.r && m.s.r !== m.e.r) {
-          rowMergedGroup = `GROUP-${m.s.r + 1}-${m.e.r + 1}`;
+          rowMergedGroup = `GROUP-${fileHash.slice(0, 12)}-${encodeURIComponent(selectedSheetName)}-${m.s.r + 1}-${m.e.r + 1}`;
           break;
         }
       }
 
       rows.push({
+        source_cells: sourceCellsByRow.get(r) || {},
         source_row: r,
         stt,
         stt_source: stt,
