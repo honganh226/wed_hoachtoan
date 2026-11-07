@@ -33,6 +33,14 @@ function cleanHeader(text) {
     .replace(/\s+/g, ' ');
 }
 
+// Select the trip date explicitly. Payment/due dates must never overwrite it.
+function tripDateHeaderScore(value) {
+  const header = cleanHeader(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/Đ/g, 'D');
+  if (/^NGAY (CHAY|VAN CHUYEN|CHUYEN|THUC HIEN)(\s|$)/.test(header)) return 3;
+  if (/^NGAY(?: THANG)?(?: NAM)?$/.test(header) || header === 'DATE') return 2;
+  return 0;
+}
+
 export class ExcelImportService {
   /**
    * Chữ ký dòng Excel: ổn định kể cả khi Giám đốc sửa chuyến sau khi nhập
@@ -75,7 +83,7 @@ export class ExcelImportService {
       for (let c = 0; c <= maxCol; c++) {
         const colLetter = XLSX.utils.encode_col(c);
         const val = cleanHeader(sheet[`${colLetter}${r}`]?.v);
-        if (val.includes('STT') || val.includes('NGÀY') || val.includes('CHỦ HÀNG') || val.includes('CƯỚC VÀO') || val.includes('TUYẾN')) {
+        if (val.includes('STT') || tripDateHeaderScore(val) > 0 || val.includes('CHỦ HÀNG') || val.includes('CƯỚC VÀO') || val.includes('TUYẾN')) {
           score++;
         }
       }
@@ -156,10 +164,17 @@ export class ExcelImportService {
         };
 
     if (hasDetectedHeaders) {
+      let selectedDateScore = 0;
       for (const [col, rawHeader] of entries) {
         const h = rawHeader.toUpperCase().trim();
         if (h === 'STT' || h.startsWith('STT')) detected.stt = col;
-        else if (h.includes('NGÀY')) detected.trip_date = col;
+        else if (tripDateHeaderScore(h) > 0) {
+          const score = tripDateHeaderScore(h);
+          if (score > selectedDateScore) {
+            detected.trip_date = col;
+            selectedDateScore = score;
+          }
+        }
         else if (h.includes('CHỦ HÀNG') || h.includes('KHÁCH HÀNG')) detected.customer_name = col;
         else if (h.includes('TUYẾN')) detected.route_name = col;
         else if (h.includes('SỐ CONT') || h.includes('MÃ CONT') || h === 'CONT') detected.container_number = col;
@@ -259,6 +274,10 @@ export class ExcelImportService {
       }
     }
 
+    if (!colMap.trip_date) {
+      throw new Error(`Sheet "${selectedSheetName}": không nhận diện được cột ngày chạy. Dùng tiêu đề "NGÀY CHẠY", "NGÀY" hoặc ghép đúng cột ngày chạy.`);
+    }
+
     const merges = sheet['!merges'] || [];
     const fileHash = createHash('sha256').update(buffer).digest('hex');
     const baselineHash = createHash('sha256')
@@ -279,7 +298,13 @@ export class ExcelImportService {
 
     for (let r = startRow; r <= maxRow; r++) {
       const sttCell = getCell('stt', r);
-      const dateCell = getCell('trip_date', r);
+      // Excel stores a merged date only in the top-left cell of its merge.
+      let dateCell = getCell('trip_date', r);
+      if (dateCell?.v == null || String(dateCell.v).trim() === '') {
+        const dateCol = XLSX.utils.decode_col(colMap.trip_date);
+        const mergedDate = merges.find(m => m.s.c === dateCol && m.e.c === dateCol && m.s.r <= r - 1 && m.e.r >= r - 1);
+        if (mergedDate) dateCell = sheet[XLSX.utils.encode_cell(mergedDate.s)];
+      }
       if ((!sttCell || sttCell.v === undefined || sttCell.v === null || sttCell.v === '') && !dateCell) {
         continue;
       }
@@ -289,11 +314,18 @@ export class ExcelImportService {
 
       // 1. Ngày tháng
       let rawDate = dateCell?.v ?? dateCell?.w ?? '';
-      if (typeof rawDate === 'number') {
-        const d = XLSX.SSF.parse_date_code(rawDate);
-        rawDate = `${d.d}/${d.m}/${d.y}`;
+      let normalizedDate;
+      try {
+        if (typeof rawDate === 'number') {
+          const date1904 = workbook.Workbook?.WBProps?.date1904;
+          const d = XLSX.SSF.parse_date_code(rawDate, { date1904: date1904 === true || date1904 === 1 || date1904 === '1' });
+          if (!d) throw new Error('Giá trị ngày Excel không hợp lệ');
+          rawDate = `${d.d}/${d.m}/${d.y}`;
+        }
+        normalizedDate = this.normalizeDateString(rawDate, isThang1Structure || String(filename || '').toLowerCase().includes('tháng 1'));
+      } catch (error) {
+        throw new Error(`Sheet "${selectedSheetName}", dòng ${r}, ô ${colMap.trip_date}${r}: ${error.message}. Kiểm tra ngày chạy của dòng này; ngày gộp phải nằm trong ô gộp thực tế.`);
       }
-      const normalizedDate = this.normalizeDateString(rawDate, isThang1Structure || String(filename || '').toLowerCase().includes('tháng 1'));
 
       // 2. Chủ hàng & Tuyến & Cont & BKS
       const customer = String(getCell('customer_name', r)?.v || '').trim().toUpperCase();
