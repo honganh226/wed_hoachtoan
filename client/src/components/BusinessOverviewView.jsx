@@ -40,6 +40,7 @@ import TripDetailDrawer from './TripDetailDrawer.jsx';
 import FuelPriceManagementModal from './FuelPriceManagementModal.jsx';
 import PhoiRefundModal from './PhoiRefundModal.jsx';
 import MonthlyBusinessReportSection from './MonthlyBusinessReportSection.jsx';
+import CorporateFinancialReportView from './CorporateFinancialReportView.jsx';
 
 export default function BusinessOverviewView({
   onNavigateTab,
@@ -1044,6 +1045,16 @@ export default function BusinessOverviewView({
           </div>
         </div>
       </div>
+
+      {/* ============================================================ */}
+      {/* KHỐI BÁO CÁO TÀI CHÍNH DOANH NGHIỆP CHUẨN CFO (T1–T12, QUÝ & NĂM) */}
+      {/* ============================================================ */}
+      <CorporateFinancialReportView
+        initialTripsData={tripsData}
+        initialYear="2026"
+        initialPeriod={dateFilter.startsWith('month_') ? dateFilter : 'all'}
+        embedded={true}
+      />
 
       {/* ============================================================ */}
       {/* KHỐI BÁO CÁO THỐNG KÊ TỪNG THÁNG (1–12) & IN BÁO CÁO TRỰC QUAN */}

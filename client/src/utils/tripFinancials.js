@@ -298,29 +298,46 @@ export const computeTripFinancials = calculateTripFinancials;
  */
 export function getTripAccountingMonth(trip) {
   const sheet = String(trip?.source_sheet || '').trim();
-  const mMatch = sheet.match(/^T(\d{1,2})[-_]/i);
+  const mMatch = sheet.match(/^T(\d{1,2})[-_](\d{2,4})?/i);
   if (mMatch) {
-    return `2026-${String(parseInt(mMatch[1], 10)).padStart(2, '0')}`;
+    let yr = '2026';
+    if (mMatch[2]) {
+      yr = mMatch[2].length === 2 ? `20${mMatch[2]}` : mMatch[2];
+    }
+    return `${yr}-${String(parseInt(mMatch[1], 10)).padStart(2, '0')}`;
   }
   const d = String(trip?.trip_date || '').trim();
   if (/^2025-01/.test(d)) return '2026-01';
+  if (/^2027-07/.test(d)) return '2026-07';
   if (/^\d{4}-\d{2}/.test(d)) {
     return d.slice(0, 7);
   }
   return '';
 }
 
+export function getTripAccountingYear(trip) {
+  const ym = getTripAccountingMonth(trip);
+  if (ym && ym.length >= 4) return ym.slice(0, 4);
+  return '2026';
+}
+
 /**
  * Tính toán đầy đủ tất cả các thông số sản lượng, doanh thu, chi phí, chênh lệch, công nợ và tiền phơi
- * cho một tập hợp chuyến xe (theo từng tháng hoặc cả năm).
+ * cho một tập hợp chuyến xe (theo từng tháng, quý hoặc cả năm), chuẩn hóa theo hệ thống mã số MS.01 - MS.75.
  */
 export function computeAggregateMetrics(tripsList = []) {
   let totalCuocGoc = 0;
+  let ownCuocGoc = 0;
+  let extCuocGoc = 0;
   let totalVat8 = 0;
   let totalCuocCoVat = 0;
   let totalKhoanTru17 = 0;
   let totalCuocSauTru17 = 0;
+  let ownCuocSauTru17 = 0;
+  let extCuocSauTru17 = 0;
   let totalChiPhiCongTy = 0;
+  let ownChiPhiCongTy = 0;
+  let extChiPhiCongTy = 0;
   let totalToll = 0;
   let totalCuocRa = 0;
   let totalPhatSinh = 0;
@@ -335,6 +352,8 @@ export function computeAggregateMetrics(tripsList = []) {
   let totalDaThuKhach = 0;
   let totalDoiTruKhach = 0;
   let totalConPhaiThuKhach = 0;
+  let totalDaTraNhaXe = 0;
+  let totalConPhaiTraNhaXe = 0;
   let houseTripsCount = 0;
   let subTripsCount = 0;
 
@@ -360,12 +379,28 @@ export function computeAggregateMetrics(tripsList = []) {
 
     if (t.is_subcontractor) {
       subTripsCount += 1;
+      extCuocGoc += f.cuoc_goc;
+      extCuocSauTru17 += f.cuoc_sau_tru_17;
+      extChiPhiCongTy += f.chi_phi_cong_ty;
       const pName = t.subcontractor_name || t.vehicle_plate;
       if (pName && pName !== 'ĐÃ TT' && pName !== 'MẸ ĐÃ TT') {
         subPartnersSet.add(pName);
       }
+      const isSubPaid = Boolean(
+        t.is_subcontractor_paid ||
+          String(t.subcontractor_payment_note || t.raw_M || '').toUpperCase().includes('ĐÃ TT') ||
+          String(t.vehicle_plate || '').toUpperCase().includes('ĐÃ TT')
+      );
+      if (isSubPaid) {
+        totalDaTraNhaXe += f.cuoc_ngoai;
+      } else {
+        totalConPhaiTraNhaXe += f.cuoc_ngoai;
+      }
     } else {
       houseTripsCount += 1;
+      ownCuocGoc += f.cuoc_goc;
+      ownCuocSauTru17 += f.cuoc_sau_tru_17;
+      ownChiPhiCongTy += f.chi_phi_cong_ty;
       const plate = t.vehicle_plate || t.so_xe;
       if (plate && plate !== 'Xe ngoài' && plate !== 'ĐÃ TT' && plate !== 'MẸ ĐÃ TT') {
         housePlatesSet.add(plate);
@@ -399,13 +434,41 @@ export function computeAggregateMetrics(tripsList = []) {
     totalPhoiConPhaiThu += phoiDue;
     totalPhoiDaHoan += phoiRef;
 
-    totalDaThuKhach += Number(t.received_amount ?? 0);
-    totalDoiTruKhach += Number(t.offset_amount ?? 0);
-    totalConPhaiThuKhach += Number(t.fare_balance_base ?? 0);
+    const rec = Number(t.received_amount ?? 0);
+    const off = Number(t.offset_amount ?? 0);
+    const bal = Number(t.fare_balance_base ?? Math.max(0, f.cuoc_goc - rec - off));
+    totalDaThuKhach += rec;
+    totalDoiTruKhach += off;
+    totalConPhaiThuKhach += bal;
   });
 
+  const totalPhiNangHa = totalPhiNang + totalPhiHa;
+  const totalCogs = totalCuocRa + totalTienDau + totalToll + totalPhiNangHa;
+  const totalOpex = totalPhatSinh; // Lương lái xe chưa tính trong bảng kê chuyến
+
+  const grossProfitSauTru17 = totalCuocSauTru17 - totalCogs;
+  const grossProfitGoc = totalCuocGoc - totalCogs;
+
   const totalChenhLechSauTru17 = totalCuocSauTru17 - totalChiPhiCongTy;
+  const totalChenhLechTruocTruGoc = totalCuocGoc - totalChiPhiCongTy;
   const totalChenhLechTruocTruCoVat = totalCuocCoVat - totalChiPhiCongTy;
+
+  const grossMarginSauTru17Pct =
+    totalCuocSauTru17 > 0 ? Math.round((grossProfitSauTru17 / totalCuocSauTru17) * 1000) / 10 : 0;
+  const grossMarginGocPct =
+    totalCuocGoc > 0 ? Math.round((grossProfitGoc / totalCuocGoc) * 1000) / 10 : 0;
+
+  const netMarginSauTru17Pct =
+    totalCuocSauTru17 > 0 ? Math.round((totalChenhLechSauTru17 / totalCuocSauTru17) * 1000) / 10 : 0;
+  const netMarginGocPct =
+    totalCuocGoc > 0 ? Math.round((totalChenhLechTruocTruGoc / totalCuocGoc) * 1000) / 10 : 0;
+
+  const cashSettledKhach = totalDaThuKhach + totalDoiTruKhach;
+  const collectionRatePct =
+    totalCuocGoc > 0 ? Math.min(100, Math.round((cashSettledKhach / totalCuocGoc) * 1000) / 10) : 0;
+
+  const directCashOutflow = totalDaTraNhaXe + totalToll + totalPhiNangHa + totalTienDau + totalPhatSinh;
+  const netOperatingCashFlow = totalDaThuKhach - directCashOutflow;
 
   let journeyCount = tripsList.length;
   if (tripsList.length > 0) {
@@ -423,18 +486,34 @@ export function computeAggregateMetrics(tripsList = []) {
     subPartnersCount: subPartnersSet.size,
     customersCount: customersSet.size,
     totalCuocGoc,
+    ownCuocGoc,
+    extCuocGoc,
     totalVat8,
     totalCuocCoVat,
     totalKhoanTru17,
     totalCuocSauTru17,
+    ownCuocSauTru17,
+    extCuocSauTru17,
+    totalCogs,
+    totalOpex,
+    grossProfitSauTru17,
+    grossProfitGoc,
+    grossMarginSauTru17Pct,
+    grossMarginGocPct,
     totalChiPhiCongTy,
+    ownChiPhiCongTy,
+    extChiPhiCongTy,
     totalChenhLechSauTru17,
+    totalChenhLechTruocTruGoc,
     totalChenhLechTruocTruCoVat,
+    netMarginSauTru17Pct,
+    netMarginGocPct,
     totalToll,
     totalCuocRa,
     totalPhatSinh,
     totalPhiNang,
     totalPhiHa,
+    totalPhiNangHa,
     totalNangHaPhatSinh: totalPhiNang + totalPhiHa + totalPhatSinh,
     totalFuelLiters,
     totalTienDau,
@@ -444,7 +523,13 @@ export function computeAggregateMetrics(tripsList = []) {
     totalPhoiConPhaiThu,
     totalDaThuKhach,
     totalDoiTruKhach,
+    cashSettledKhach,
     totalConPhaiThuKhach,
+    collectionRatePct,
+    totalDaTraNhaXe,
+    totalConPhaiTraNhaXe,
+    directCashOutflow,
+    netOperatingCashFlow,
   };
 }
 

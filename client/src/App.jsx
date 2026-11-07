@@ -61,6 +61,7 @@ import { INITIAL_EXECUTIVE_TASKS } from './data/mockBusinessData.js';
 import DirectorTasksView from './components/DirectorTasksView.jsx';
 import DirectorDebtsView from './components/DirectorDebtsView.jsx';
 import TripsListView from './components/TripsListView.jsx';
+import CorporateFinancialReportView from './components/CorporateFinancialReportView.jsx';
 import { useRealtimePL } from './hooks/useRealtimePL.js';
 import { 
   LogIn, 
@@ -660,6 +661,22 @@ export default function App() {
                     </button>
                   )}
 
+                  {/* Tab Báo Cáo Tài Chính CFO (Giám Đốc, Kế Toán) */}
+                  {(isDirector || isAccountant) && (
+                    <button
+                      data-testid="nav-tab-financial-report"
+                      onClick={() => { setActiveModule('financial_report'); setSubView('financial_report'); setActiveTab('financial_report'); }}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
+                        activeModule === 'financial_report'
+                          ? 'ha-nav-active'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <BarChart3 className="w-4 h-4 text-slate-500" />
+                      <span>Báo cáo tài chính</span>
+                    </button>
+                  )}
+
                   {/* Tab Chuyến Xe (Giám Đốc, Kế Toán, Quản Lý Khu) */}
                   <button
                     onClick={() => { setActiveModule('trips'); setActiveTab('trips'); }}
@@ -813,6 +830,12 @@ export default function App() {
             {isDirector && activeTab === 'manage' && <DataManagementView assistantFocus={assistantFocus} onAssistantFocusConsumed={() => setAssistantFocus(null)} onAssistantContext={setAssistantContext} />}
 
             {/* PHÂN HỆ TỔNG QUAN KINH DOANH - ĐÚNG 3 PHẦN GỌN RÕ */}
+            {(isDirector || isAccountant) && (activeTab === 'financial_report') && (
+              <div className="space-y-5 animate-fade-in">
+                <CorporateFinancialReportView />
+              </div>
+            )}
+
             {(isDirector || isAccountant) && (activeTab === 'business_overview') && (
               <div className="space-y-5">
                 <BusinessOverviewView

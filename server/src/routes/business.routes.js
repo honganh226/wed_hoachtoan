@@ -122,6 +122,185 @@ router.get('/overview', (req, res) => {
 });
 
 /**
+ * GET /api/v1/business/financial-report
+ * Báo cáo tài chính doanh nghiệp chuẩn CFO (Từng tháng T1-T12 & Cả năm)
+ */
+router.get('/financial-report', (req, res) => {
+  try {
+    const fiscalYear = parseInt(req.query.year || '2026', 10) || 2026;
+    const data = excelMonthService.getData();
+    const rows = data.rows || [];
+
+    const summarizeSlice = (slice) => {
+      let totalTrips = slice.length;
+      let ownTrips = 0;
+      let extTrips = 0;
+      let totalRevenue = 0;
+      let ownRevenue = 0;
+      let extRevenue = 0;
+      let totalVat8 = 0;
+      let totalRevenueWithVat = 0;
+      let totalDeduction17 = 0;
+      let totalRevenueAfter17 = 0;
+      let subcontractCost = 0;
+      let fuelCost = 0;
+      let fuelLiters = 0;
+      let tollAndRoadCost = 0;
+      let portAndHandlingCost = 0;
+      let maintenanceAndMisc = 0;
+      let cashCollected = 0;
+      let arOutstanding = 0;
+      let apOutstanding = 0;
+
+      slice.forEach((r) => {
+        const rev = Number(r.cuoc_goc ?? r.cuoc_vao ?? r.base_revenue ?? 0);
+        const vat = Math.round(rev * 0.08);
+        const coVat = rev + vat;
+        const tru17 = Math.round(coVat * 0.17);
+        const sau17 = coVat - tru17;
+        const sub = Number(r.cuoc_ra ?? r.subcontractor_cost ?? 0);
+        const fCost = Number(r.tien_dau ?? r.fuel_cost ?? 0);
+        const fLiters = Number(r.dau_liters ?? r.fuel_liters ?? 0);
+        const toll = Number(r.tien_duong ?? r.toll_fee ?? 0);
+        const lift = Number(r.phi_nang ?? r.lift_on_fee ?? 0) + Number(r.phi_ha ?? r.lift_off_fee ?? 0);
+        const misc = Number(r.phat_sinh ?? r.other_costs ?? 0);
+
+        totalRevenue += rev;
+        totalVat8 += vat;
+        totalRevenueWithVat += coVat;
+        totalDeduction17 += tru17;
+        totalRevenueAfter17 += sau17;
+
+        if (r.is_subcontractor) {
+          extTrips += 1;
+          extRevenue += rev;
+        } else {
+          ownTrips += 1;
+          ownRevenue += rev;
+        }
+
+        subcontractCost += sub;
+        fuelCost += fCost;
+        fuelLiters += fLiters;
+        tollAndRoadCost += toll;
+        portAndHandlingCost += lift;
+        maintenanceAndMisc += misc;
+
+        const rec = Number(r.received_amount ?? 0) + Number(r.offset_amount ?? 0);
+        const bal = Number(r.fare_balance_base ?? Math.max(0, rev - rec));
+        cashCollected += rec;
+        arOutstanding += bal;
+        if (r.is_subcontractor && !r.is_subcontractor_paid) {
+          apOutstanding += sub;
+        }
+      });
+
+      const totalCOGS = subcontractCost + fuelCost + tollAndRoadCost + portAndHandlingCost;
+      const grossProfit = totalRevenue - totalCOGS;
+      const grossProfitAfter17 = totalRevenueAfter17 - totalCOGS;
+      const totalOPEX = maintenanceAndMisc;
+      const netProfit = grossProfit - totalOPEX;
+      const netProfitAfter17 = grossProfitAfter17 - totalOPEX;
+
+      return {
+        totalTrips,
+        ownTrips,
+        extTrips,
+        totalRevenue,
+        ownRevenue,
+        extRevenue,
+        totalVat8,
+        totalRevenueWithVat,
+        totalDeduction17,
+        totalRevenueAfter17,
+        totalCOGS,
+        subcontractCost,
+        fuelCost,
+        fuelLiters,
+        tollAndRoadCost,
+        portAndHandlingCost,
+        grossProfit,
+        grossProfitAfter17,
+        grossMarginPct: totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 10000) / 100 : 0,
+        totalOPEX,
+        maintenanceAndMisc,
+        netProfit,
+        netProfitAfter17,
+        netMarginPct: totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 10000) / 100 : 0,
+        cashCollected,
+        arOutstanding,
+        apOutstanding
+      };
+    };
+
+    const yearRows = rows.filter((r) => {
+      const ym = excelMonthService.getAccountingMonth(r);
+      return ym.startsWith(`${fiscalYear}-`);
+    });
+
+    const summary = summarizeSlice(yearRows);
+    const monthlyReports = Array.from({ length: 12 }, (_, idx) => {
+      const mNum = idx + 1;
+      const mCode = String(mNum).padStart(2, '0');
+      const ym = `${fiscalYear}-${mCode}`;
+      const mRows = yearRows.filter((r) => excelMonthService.getAccountingMonth(r) === ym);
+      const ms = summarizeSlice(mRows);
+      return {
+        month: mNum,
+        label: `Tháng ${mCode}/${fiscalYear}`,
+        trips: { total: ms.totalTrips, own: ms.ownTrips, ext: ms.extTrips },
+        revenue: {
+          total: ms.totalRevenue,
+          own: ms.ownRevenue,
+          ext: ms.extRevenue,
+          vat8: ms.totalVat8,
+          withVat: ms.totalRevenueWithVat,
+          deduction17: ms.totalDeduction17,
+          after17: ms.totalRevenueAfter17
+        },
+        cogs: {
+          total: ms.totalCOGS,
+          subcontractCost: ms.subcontractCost,
+          fuelCost: ms.fuelCost,
+          fuelLiters: ms.fuelLiters,
+          tollAndRoadCost: ms.tollAndRoadCost,
+          portAndHandlingCost: ms.portAndHandlingCost
+        },
+        grossProfit: ms.grossProfit,
+        grossProfitAfter17: ms.grossProfitAfter17,
+        opex: {
+          total: ms.totalOPEX,
+          driverSalary: 0,
+          maintenanceAndMisc: ms.maintenanceAndMisc
+        },
+        netProfit: ms.netProfit,
+        netProfitAfter17: ms.netProfitAfter17,
+        workingCapital: {
+          cashCollected: ms.cashCollected,
+          arOutstanding: ms.arOutstanding,
+          apOutstanding: ms.apOutstanding
+        }
+      };
+    });
+
+    return successResponse(
+      res,
+      {
+        company: 'CÔNG TY VẬN TẢI CONTAINER & LOGISTICS',
+        fiscalYear,
+        currency: 'VND',
+        asOfDate: new Date().toISOString().slice(0, 10),
+        summaryKPIs: summary,
+        monthlyReports
+      },
+      'Lấy báo cáo tài chính doanh nghiệp thành công'
+    );
+  } catch (err) {
+    return errorResponse(res, err.message, 500);
+  }
+});
+
+/**
  * GET /api/v1/business/trips
  * Danh sách toàn bộ cuốc xe chuẩn hóa từ Excel tháng 1
  */
