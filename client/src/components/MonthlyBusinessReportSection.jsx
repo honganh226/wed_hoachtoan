@@ -541,11 +541,11 @@ export default function MonthlyBusinessReportSection({
                     >
                       {/* Số liệu tóm tắt trên đỉnh cột */}
                       <div className="text-[10px] font-mono font-bold text-blue-800 leading-tight">
-                        {m.hasData ? `${formatTrieuDong(m.metrics.totalCuocSauTru17)}M` : '-'}
+                        {m.hasData ? formatTrieuDong(m.metrics.totalCuocSauTru17) : '-'}
                       </div>
                       <div className="text-[9px] font-mono text-emerald-700 font-semibold mb-1">
                         {m.hasData
-                          ? `+${formatTrieuDong(m.metrics.totalChenhLechSauTru17)}M`
+                          ? `+${formatTrieuDong(m.metrics.totalChenhLechSauTru17)}`
                           : ''}
                       </div>
 
@@ -1049,7 +1049,7 @@ export default function MonthlyBusinessReportSection({
                     <div className="flex justify-between text-slate-600">
                       <span className="font-sans">VAT 8% / Có VAT:</span>
                       <span>
-                        {formatTrieuDong(mt.totalVat8)}M / {formatVnd(mt.totalCuocCoVat)}
+                        {formatTrieuDong(mt.totalVat8)} / {formatVnd(mt.totalCuocCoVat)}
                       </span>
                     </div>
                     <div className="flex justify-between text-rose-700">
@@ -1087,8 +1087,8 @@ export default function MonthlyBusinessReportSection({
                     <div className="flex justify-between text-slate-600 pt-1 text-[11px]">
                       <span className="font-sans">Dư nợ cước / Phơi trả hộ:</span>
                       <span>
-                        {formatTrieuDong(mt.totalConPhaiThuKhach)}M /{' '}
-                        {formatTrieuDong(mt.totalPhoiTraHo)}M
+                        {formatTrieuDong(mt.totalConPhaiThuKhach)} /{' '}
+                        {formatTrieuDong(mt.totalPhoiTraHo)}
                       </span>
                     </div>
                   </div>
@@ -1308,8 +1308,8 @@ export default function MonthlyBusinessReportSection({
                     {formatVnd(printTargetData.targetMetrics.totalChiPhiCongTy)}
                   </div>
                   <div className="text-[10px] text-slate-600 mt-0.5">
-                    Thuê ngoài: {formatTrieuDong(printTargetData.targetMetrics.totalCuocRa)}M • BOT:{' '}
-                    {formatTrieuDong(printTargetData.targetMetrics.totalToll)}M • Dầu:{' '}
+                    Thuê ngoài: {formatTrieuDong(printTargetData.targetMetrics.totalCuocRa)} • BOT:{' '}
+                    {formatTrieuDong(printTargetData.targetMetrics.totalToll)} • Dầu:{' '}
                     {printTargetData.targetMetrics.totalFuelLiters.toLocaleString('vi-VN')}L
                   </div>
                 </div>
@@ -1322,8 +1322,8 @@ export default function MonthlyBusinessReportSection({
                     +{formatVnd(printTargetData.targetMetrics.totalChenhLechSauTru17)}
                   </div>
                   <div className="text-[10px] text-slate-600 mt-0.5">
-                    Dư nợ cước: {formatTrieuDong(printTargetData.targetMetrics.totalConPhaiThuKhach)}M
-                    • Phơi trả hộ: {formatTrieuDong(printTargetData.targetMetrics.totalPhoiTraHo)}M
+                    Dư nợ cước: {formatTrieuDong(printTargetData.targetMetrics.totalConPhaiThuKhach)}
+                    {' '}• Phơi trả hộ: {formatTrieuDong(printTargetData.targetMetrics.totalPhoiTraHo)}
                   </div>
                 </div>
               </div>
@@ -1350,7 +1350,7 @@ export default function MonthlyBusinessReportSection({
                       return (
                         <div key={m.filterKey} className="flex flex-col items-center text-center">
                           <div className="text-[9px] font-mono font-bold text-blue-800">
-                            {m.hasData ? `${formatTrieuDong(m.metrics.totalCuocSauTru17)}M` : '-'}
+                            {m.hasData ? formatTrieuDong(m.metrics.totalCuocSauTru17) : '-'}
                           </div>
                           <div className="h-[85px] flex items-end justify-center gap-1 border-b border-slate-300 w-full pb-0.5">
                             <div
