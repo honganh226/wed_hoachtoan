@@ -12,7 +12,8 @@
  * ============================================================
  */
 import { Router } from 'express';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { imageExtension } from '../utils/uploadSecurity.js';
 import { excelMonthService } from '../services/excelMonthService.js';
 import multer from 'multer';
 import path from 'path';
@@ -54,12 +55,19 @@ if (!fs.existsSync(eirUploadDir)) {
 const eirStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, eirUploadDir),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `eir_${req.params.id || 'photo'}_${Date.now()}${ext}`);
+    const ext = { 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp' }[file.mimetype];
+    cb(null, `eir_${randomUUID()}.${ext}`);
   }
 });
 const uploadEir = multer({
   storage: eirStorage,
+  fileFilter: (req, file, callback) => {
+    if (!['image/jpeg','image/png','image/webp'].includes(file.mimetype)) {
+      const error = new Error('Chỉ nhận ảnh JPEG, PNG hoặc WebP.'); error.status = 400;
+      return callback(error);
+    }
+    callback(null, true);
+  },
   limits: { fileSize: 15 * 1024 * 1024 } // 15MB
 });
 
@@ -330,6 +338,10 @@ router.post(
 
       let result;
       if (req.file) {
+        if (!imageExtension(fs.readFileSync(req.file.path))) {
+          fs.unlinkSync(req.file.path);
+          return errorResponse(res, 'Nội dung tệp không phải ảnh hợp lệ.', 400);
+        }
         result = saveTripEirPhoto({
           tripId,
           filename: req.file.filename,

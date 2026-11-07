@@ -428,9 +428,8 @@ export function registerSSEClient(req, res) {
   // Thiết lập SSE HTTP headers
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache, no-transform',
-    'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*'
+    'Cache-Control': 'no-store, no-transform',
+    'Connection': 'keep-alive'
   });
 
   // Flush headers

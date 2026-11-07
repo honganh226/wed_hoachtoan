@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
+import { readUploadedWorkbook } from '../services/excelReader.service.js';
 import { ExcelImportService } from '../services/excelImportService.js';
 import { successResponse, errorResponse, serverErrorResponse } from '../utils/response.js';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
@@ -13,6 +15,7 @@ const upload = multer({
 });
 
 const router = Router();
+const uploadLimiter = rateLimit({windowMs:60000,max:30,standardHeaders:true,legacyHeaders:false,keyGenerator:req=>req.user.id,message:{success:false,error:'Bạn tải file quá nhanh. Vui lòng đợi một phút.'}});
 db.exec("CREATE TABLE IF NOT EXISTS import_previews(id TEXT PRIMARY KEY,owner TEXT NOT NULL,payload TEXT NOT NULL,created_at INTEGER NOT NULL)");
 if(!db.prepare('PRAGMA table_info(import_batches)').all().some(c=>c.name==='file_hash'))db.exec('ALTER TABLE import_batches ADD COLUMN file_hash TEXT');
 
@@ -23,12 +26,14 @@ router.use(requireRole([USER_ROLES.DIRECTOR, USER_ROLES.ACCOUNTANT, USER_ROLES.A
  * POST /api/v1/excel/preview
  * Tải file Excel lên để phân tích, xem trước và đối chiếu chống trùng
  */
-router.post('/preview', upload.single('file'), (req, res) => {
+router.post('/preview', uploadLimiter, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return errorResponse(res, 'Vui lòng chọn tệp Excel (.xlsx, .xls) để tải lên', 400);
     }
+    const workbook = await readUploadedWorkbook(req.file.buffer, req.file.originalname);
     const preview = ExcelImportService.parseAndPreview({
+      workbook,
       buffer: req.file.buffer,
       filename: req.file.originalname,
       mapping: req.body.mapping ? JSON.parse(req.body.mapping) : null,
@@ -42,7 +47,7 @@ router.post('/preview', upload.single('file'), (req, res) => {
     return successResponse(res, {...preview,preview_id:previewId}, 'Phân tích tệp Excel thành công');
   } catch (err) {
     if (err.message && !err.message.includes('SqliteError')) {
-      return errorResponse(res, err.message, 400);
+      return errorResponse(res, err.message, err.status === 429 ? 429 : 400);
     }
     return serverErrorResponse(res, err);
   }
@@ -78,7 +83,7 @@ router.post('/commit', (req, res) => {
     return successResponse(res, result, `Đã nhập thành công ${result.inserted_count} cuốc xe vào hệ thống`, 201);
   } catch (err) {
     if (err.message && !err.message.includes('SqliteError')) {
-      return errorResponse(res, err.message, 400);
+      return errorResponse(res, err.message, err.status === 429 ? 429 : 400);
     }
     return serverErrorResponse(res, err);
   }
@@ -94,7 +99,7 @@ router.get('/batches', (req, res) => {
     return successResponse(res, batches, 'Lấy lịch sử đợt nhập thành công');
   } catch (err) {
     if (err.message && !err.message.includes('SqliteError')) {
-      return errorResponse(res, err.message, 400);
+      return errorResponse(res, err.message, err.status === 429 ? 429 : 400);
     }
     return serverErrorResponse(res, err);
   }
@@ -114,7 +119,7 @@ router.post('/batches/:id/rollback', requireRole(USER_ROLES.DIRECTOR), (req, res
     return successResponse(res, result, 'Đã hoàn tác đúng đợt nhập');
   } catch (err) {
     if (err.message && !err.message.includes('SqliteError')) {
-      return errorResponse(res, err.message, 400);
+      return errorResponse(res, err.message, err.status === 429 ? 429 : 400);
     }
     return serverErrorResponse(res, err);
   }

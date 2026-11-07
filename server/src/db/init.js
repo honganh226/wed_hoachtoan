@@ -549,7 +549,7 @@ export function initDatabase() {
 
     // Đảm bảo có tài khoản thư ký (SECRETARY) để kiểm thử và vận hành nhắc việc nếu chưa tồn tại
     const hasSecretary = db.prepare("SELECT id FROM users WHERE role = 'SECRETARY' LIMIT 1").get();
-    if (!hasSecretary) {
+    if (!hasSecretary && process.env.NODE_ENV !== 'production') {
       const accUser = db.prepare("SELECT password_hash FROM users WHERE role = 'ACCOUNTANT' OR role = 'DIRECTOR' LIMIT 1").get();
       const pwdHash = accUser?.password_hash || '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
       const nowIso = new Date().toISOString();

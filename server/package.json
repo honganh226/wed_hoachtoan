@@ -12,12 +12,11 @@
     "test:cross-excel": "node src/scripts/testCrossExcel.js",
     "test:cross-excel:py": "python src/scripts/test_cross_excel.py",
     "test:tasks72-74": "node src/scripts/verifyTasks72_73_74.js",
-    "test": "node src/tests/math.test.js && node src/scripts/verifyTask45.js && node src/scripts/verifyTasks72_73_74.js"
+    "test": "node src/tests/math.test.js && node src/scripts/verifyTask45.js && node src/scripts/verifyTasks72_73_74.js",
+    "test:security": "node src/tests/securityBoundaries.test.mjs"
   },
   "dependencies": {
-    "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^9.6.0",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "drizzle-orm": "^0.45.3",
@@ -26,10 +25,10 @@
     "helmet": "^7.2.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.12.1",
-    "multer": "^2.4.0",
+    "multer": "^2.5.0",
     "node-cron": "^4.6.0",
-    "uuid": "^10.0.0",
-    "xlsx": "^0.18.5"
+    "uuid": "^11.1.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "engines": {
     "node": ">=18.0.0"

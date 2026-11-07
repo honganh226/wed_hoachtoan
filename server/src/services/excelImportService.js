@@ -228,8 +228,8 @@ export class ExcelImportService {
   /**
    * Phân tích tệp Excel và trả về báo cáo xem trước (Preview)
    */
-  static parseAndPreview({ buffer, filename, mapping = null, sheetName = null }) {
-    const workbook = XLSX.read(buffer, { type: 'buffer', cellFormula: true, cellStyles: true });
+  static parseAndPreview({ buffer, filename, mapping = null, sheetName = null, workbook: uploadedWorkbook = null }) {
+    const workbook = uploadedWorkbook || XLSX.read(buffer, { type: 'buffer', cellFormula: true, cellStyles: true });
     const availableSheets = workbook.SheetNames || [];
     if (sheetName && !availableSheets.includes(sheetName)) {
       throw new Error('Không tìm thấy sheet đã chọn trong file Excel. Vui lòng chọn lại sheet.');

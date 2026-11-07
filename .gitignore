@@ -4,3 +4,7 @@
 **/*.db*
 server/data/
 *.log
+
+**/security-audit.json
+**/ai-test-runtime/
+scratch/

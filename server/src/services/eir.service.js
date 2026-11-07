@@ -13,6 +13,7 @@
  * ============================================================
  */
 import fs from 'fs';
+import { imageExtension } from '../utils/uploadSecurity.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { db } from '../db/database.js';
@@ -139,6 +140,13 @@ export function saveTripEirPhoto({ tripId, filename, base64Data = null, user = n
       buffer = Buffer.from(base64Data, 'base64');
     }
 
+    const detectedExtension = imageExtension(buffer);
+    if (!detectedExtension || buffer.length > 15 * 1024 * 1024) {
+      const error = new Error('Ảnh phải là JPEG, PNG hoặc WebP hợp lệ, tối đa 15 MB.');
+      error.status = 400;
+      throw error;
+    }
+    ext = detectedExtension;
     const safeTripCode = trip.trip_code.replace(/[^a-zA-Z0-9_-]/g, '_');
     const safeFilename = `eir_${safeTripCode}_${Date.now()}.${ext}`;
     const filePath = path.join(UPLOADS_EIR_DIR, safeFilename);
@@ -146,6 +154,7 @@ export function saveTripEirPhoto({ tripId, filename, base64Data = null, user = n
     fs.writeFileSync(filePath, buffer);
     finalRelativeUrl = `/uploads/eir/${safeFilename}`;
   } else if (filename) {
+    if (path.basename(filename) !== filename || !/\.(jpg|jpeg|png|webp)$/i.test(filename)) throw new Error('Tên ảnh không hợp lệ.');
     // Nếu upload qua multer diskStorage
     finalRelativeUrl = `/uploads/eir/${filename}`;
   } else {

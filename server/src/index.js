@@ -14,6 +14,7 @@ import fs from 'fs';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import { protectApi, corsOptions } from './middlewares/security.middleware.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -42,6 +43,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const durableReady = await initializeDurableState();
 if (process.env.ONLINE_EDITING === 'true') process.env.RENDER_READ_ONLY = durableReady ? 'false' : 'true';
 const app = express();
+app.disable('x-powered-by');
+if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
 const PORT = parseInt(process.env.PORT || '5000', 10);
 
 // =============================================
@@ -50,25 +53,13 @@ const PORT = parseInt(process.env.PORT || '5000', 10);
 
 // Bảo mật HTTP headers
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginResourcePolicy: { policy: 'same-origin' },
+  contentSecurityPolicy: { directives: { frameAncestors: ["'none'"], imgSrc: ["'self'", 'data:', 'blob:'], objectSrc: ["'none'"] } },
+  frameguard: { action: 'deny' },
 }));
 
 // CORS - cho phép frontend origin và domain Railway
-app.use(cors({
-  origin: (origin, callback) => {
-    // Cho phép cùng origin (same-origin request, mobile browsers, Postman) hoặc origin hợp lệ
-    if (!origin || origin.includes('railway.app') || origin.includes('localhost') || origin.includes('127.0.0.1')) {
-      callback(null, true);
-    } else if (process.env.CLIENT_ORIGIN && origin === process.env.CLIENT_ORIGIN) {
-      callback(null, true);
-    } else {
-      callback(null, true); // Chế độ monolithic phục vụ cùng cổng nên an toàn
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-}));
+app.use(cors(corsOptions));
 
 // Parse JSON và URL-encoded body
 app.use(express.json({ limit: '10mb' }));
@@ -117,7 +108,12 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Serve file upload (ảnh phơi container, chứng từ): Bắt buộc người dùng có phiên đăng nhập hợp lệ
-app.use('/uploads', authenticateToken, express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', authenticateToken, (req, res, next) => {
+  if (!/^\/eir\/[^/]+\.(?:jpg|jpeg|png|webp)$/i.test(req.path)) return res.status(404).end();
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  next();
+}, express.static(path.join(__dirname, '../uploads'), { dotfiles: 'deny', index: false }));
 
 // =============================================
 // ĐĂNG KÝ CÁC ROUTE API
@@ -125,6 +121,7 @@ app.use('/uploads', authenticateToken, express.static(path.join(__dirname, '../u
 
 // Tiền tố chuẩn: /api/v1/ (Hợp đồng kỹ thuật)
 app.use('/api/v1', readOnlyTest);
+app.use('/api/v1', protectApi);
 app.use('/api/v1', durableWrites);
 app.use('/api/v1', idempotentWrites);
 app.use('/api/v1/health', healthRoutes);
@@ -152,6 +149,14 @@ app.use('/api/v1/manage', directorDataRoutes);
 // Serve thư mục client/dist (nếu đã build) cho môi trường Production / Windows Service
 const CLIENT_DIST = path.join(__dirname, '../../client/dist');
 const hasClientDist = fs.existsSync(CLIENT_DIST);
+
+// Never route sensitive filesystem-looking paths to the SPA.
+app.use((req, res, next) => {
+  if (/(^|\/)\.(?:git|env|npmrc)(?:[/.]|$)/i.test(req.path) || /\.(?:sqlite|db|pem|key|sql|log|map)$/i.test(req.path)) {
+    return res.status(404).json({success:false,error:'Không tìm thấy tài nguyên.'});
+  }
+  next();
+});
 
 if (hasClientDist) {
   console.log('[STATIC] Phục vụ Frontend PWA từ thư mục client/dist...');
@@ -213,17 +218,18 @@ app.use((req, res) => {
   res.status(404).json({
     success: false,
     data: null,
-    error: `Không tìm thấy endpoint: ${req.method} ${req.originalUrl}`,
+    error: 'Không tìm thấy endpoint.',
   });
 });
 
 // 500 - Lỗi nội bộ server
 app.use((err, req, res, _next) => {
   console.error('[UNHANDLED ERROR]', err);
-  res.status(500).json({
+  const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : (Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : 500);
+  res.status(status).json({
     success: false,
     data: null,
-    error: process.env.NODE_ENV === 'development'
+    error: status === 413 ? 'Tệp hoặc yêu cầu vượt giới hạn dung lượng.' : status === 403 ? 'Nguồn truy cập không được phép.' : process.env.NODE_ENV === 'development'
       ? err.message
       : 'Lỗi máy chủ nội bộ. Vui lòng thử lại.',
   });

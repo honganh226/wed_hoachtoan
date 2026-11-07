@@ -13,7 +13,7 @@ export async function login(req, res) {
   try {
     const { username, password } = req.body;
 
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string' || !username.trim() || !password || username.length > 100 || Buffer.byteLength(password, 'utf8') > 72) {
       return errorResponse(res, 'Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.', 400);
     }
 
