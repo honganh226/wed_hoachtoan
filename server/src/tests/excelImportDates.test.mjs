@@ -22,6 +22,24 @@ function parse(headers,rows,merges=[]) {
   return service.parseAndPreview({buffer:XLSX.write(wb,{type:'buffer',bookType:'xlsx'}),filename:'bang-ke-test.xlsx'});
 }
 const tests=[
+ ['Sheet tổng hợp đầu file cho chọn bảng chuyến trước khi đọc',()=>{
+   const wb=XLSX.utils.book_new();
+   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['STT','THÁNG','TỔNG CƯỚC'],[1,'THÁNG 1',1000000]]),'SỐ LIỆU NĂM');
+   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['STT','NGÀY','CHỦ HÀNG','TUYẾN','CƯỚC VÀO'],[1,'07/11/2026','A','HP-HN',1000000]]),'T11-2026 ');
+   const buffer=XLSX.write(wb,{type:'buffer',bookType:'xlsx'});
+   const selection=service.parseAndPreview({buffer,filename:'ke-hoach.xlsx'});
+   assert.equal(selection.requires_sheet_selection,true);
+   assert.equal(selection.rows.length,0);
+   assert.equal(selection.sheet_options[0].can_import,false);
+   const preview=service.parseAndPreview({buffer,filename:'ke-hoach.xlsx',sheetName:'T11-2026 '});
+   assert.equal(preview.total_rows,1);assert.equal(preview.rows[0].trip_date,'2026-11-07');
+   assert.throws(()=>service.parseAndPreview({buffer,filename:'ke-hoach.xlsx',sheetName:'khong-co'}),/Không tìm thấy sheet/);
+ }],
+ ['Dòng mẫu chỉ có STT được bỏ qua có cảnh báo',()=>{
+   const p=parse(['STT','NGÀY','CHỦ HÀNG','TUYẾN','CƯỚC VÀO'],[[1,'07/11/2026','A','HP-HN',1000000],[2],[3]]);
+   assert.equal(p.total_rows,1);assert.equal(p.summary.total_cuoc_goc,1000000);
+   assert(p.warnings.some(w=>w.includes('2 dòng mẫu')));
+ }],
  ['Ngày thanh toán không ghi đè ngày chạy',()=>{
    const p=parse(['STT','NGÀY CHẠY','CHỦ HÀNG','TUYẾN','CƯỚC VÀO','NGÀY THANH TOÁN'],[[1,'07/11/2026','TEST','HP-HN',1000000,'']]);
    assert.equal(p.rows[0].trip_date,'2026-11-07');assert.equal(p.applied_mapping.trip_date,'B');

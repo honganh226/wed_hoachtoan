@@ -147,6 +147,13 @@ export default function ExcelImportModal({
       localStorage.setItem('hoachtoan_excel_mapping_v2', JSON.stringify(customMap));
     }
     setFile(selectedFile);
+    if (!targetSheet) {
+      setPreviewData(null);
+      setStep(1);
+    } else {
+      setPreviewData(previous => previous ? { ...previous, requires_sheet_selection: true, sheet_name: null, rows: [] } : null);
+      setStep(1);
+    }
     setErr(null);
     setLoading(true);
 
@@ -154,10 +161,11 @@ export default function ExcelImportModal({
       const res = await previewExcelImportApi(selectedFile, customMap, targetSheet);
       if (res.success) {
         setPreviewData(res.data);
+        commitRequestIdRef.current = null;
         if (res.data?.header_mapping) {
           setColumnMapping(res.data.header_mapping);
         }
-        setStep(2);
+        setStep(res.data?.requires_sheet_selection ? 1 : 2);
       } else {
         setErr(res.error || 'Không thể đọc tệp Excel. Vui lòng kiểm tra lại cấu trúc file.');
       }
@@ -170,7 +178,7 @@ export default function ExcelImportModal({
 
   const handleRePreviewWithMapping = async () => {
     if (!file) return;
-    await processSelectedFile(file, columnMapping);
+    await processSelectedFile(file, columnMapping, previewData?.sheet_name || null);
     setMsg('Đã áp dụng cách ghép cột mới và đọc lại dữ liệu xem trước!');
     setTimeout(() => setMsg(null), 2500);
   };
@@ -374,6 +382,29 @@ export default function ExcelImportModal({
 
         {/* NỘI DUNG CHÍNH */}
         <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4">
+          {step === 1 && previewData?.requires_sheet_selection && (
+            <div className="border border-emerald-200 bg-emerald-50 rounded-xl p-4 space-y-3" data-testid="excel-sheet-picker">
+              <h4 className="font-bold text-slate-900">Chọn bảng chuyến xe cần nhập</h4>
+              <p className="text-sm text-slate-700">
+                File có nhiều sheet và sheet đầu là bảng tổng hợp. Chọn một tháng để xem trước.
+                Mỗi lần xác nhận chỉ nhập sheet đã chọn.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {previewData.available_sheets.map(name => {
+                  const option = previewData.sheet_options?.find(item => item.name === name);
+                  return (
+                    <button key={name} type="button" disabled={loading}
+                      data-testid={`excel-sheet-${name}`}
+                      onClick={() => processSelectedFile(file, mappingEnabled ? columnMapping : null, name)}
+                      className="border rounded-lg px-3 py-2 bg-white text-sm text-slate-800 hover:border-emerald-500 disabled:opacity-50">
+                      {name}{option?.can_import === false ? ' · bảng khác' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+              {loading && <p className="text-sm text-emerald-800" role="status">Đang đọc sheet đã chọn…</p>}
+            </div>
+          )}
           {/* BƯỚC 1: TẢI FILE */}
           {step === 1 && (
             <div className="space-y-6">

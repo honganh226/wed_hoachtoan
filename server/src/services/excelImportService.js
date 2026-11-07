@@ -231,7 +231,28 @@ export class ExcelImportService {
   static parseAndPreview({ buffer, filename, mapping = null, sheetName = null }) {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellFormula: true, cellStyles: true });
     const availableSheets = workbook.SheetNames || [];
-    const selectedSheetName = sheetName && availableSheets.includes(sheetName) ? sheetName : availableSheets[0];
+    if (sheetName && !availableSheets.includes(sheetName)) {
+      throw new Error('Không tìm thấy sheet đã chọn trong file Excel. Vui lòng chọn lại sheet.');
+    }
+    const sheetOptions = availableSheets.map(name => {
+      const { headers, detected_mapping: columns } = this.detectColumns(workbook.Sheets[name]);
+      const hasSequenceHeader = Object.values(headers).some(header => /^STT/.test(header));
+      return { name, can_import: Boolean(hasSequenceHeader && columns.stt && columns.trip_date && columns.customer_name && columns.base_revenue) };
+    });
+    // A cover/annual summary is not a trip table. Let the user select a month
+    // before parsing rows instead of trapping them behind a preview error.
+    if (!sheetName && availableSheets.length > 1 && !sheetOptions[0].can_import) {
+      return {
+        filename,
+        available_sheets: availableSheets,
+        sheet_options: sheetOptions,
+        requires_sheet_selection: true,
+        sheet_name: null,
+        rows: [],
+        total_rows: 0,
+      };
+    }
+    const selectedSheetName = sheetName || availableSheets[0];
     const sheet = workbook.Sheets[selectedSheetName];
     if (!sheet) throw new Error('File Excel không có sheet dữ liệu hợp lệ: ' + selectedSheetName);
 
@@ -287,6 +308,7 @@ export class ExcelImportService {
     const fuelMap = getFuelPriceMap();
 
     const rows = [];
+    const skippedEmptyRows = [];
     const startRow = colMap.data_start_row || 3;
     const maxRow = Math.min(10000, XLSX.utils.decode_range(sheet['!ref'] || 'A1:Z100').e.r + 1);
 
@@ -312,6 +334,17 @@ export class ExcelImportService {
       const stt = parseInt(sttCell?.v, 10);
       if (isNaN(stt) || stt <= 0) continue;
 
+      // Monthly templates may pre-number otherwise completely empty rows.
+      const hasRowData = Object.entries(colMap).some(([key, col]) => {
+        if (key === 'stt' || typeof col !== 'string' || !/^[A-Z]+$/.test(col)) return false;
+        const cell = sheet[`${col}${r}`];
+        return cell?.f || (cell?.v != null && String(cell.v).trim() !== '');
+      });
+      if (!hasRowData) {
+        skippedEmptyRows.push(r);
+        continue;
+      }
+
       // 1. Ngày tháng
       let rawDate = dateCell?.v ?? dateCell?.w ?? '';
       let normalizedDate;
@@ -322,7 +355,8 @@ export class ExcelImportService {
           if (!d) throw new Error('Giá trị ngày Excel không hợp lệ');
           rawDate = `${d.d}/${d.m}/${d.y}`;
         }
-        normalizedDate = this.normalizeDateString(rawDate, isThang1Structure || String(filename || '').toLowerCase().includes('tháng 1'));
+        const isJanuary2026Sheet = /^T0?1[-_ ](?:20)?26$/i.test(selectedSheetName.trim());
+        normalizedDate = this.normalizeDateString(rawDate, isThang1Structure || isJanuary2026Sheet || String(filename || '').toLowerCase().includes('tháng 1'));
       } catch (error) {
         throw new Error(`Sheet "${selectedSheetName}", dòng ${r}, ô ${colMap.trip_date}${r}: ${error.message}. Kiểm tra ngày chạy của dòng này; ngày gộp phải nằm trong ô gộp thực tế.`);
       }
@@ -547,6 +581,7 @@ export class ExcelImportService {
     }
     // Chỉ đánh dấu trùng lặp nếu thực sự có chuyến tương ứng đã tồn tại trong database
     const warnings = [];
+    if (skippedEmptyRows.length) warnings.push(`Bỏ qua ${skippedEmptyRows.length} dòng mẫu chỉ có STT, không có dữ liệu chuyến xe.`);
 
     // TỔNG HỢP CÁC CHỈ TIÊU BẢNG KÊ (Ô GỘP CHỈ TÍNH 1 LẦN)
     let totalCuocGoc = 0;
@@ -629,6 +664,7 @@ export class ExcelImportService {
       file_hash: fileHash,
       baseline_file: isThang1Structure,
       available_sheets: availableSheets,
+      sheet_options: sheetOptions,
       sheet_name: selectedSheetName,
       detected_headers: headers,
       applied_mapping: colMap,
