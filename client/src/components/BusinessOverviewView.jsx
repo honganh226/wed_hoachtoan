@@ -1053,12 +1053,15 @@ export default function BusinessOverviewView({
         scopeFilter={scopeFilter}
         dateFilter={dateFilter}
         onSelectDateFilter={(nextFilter) => setDateFilter(nextFilter)}
-        onOpenMonthDrawer={(drawerCfg) => openDrawer(drawerCfg)}
+        onOpenDrawer={(drawerCfg, triggerEl) => openDrawer(drawerCfg, triggerEl)}
+        onOpenMonthDrawer={(drawerCfg, triggerEl) => openDrawer(drawerCfg, triggerEl)}
         houseTrucks={houseTrucks}
         subcontractorPartners={subcontractorPartners}
         subcontractorTotals={subcontractorTotals}
         printModalOpen={printModalOpen}
         setPrintModalOpen={setPrintModalOpen}
+        onOpenPrintModal={() => setPrintModalOpen(true)}
+        onClosePrintModal={() => setPrintModalOpen(false)}
       />
 
       {/* ============================================================ */}

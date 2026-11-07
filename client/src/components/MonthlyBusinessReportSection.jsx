@@ -42,10 +42,15 @@ export default function MonthlyBusinessReportSection({
   dateFilter = 'all',
   onSelectDateFilter,
   onOpenDrawer,
+  onOpenMonthDrawer,
   printModalOpen = false,
+  setPrintModalOpen,
   onOpenPrintModal,
   onClosePrintModal
 }) {
+  const triggerOpenDrawer = onOpenDrawer || onOpenMonthDrawer;
+  const triggerOpenPrintModal = onOpenPrintModal || (() => setPrintModalOpen?.(true));
+  const triggerClosePrintModal = onClosePrintModal || (() => setPrintModalOpen?.(false));
   // Chế độ hiển thị trên trang: 'ALL' (Biểu đồ + Bảng) | 'TABLE' (Chỉ bảng) | 'CARDS' (Thẻ từng tháng)
   const [viewMode, setViewMode] = useState('ALL');
   // Ẩn/hiện các tháng chưa phát sinh dữ liệu (0 cuốc)
@@ -199,7 +204,7 @@ export default function MonthlyBusinessReportSection({
   const handleOpenPrintForPeriod = (periodKey = 'all', withTripDetails = false) => {
     setPrintPeriod(periodKey);
     setPrintIncludeTripDetails(withTripDetails);
-    onOpenPrintModal?.();
+    triggerOpenPrintModal?.();
   };
 
   // Thực thi lệnh in trực quan (hỗ trợ cả cửa sổ in chuẩn A4 Landscape và fallback @media print cho iPhone/Messenger)
@@ -808,7 +813,7 @@ export default function MonthlyBusinessReportSection({
                               <button
                                 type="button"
                                 onClick={(e) =>
-                                  onOpenDrawer?.(
+                                  triggerOpenDrawer?.(
                                     {
                                       type: 'TRIPS',
                                       title: `Danh sách cuốc xe ${m.label} (${scopeLabel})`,
@@ -844,7 +849,10 @@ export default function MonthlyBusinessReportSection({
 
               {/* Dòng Tổng cộng cả năm 2026 & Trung bình tháng */}
               <tfoot>
-                <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold text-slate-900">
+                <tr
+                  data-testid="monthly-row-year-total"
+                  className="bg-slate-100 border-t-2 border-slate-300 font-bold text-slate-900"
+                >
                   <td className="py-3 px-3 uppercase sticky left-0 bg-slate-100 z-10 border-r border-slate-200">
                     Tổng cả năm 2026
                   </td>
@@ -1121,7 +1129,7 @@ export default function MonthlyBusinessReportSection({
           aria-label="Xem trước bản in báo cáo thống kê kinh doanh"
           data-testid="print-business-report-modal"
           className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex flex-col items-center justify-start overflow-y-auto p-2 sm:p-6"
-          onClick={onClosePrintModal}
+          onClick={triggerClosePrintModal}
         >
           <div
             className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto"
@@ -1176,7 +1184,7 @@ export default function MonthlyBusinessReportSection({
 
                 <button
                   type="button"
-                  onClick={onClosePrintModal}
+                  onClick={triggerClosePrintModal}
                   data-testid="btn-close-print-modal"
                   className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                 >
