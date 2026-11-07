@@ -105,7 +105,7 @@ async function remote(method, suffix = '', body) {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(15000)
+    signal: AbortSignal.timeout(60000)
   });
   if (!response.ok) {
     throw Error(`Không thể lưu database bền vững (HTTP ${response.status})`);
@@ -164,7 +164,7 @@ async function flushState() {
   let patchSuccess = false;
 
   try {
-    const rows = await remote('PATCH', `?id=eq.main&revision=eq.${revision}`, {
+    const rows = await remote('PATCH', `?id=eq.main&revision=eq.${revision}&select=revision,write_id,payload_hash`, {
       revision: next,
       payload: encryptedPayload,
       write_id: writeId,
