@@ -35,6 +35,9 @@ router.post('/preview', upload.single('file'), (req, res) => {
       sheetName: req.body.sheet_name || req.body.sheetName || null
     });
     const previewId=crypto.randomUUID();
+    try {
+      db.prepare('DELETE FROM import_previews WHERE created_at < ?').run(Date.now() - 3600000);
+    } catch (_) {}
     db.prepare('INSERT INTO import_previews VALUES(?,?,?,?)').run(previewId,req.user.username,JSON.stringify(preview),Date.now());
     return successResponse(res, {...preview,preview_id:previewId}, 'Phân tích tệp Excel thành công');
   } catch (err) {
@@ -66,6 +69,9 @@ router.post('/commit', (req, res) => {
       ipAddress,
       confirmDuplicates: req.body.confirm_duplicates === true
     });
+    try {
+      db.prepare('DELETE FROM import_previews WHERE id = ?').run(req.body.preview_id);
+    } catch (_) {}
     if (!result.inserted_count) {
       return successResponse(res, result, 'Không có dòng mới để nhập (các dòng đã có từ đợt trước).', 200);
     }

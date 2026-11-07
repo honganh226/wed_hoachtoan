@@ -49,6 +49,7 @@ export function captureState() {
   const tables = {};
   for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()) {
     if (!/^[a-zA-Z0-9_]+$/.test(name)) throw Error('Tên bảng không hợp lệ');
+    if (name === 'import_previews') continue;
     tables[name] = db.prepare(`SELECT * FROM ${name}`).all();
   }
   return { format: 1, tables, allocations: Object.fromEntries(excelMonthService.groupAllocations) };
