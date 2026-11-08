@@ -221,7 +221,7 @@ export default function DirectorDebtsView({
           setEirError(null);
         } else {
           setEirError(remRes?.error || 'Không thể tải danh sách nhắc hoàn tiền phơi.');
-          setEirReminders(null);
+
         }
         setDebts(null);
         setLoading(false);
@@ -247,7 +247,6 @@ export default function DirectorDebtsView({
         setLoadError(null);
       } else {
         setLoadError(debtsRes?.error || 'Lỗi tải dữ liệu công nợ từ máy chủ.');
-        setDebts(null);
       }
 
       // Xử lý tiền phơi ĐỘC LẬP (nếu lỗi phơi, không làm hỏng công nợ và ngược lại)
@@ -256,7 +255,7 @@ export default function DirectorDebtsView({
         setEirError(null);
       } else {
         setEirError(remRes?.error || 'Không thể tải danh sách nhắc hoàn tiền phơi từ máy chủ.');
-        setEirReminders(null);
+
       }
     } catch (e) {
       if (seq === requestSeqRef.current) {
@@ -281,11 +280,10 @@ export default function DirectorDebtsView({
         setEirError(null);
       } else {
         setEirError(remRes?.error || 'Không thể tải danh sách nhắc hoàn tiền phơi.');
-        setEirReminders(null);
+
       }
     } catch (err) {
       setEirError(err.message || 'Lỗi kết nối khi tải tiền phơi.');
-      setEirReminders(null);
     } finally {
       setEirLoading(false);
     }
@@ -339,7 +337,7 @@ export default function DirectorDebtsView({
   }, [activeTab, dateFilter, rangeStart, rangeEnd, exactDate, searchQuery, onAssistantContext]);
 
   // Kiểm tra tính hợp lệ của dữ liệu theo kỳ
-  const isDataCurrent = Boolean(debts && debtsPeriodKey === currentPeriodKey && !loading && !loadError);
+  const isDataCurrent = Boolean(debts && debtsPeriodKey === currentPeriodKey);
   const effectiveDebts = isDataCurrent ? debts : null;
 
   const receivables = effectiveDebts?.receivables || {};
@@ -822,7 +820,7 @@ export default function DirectorDebtsView({
           <Clock className="w-4 h-4 text-purple-500" />
           <span>B. Tiền phơi trả hộ</span>
           <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-purple-50 text-purple-700 font-mono">
-            {!eirError && !eirLoading && eirReminders ? `${allReminderItems.length} khoản` : eirError ? 'Lỗi' : '--'}
+            {eirReminders ? `${allReminderItems.length} khoản` : eirError ? 'Lỗi' : '--'}
           </span>
         </button>
 
@@ -1168,7 +1166,7 @@ export default function DirectorDebtsView({
               Còn phải thu:{' '}
               {eirError ? (
                 <span className="text-rose-600">Chưa xác định</span>
-              ) : eirLoading ? (
+              ) : (eirLoading && !eirReminders) ? (
                 <span className="text-slate-500">Đang tải...</span>
               ) : (
                 formatVnd(phoiSummaryTotalDue)
@@ -1244,7 +1242,7 @@ export default function DirectorDebtsView({
                   <span className="text-slate-500">Ưu tiên khoản quá hạn và đến hạn hôm nay</span>
                 </div>
 
-                {eirLoading ? (
+                {(eirLoading && !eirReminders) ? (
                   <div className="py-12 text-center text-slate-400 text-xs">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto text-purple-500 mb-2" />
                     <span>Đang tải danh sách tiền phơi trả hộ...</span>

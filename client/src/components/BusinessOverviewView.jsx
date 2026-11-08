@@ -58,12 +58,19 @@ export default function BusinessOverviewView({
   const [eirReminders, setEirReminders] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoadedRef = useRef(false);
+  const loadRequestRef = useRef(0);
+  const debtsRequestRef = useRef(0);
 
   // 1. BỘ LỌC TOÀN TRANG: THỜI GIAN & PHẠM VI (SCOPE)
   const [dateFilter, setDateFilter] = useState('all'); // 'month' | 'day_09' | 'day_08' | 'all' | 'range'
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
   const [scopeFilter, setScopeFilter] = useState('ALL'); // 'ALL' | 'XE_NHA' | 'THUE_NGOAI'
+
+  const periodRef = useRef(null);
+  periodRef.current = { dateFilter, rangeStart, rangeEnd };
 
   // 2. KHUNG CHI TIẾT TẠI CHỖ (DRAWER NỘI BỘ VÀ CHUYẾN XE)
   const [activeDrawer, setActiveDrawer] = useState(null); // { type, title, subtitle, data }
@@ -107,24 +114,25 @@ export default function BusinessOverviewView({
 
   // Tải dữ liệu công nợ theo đúng kỳ đang chọn
   const fetchDebtsForPeriod = useCallback(async (filterKey, start, end) => {
+    const requestId = ++debtsRequestRef.current;
     const targetPeriodKey = filterKey === 'range' ? `range:${start}_${end}` : filterKey;
     try {
       setDebtsLoading(true);
       setDebtsError(null);
       const range = getPeriodRange(filterKey, start, end);
       const debtsRes = await fetchBusinessDebtsApi(range);
+      if (requestId !== debtsRequestRef.current) return;
       if (debtsRes && debtsRes.success) {
         setDebtsData({ ...debtsRes.data, _periodKey: targetPeriodKey });
         setDebtsError(null);
       } else {
-        setDebtsData(null);
         setDebtsError(debtsRes?.error || 'Chưa tải được công nợ');
       }
     } catch (e) {
-      setDebtsData(null);
+      if (requestId !== debtsRequestRef.current) return;
       setDebtsError(e.message || 'Không thể kết nối máy chủ để tải công nợ');
     } finally {
-      setDebtsLoading(false);
+      if (requestId === debtsRequestRef.current) setDebtsLoading(false);
     }
   }, [getPeriodRange]);
 
@@ -133,49 +141,44 @@ export default function BusinessOverviewView({
     return fetchDebtsForPeriod(dateFilter, rangeStart, rangeEnd);
   }, [fetchDebtsForPeriod, dateFilter, rangeStart, rangeEnd]);
 
-  // Tải dữ liệu từ API thực tế
+  // Keep the report mounted during realtime/polling refreshes. Only the first load blocks the view.
   const loadData = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
+    const period = periodRef.current;
+    if (!hasLoadedRef.current) setLoading(true);
+    else setRefreshing(true);
+    setLoadError(null);
     try {
-      setLoading(true);
-      setLoadError(null);
-      const targetPeriodKey = dateFilter === 'range' ? `range:${rangeStart}_${rangeEnd}` : dateFilter;
-      const range = getPeriodRange(dateFilter, rangeStart, rangeEnd);
-      setDebtsLoading(true);
-      setDebtsError(null);
-      const [ovRes, trRes, grRes, remRes, debtsRes] = await Promise.all([
+      const [ovRes, trRes, grRes, remRes] = await Promise.all([
         fetchBusinessOverviewApi({ period: 'month' }),
         fetchBusinessTripsApi(),
         fetchBusinessGroupsApi(),
         fetchEirRemindersApi().catch(() => ({ success: false })),
-        fetchBusinessDebtsApi(range).catch((err) => ({ success: false, error: err.message || 'Lỗi mạng khi tải công nợ' }))
+        fetchDebtsForPeriod(period.dateFilter, period.rangeStart, period.rangeEnd)
       ]);
-
+      if (requestId !== loadRequestRef.current) return;
       if (ovRes.success && trRes.success && grRes.success) {
         setOverviewData(ovRes.data);
         setTripsData(trRes.data.trips || []);
         setGroupsData(grRes.data || []);
         if (remRes.success) setEirReminders(remRes.data);
-        if (debtsRes && debtsRes.success) {
-          setDebtsData({ ...debtsRes.data, _periodKey: targetPeriodKey });
-          setDebtsError(null);
-        } else {
-          setDebtsData(null);
-          setDebtsError(debtsRes?.error || 'Chưa tải được công nợ');
-        }
+        hasLoadedRef.current = true;
       } else {
-        const err = ovRes.error || trRes.error || grRes.error || 'Lỗi lấy dữ liệu kinh doanh.';
-        setLoadError(err);
+        setLoadError(ovRes.error || trRes.error || grRes.error || 'Lỗi lấy dữ liệu kinh doanh.');
       }
     } catch (e) {
-      setLoadError('Không thể kết nối máy chủ backend. Vui lòng kiểm tra mạng và thử lại.');
+      if (requestId === loadRequestRef.current) setLoadError('Chưa cập nhật được dữ liệu. Vui lòng kiểm tra mạng và thử lại.');
     } finally {
-      setLoading(false);
-      setDebtsLoading(false);
+      if (requestId === loadRequestRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [dateFilter, rangeStart, rangeEnd, getPeriodRange]);
+  }, [fetchDebtsForPeriod]);
 
   useEffect(() => {
     loadData();
+    return () => { loadRequestRef.current++; debtsRequestRef.current++; };
   }, [loadData]);
 
   // Đồng bộ tải lại công nợ khi người dùng chuyển đổi kỳ lọc thời gian
@@ -192,11 +195,9 @@ export default function BusinessOverviewView({
   const isDebtsCurrent = useMemo(() => {
     return Boolean(
       debtsData &&
-      debtsData._periodKey === currentPeriodKey &&
-      !debtsLoading &&
-      !debtsError
+      debtsData._periodKey === currentPeriodKey
     );
-  }, [debtsData, currentPeriodKey, debtsLoading, debtsError]);
+  }, [debtsData, currentPeriodKey]);
 
   const effectiveDebts = isDebtsCurrent ? debtsData : null;
 
@@ -692,7 +693,7 @@ export default function BusinessOverviewView({
     return activeDrawer.partners.filter((p) => p.name.toLowerCase().includes(q));
   }, [activeDrawer, drawerSearch]);
 
-  if (loading) {
+  if (loading && !hasLoadedRef.current) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-16 flex flex-col items-center justify-center space-y-4 text-center">
         <Loader2 className="w-9 h-9 text-slate-800 animate-spin" />
@@ -706,7 +707,7 @@ export default function BusinessOverviewView({
     );
   }
 
-  if (loadError) {
+  if (loadError && !hasLoadedRef.current) {
     return (
       <div className="max-w-2xl mx-auto my-12 p-6 bg-white border border-rose-200 rounded-2xl shadow-xs text-center space-y-4">
         <AlertCircle className="w-10 h-10 text-rose-500 mx-auto" />
@@ -724,7 +725,15 @@ export default function BusinessOverviewView({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-testid="business-overview-content">
+      {loadError && (
+        <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          {loadError} Đang giữ số liệu của lần tải thành công gần nhất.
+        </div>
+      )}
+      {debtsError && isDebtsCurrent && (
+        <div role="status" className="text-xs text-amber-800">Chưa cập nhật được công nợ; đang giữ số liệu gần nhất của kỳ này.</div>
+      )}
       {/* ============================================================ */}
       {/* PHẦN ĐẦU: TIÊU ĐỀ & BỘ LỌC PHẠM VI (SCOPE SELECTOR) */}
       {/* ============================================================ */}
@@ -768,8 +777,10 @@ export default function BusinessOverviewView({
             className="inline-flex items-center justify-center p-1.5 bg-white hover:bg-slate-50 text-slate-600 border border-slate-300 rounded-lg text-xs shadow-2xs transition-colors cursor-pointer"
             title="Làm mới dữ liệu từ máy chủ"
             aria-label="Làm mới dữ liệu"
+            aria-busy={refreshing || debtsLoading}
+            disabled={refreshing}
           >
-            <RefreshCw size={15} />
+            <RefreshCw size={15} className={refreshing || debtsLoading ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
@@ -1267,7 +1278,7 @@ export default function BusinessOverviewView({
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <span className="font-bold text-sm text-slate-900">1. Phải thu khách hàng</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  {debtsLoading || (!isDebtsCurrent && !debtsError)
+                  {!isDebtsCurrent && !debtsError
                     ? '...'
                     : effectiveDebts?.receivables?.customers
                     ? `${effectiveDebts.receivables.customers.length} khách`
@@ -1275,7 +1286,7 @@ export default function BusinessOverviewView({
                 </span>
               </div>
 
-              {debtsLoading || (!isDebtsCurrent && !debtsError) ? (
+              {!isDebtsCurrent && !debtsError ? (
                 <div className="py-6 text-center text-slate-400 space-y-2">
                   <Loader2 className="w-5 h-5 animate-spin mx-auto text-slate-500" />
                   <div className="text-xs">Đang tải dữ liệu công nợ...</div>
@@ -1420,7 +1431,7 @@ export default function BusinessOverviewView({
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>Đã thanh toán:</span>
-                  {debtsLoading || (!isDebtsCurrent && !debtsError) ? (
+                  {!isDebtsCurrent && !debtsError ? (
                     <span className="text-[11px] text-slate-400 italic">Đang tải...</span>
                   ) : isDebtsCurrent && subcontractorTotals.isDebtAvailable ? (
                     <strong className="font-mono text-emerald-700">
@@ -1439,7 +1450,7 @@ export default function BusinessOverviewView({
                   </strong>
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium">
-                  {debtsLoading || (!isDebtsCurrent && !debtsError) ? (
+                  {!isDebtsCurrent && !debtsError ? (
                     <span className="text-slate-400 italic">Đang kiểm tra dư nợ...</span>
                   ) : isDebtsCurrent && subcontractorTotals.isDebtAvailable ? (
                     subcontractorTotals.due === 0 && (subcontractorTotals.paid ?? 0) > 0 ? (
