@@ -13,7 +13,8 @@
     "test:cross-excel:py": "python src/scripts/test_cross_excel.py",
     "test:tasks72-74": "node src/scripts/verifyTasks72_73_74.js",
     "test": "node src/tests/math.test.js && node src/scripts/verifyTask45.js && node src/scripts/verifyTasks72_73_74.js",
-    "test:security": "node src/tests/securityBoundaries.test.mjs"
+    "test:security": "node src/tests/securityBoundaries.test.mjs",
+    "test:auth": "node src/tests/authRecovery.test.mjs && node src/tests/authClient.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

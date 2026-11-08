@@ -12,7 +12,7 @@
  * ============================================================
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchPLSummary, createPLEventSource, triggerPLBroadcastApi, getAuthToken } from '../services/api.js';
+import { fetchPLSummary, createPLEventSource, triggerPLBroadcastApi, getAuthToken, expireAuthSession } from '../services/api.js';
 
 /**
  * @param {object} dateFilter - Bộ lọc thời gian { startDate, endDate, month, year }
@@ -68,6 +68,7 @@ export function useRealtimePL(dateFilter = {}, currentUser = null) {
 
     const thisRequestId = ++activeRequestIdRef.current;
     const currentSession = sessionKeyRef.current;
+    const requestToken = getAuthToken();
     const filter = overrideFilter || dateFilterRef.current;
 
     try {
@@ -85,6 +86,7 @@ export function useRealtimePL(dateFilter = {}, currentUser = null) {
       } else {
         if (res.error && (res.error.includes('hết hạn') || res.error.includes('Token'))) {
           isExpiredRef.current = true;
+          expireAuthSession(requestToken);
           cleanupSessionData();
         }
         setError(res.error || 'Lỗi khi tải số liệu P&L');
@@ -218,6 +220,7 @@ export function useRealtimePL(dateFilter = {}, currentUser = null) {
             if (sessionKey !== sessionKeyRef.current) return;
             console.warn('[useRealtimePL] Máy chủ báo hết hạn phiên (AUTH_EXPIRED). Đóng kết nối và dọn dẹp dữ liệu.');
             isExpiredRef.current = true;
+            expireAuthSession(token);
             activeRequestIdRef.current++;
             cleanupSessionData();
             setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');

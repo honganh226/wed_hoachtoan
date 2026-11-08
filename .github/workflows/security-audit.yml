@@ -27,6 +27,7 @@ jobs:
       - name: Test security boundaries and Excel calculations
         run: |
           npm run test:security --prefix server
+          npm run test:auth --prefix server
           npm run test:unit --prefix server
           node server/src/tests/excelImportDates.test.mjs
       - name: Build frontend

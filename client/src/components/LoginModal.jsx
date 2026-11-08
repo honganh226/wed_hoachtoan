@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Lock, 
   User, 
@@ -20,6 +20,12 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess, currentUse
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState(null);
+  const requestRef = useRef(null);
+  useEffect(() => {
+    setError(null);setSuccessMsg(null);setConnectionStatus(null);setLoading(false);
+    return () => requestRef.current?.abort();
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -33,17 +39,22 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess, currentUse
       return;
     }
 
+    requestRef.current?.abort();
+    const request = new AbortController();
+    requestRef.current = request;
     try {
       setLoading(true);
       setError(null);
       setSuccessMsg(null);
 
-      const res = await loginApi(u, p);
+      const res = await loginApi(u, p, {signal:request.signal,onStatus:setConnectionStatus});
+      if (request.signal.aborted) return;
       if (res.success) {
         setAuthToken(res.data.token);
         setStoredUser(res.data.user);
         setSuccessMsg(`Đăng nhập thành công với vai trò: ${res.data.user.role}`);
         setTimeout(() => {
+          if (request.signal.aborted) return;
           onLoginSuccess(res.data.user);
           onClose();
         }, 600);
@@ -53,7 +64,7 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess, currentUse
     } catch (err) {
       setError(err.message || 'Lỗi kết nối máy chủ.');
     } finally {
-      setLoading(false);
+      if (requestRef.current === request && !request.signal.aborted) { setLoading(false);setConnectionStatus(null); }
     }
   };
 
@@ -93,6 +104,7 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess, currentUse
             </div>
           )}
 
+          {connectionStatus && <div role="status" className="text-xs text-sky-200">{connectionStatus}</div>}
           {successMsg && (
             <div className="flex items-center gap-2.5 p-3 text-sm text-emerald-300 bg-emerald-950/40 border border-emerald-800/60 rounded-xl">
               <CheckCircle className="w-5 h-5 shrink-0 text-emerald-400" />

@@ -8,7 +8,7 @@ const financialStaff = requireRole('DIRECTOR', 'ACCOUNTANT', 'AREA_MANAGER');
 export function protectApi(req, res, next) {
   res.setHeader('Cache-Control', 'no-store');
   const route = req.path.replace(/\/+$/, '') || '/';
-  if ((req.method === 'GET' && route === '/health') || (req.method === 'POST' && route === '/auth/login')) return next();
+  if ((['GET','HEAD'].includes(req.method) && ['/health','/health/live'].includes(route)) || (req.method === 'POST' && route === '/auth/login')) return next();
   authenticateToken(req, res, () => {
     res.setHeader('Cache-Control', 'no-store');
     if (process.env.NODE_ENV === 'production' && (route === '/data/seed' || route.startsWith('/pl/test-'))) {

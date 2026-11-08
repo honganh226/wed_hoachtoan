@@ -36,12 +36,13 @@ import helpRoutes from './routes/help.routes.js';
 import businessRoutes from './routes/business.routes.js';
 import excelRoutes from './routes/excel.routes.js';
 import directorDataRoutes from './routes/directorData.routes.js';
-import { initializeDurableState,durableWrites } from './services/durableState.service.js';
+import { durableWrites, durabilityStatus } from './services/durableState.service.js';
+import { durableReadiness, startDurableRecovery } from './services/durableRecovery.service.js';
 import { initOffsiteBackupScheduler } from './services/offsiteBackup.service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const durableReady = await initializeDurableState();
-if (process.env.ONLINE_EDITING === 'true') process.env.RENDER_READ_ONLY = durableReady ? 'false' : 'true';
+// Serve the shell immediately; private APIs stay locked until cloud restore succeeds.
+if (process.env.ONLINE_EDITING === 'true') process.env.RENDER_READ_ONLY = 'true';
 const app = express();
 app.disable('x-powered-by');
 if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
@@ -120,6 +121,7 @@ app.use('/uploads', authenticateToken, (req, res, next) => {
 // =============================================
 
 // Tiền tố chuẩn: /api/v1/ (Hợp đồng kỹ thuật)
+app.use('/api/v1', durableReadiness);
 app.use('/api/v1', readOnlyTest);
 app.use('/api/v1', protectApi);
 app.use('/api/v1', durableWrites);
@@ -239,7 +241,7 @@ app.use((err, req, res, _next) => {
 // KHỞI ĐỘNG SERVER
 // =============================================
 if (process.env.NODE_ENV !== 'test' || process.env.SERVE_TEST === 'true') {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log('');
     console.log('╔════════════════════════════════════════════════════════╗');
     console.log('║   HỆ THỐNG ĐIỀU VẬN CONTAINER - API SERVER ĐÃ KHỞI ĐỘNG║');
@@ -251,8 +253,14 @@ if (process.env.NODE_ENV !== 'test' || process.env.SERVE_TEST === 'true') {
     console.log('');
 
     // Khởi động bộ lập lịch sao lưu tự động hàng đêm lúc 23:59 (Task 7.4)
-    if (process.env.RENDER_READ_ONLY !== 'true') initOffsiteBackupScheduler();
+    // Backups start only after restored business data is ready.
   });
+  let backupTask = null;
+  const recovery = startDurableRecovery({ onReady(success) {
+    if (process.env.ONLINE_EDITING === 'true') process.env.RENDER_READ_ONLY = success ? 'false' : 'true';
+    if ((success || !durabilityStatus().configured) && process.env.RENDER_READ_ONLY !== 'true' && !backupTask) backupTask = initOffsiteBackupScheduler();
+  }});
+  server.once('close', () => { recovery.stop(); backupTask?.stop?.(); });
 }
 
 export default app;

@@ -9,6 +9,7 @@ import { durableWriteContext } from './durableWriteContext.js';
 let revision = null;
 let ready = false;
 let queue = Promise.resolve();
+let initializationInFlight = null;
 
 const getSupabaseKey = () => (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '').trim();
 const configured = () => Boolean(process.env.SUPABASE_URL && getSupabaseKey());
@@ -114,7 +115,13 @@ async function remote(method, suffix = '', body) {
   return response.json();
 }
 
-export async function initializeDurableState() {
+export function initializeDurableState() {
+  if (initializationInFlight) return initializationInFlight;
+  initializationInFlight = initializeState().finally(() => { initializationInFlight = null; });
+  return initializationInFlight;
+}
+
+async function initializeState() {
   if (!configured()) {
     ready = false;
     return false;
@@ -239,7 +246,7 @@ async function flushState() {
 }
 
 export function durabilityStatus() {
-  return { configured: configured(), ready, revision };
+  return { configured: configured(), ready, revision, initializing: Boolean(initializationInFlight) };
 }
 
 export function durableWrites(req, res, next) {

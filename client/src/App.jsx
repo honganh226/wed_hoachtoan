@@ -28,6 +28,7 @@ import {
   fetchVehicles,
   fetchTrips,
   getStoredUser,
+  getAuthToken,
   setStoredUser,
   setAuthToken,
   fetchMeApi,
@@ -105,7 +106,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
-  const [currentUser, setCurrentUser] = useState(() => getStoredUser());
+  const [currentUser, setCurrentUser] = useState(() => getAuthToken() ? getStoredUser() : null);
   // Phân quyền vai trò cốt lõi (Gồm Giám đốc, Kế toán, Thư ký, Quản lý khu, Lái xe)
   const isDirector = currentUser?.role === 'DIRECTOR';
   const isAccountant = currentUser?.role === 'ACCOUNTANT';
@@ -201,6 +202,7 @@ export default function App() {
   } = useRealtimePL(dateFilter, currentUser);
 
   const loadData = async () => {
+    const requestToken = getAuthToken();
     try {
       setErr(null);
       const [hRes, sRes, lRes, sumRes, vRes, tRes, meRes] = await Promise.all([
@@ -212,6 +214,7 @@ export default function App() {
         fetchTrips(50).catch(() => ({ success: false })),
         fetchMeApi().catch(() => ({ success: false }))
       ]);
+      if (requestToken !== getAuthToken()) return;
       if (hRes.success) setHealth(hRes.data);
       if (sRes.success) setStats(sRes.data);
       if (lRes.success) setBackups(lRes.data.backups || []);
@@ -224,9 +227,20 @@ export default function App() {
         setIsLoginOpen(false);
       }
     } catch (e) {
-      setErr('Không thể kết nối tới Backend (Port 5000). Hãy đảm bảo server đang chạy.');
+      setErr('Máy chủ đang khởi động hoặc kết nối tạm gián đoạn. Vui lòng thử lại sau ít phút.');
     }
   };
+
+  useEffect(() => {
+    const expired = () => {
+      setCurrentUser(null);setSampleTrips([]);setVehicles([]);setDataSummary(null);setStats(null);setBackups([]);
+      setIsLoginOpen(true);setErr(null);setMsg('Phiên đăng nhập đã hết hạn hoặc không còn hợp lệ. Vui lòng đăng nhập lại.');
+    };
+    const revalidate = () => { if (document.visibilityState === 'visible' && getAuthToken()) void fetchMeApi(); };
+    window.addEventListener('auth-session-expired',expired);
+    document.addEventListener('visibilitychange',revalidate);
+    return () => {window.removeEventListener('auth-session-expired',expired);document.removeEventListener('visibilitychange',revalidate);};
+  }, []);
 
   const handleLogout = async () => {
     try {

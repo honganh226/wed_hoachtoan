@@ -47,13 +47,56 @@ export function authHeaders() {
 }
 
 // ================= AUTH APIS =================
-export async function loginApi(username, password) {
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
+// A temporary deployment/HTML gateway response is not a wrong password.
+async function authRequest(path, options = {}, {signal, timeoutMs=20000} = {}) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) return {success:false,code:'REQUEST_CANCELLED'};
+  signal?.addEventListener('abort', abort, {once:true});
+  const timer = setTimeout(abort, timeoutMs);
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {...options, signal:controller.signal});
+    const payload = await response.json().catch(() => null);
+    const temporary = [502,503,504].includes(response.status);
+    if (!payload || typeof payload.success !== 'boolean') {
+      return {success:false,httpStatus:response.status,code:'SERVER_UNAVAILABLE',retryable:temporary,error:'Máy chủ đang khởi động hoặc tạm gián đoạn. Vui lòng thử lại sau ít phút.'};
+    }
+    return {...payload,httpStatus:response.status,retryable:temporary || payload.retryable === true,retryAfterMs:Math.min(5000,Math.max(500,(Number(response.headers.get('Retry-After')) || 2)*1000))};
+  } catch (_) {
+    return {success:false,code:signal?.aborted?'REQUEST_CANCELLED':'SERVER_UNAVAILABLE',retryable:!signal?.aborted,error:'Chưa kết nối được máy chủ. Dữ liệu đăng nhập chưa được kiểm tra; vui lòng thử lại.'};
+  } finally {
+    clearTimeout(timer); signal?.removeEventListener('abort',abort);
+  }
+}
+
+function waitForLoginRetry(ms, signal) {
+  return new Promise(resolve => {
+    const finish = () => {clearTimeout(timer);signal?.removeEventListener('abort',finish);resolve();};
+    const timer = setTimeout(finish,ms);
+    if (signal?.aborted) finish(); else signal?.addEventListener('abort',finish,{once:true});
   });
-  return res.json();
+}
+
+export async function loginApi(username, password, {signal,onStatus} = {}) {
+  const deadline=Date.now()+90000;
+  let result;
+  for (let attempt=0; attempt<18 && Date.now()<deadline; attempt++) {
+    result = await authRequest('/auth/login', {
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})
+    }, {signal,timeoutMs:Math.min(20000,Math.max(1,deadline-Date.now()))});
+    if (result.success || !result.retryable || signal?.aborted) return result;
+    onStatus?.('Máy chủ đang khởi động hoặc khôi phục dữ liệu. Đang tự kết nối lại…');
+    await waitForLoginRetry(Math.min(result.retryAfterMs || 2000,Math.max(0,deadline-Date.now())),signal);
+  }
+  return {...result,success:false,error:'Máy chủ chưa sẵn sàng. Vui lòng thử lại sau ít phút; đây không phải kết luận sai mật khẩu.'};
+}
+
+// Only expire the exact session that produced the rejected request.
+export function expireAuthSession(requestToken) {
+  if (!requestToken || getAuthToken() !== requestToken) return false;
+  setAuthToken(null);setStoredUser(null);
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('auth-session-expired'));
+  return true;
 }
 
 export async function logoutApi() {
@@ -69,10 +112,11 @@ export async function logoutApi() {
 }
 
 export async function fetchMeApi() {
-  const res = await fetch(`${API_BASE}/auth/me`, {
-    headers: authHeaders()
-  });
-  return res.json();
+  const requestToken=getAuthToken();
+  if (!requestToken) return {success:false,httpStatus:401,error:'Vui lòng đăng nhập.'};
+  const response=await authRequest('/auth/me',{headers:authHeaders()});
+  if ([401,403,404].includes(response.httpStatus)) expireAuthSession(requestToken);
+  return response;
 }
 
 export async function fetchDemoAccounts() {
