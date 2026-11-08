@@ -453,6 +453,26 @@ export default function DirectorDebtsView({
     return list;
   }, [normalizedSubcontractors, unpaidSubcontractors, paidSubcontractors, filterStatus, searchQuery]);
 
+  // Đồng bộ selectedTrip khi dữ liệu công nợ được tải lại ngầm
+  useEffect(() => {
+    if (!selectedTrip) return;
+    const targetId = String(selectedTrip.id);
+    for (const c of normalizedCustomers) {
+      const match = (c.trips || []).find((t) => String(t.id) === targetId);
+      if (match && match !== selectedTrip) {
+        setSelectedTrip(match);
+        return;
+      }
+    }
+    for (const s of normalizedSubcontractors) {
+      const match = (s.trips || []).find((t) => String(t.id) === targetId);
+      if (match && match !== selectedTrip) {
+        setSelectedTrip(match);
+        return;
+      }
+    }
+  }, [normalizedCustomers, normalizedSubcontractors, selectedTrip]);
+
   // 3. Chuẩn hóa danh sách tiền phơi trả hộ (Bảo đảm balance_due và remaining_amount đồng nhất)
   const allReminderItems = useMemo(() => {
     if (!eirReminders) return [];

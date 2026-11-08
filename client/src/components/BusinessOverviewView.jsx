@@ -669,12 +669,77 @@ export default function BusinessOverviewView({
       .sort((a, b) => (b.dau_liters || 0) - (a.dau_liters || 0));
   }, [scopedTrips]);
 
-  // 9. Lọc danh sách trong Drawer hiện tại
+  // 9. Đồng bộ dữ liệu trong Drawer và Chi tiết chuyến khi tripsData/debtsData cập nhật ngầm mà không đóng Drawer hay mất vị trí cuộn
+  const liveDrawerData = useMemo(() => {
+    if (!activeDrawer) return null;
+    if (activeDrawer.type === 'TRIPS' || activeDrawer.type === 'REVENUE_BREAKDOWN') {
+      return {
+        ...activeDrawer,
+        trips: effectiveTrips,
+        metrics
+      };
+    }
+    if (activeDrawer.type === 'COST_BREAKDOWN' || activeDrawer.type === 'PROFIT_EXPLAINER') {
+      return {
+        ...activeDrawer,
+        metrics
+      };
+    }
+    if (activeDrawer.type === 'SUBCONTRACTORS_LIST') {
+      return {
+        ...activeDrawer,
+        partners: subcontractorPartners
+      };
+    }
+    if (activeDrawer.type === 'FUEL_TRIPS') {
+      return {
+        ...activeDrawer,
+        trips: fuelTripsList
+      };
+    }
+    if (activeDrawer.type === 'GROUP_DETAIL') {
+      return {
+        ...activeDrawer,
+        group: group63_64 || activeDrawer.group,
+        trips: group63_64Trips.length > 0 ? group63_64Trips : activeDrawer.trips,
+        financials: group63_64Financials || activeDrawer.financials
+      };
+    }
+    if (activeDrawer.trips && tripsData.length > 0) {
+      const tripById = new Map(tripsData.map((t) => [String(t.id), t]));
+      return {
+        ...activeDrawer,
+        trips: activeDrawer.trips.map((oldTrip) => tripById.get(String(oldTrip.id)) || oldTrip)
+      };
+    }
+    return activeDrawer;
+  }, [
+    activeDrawer,
+    effectiveTrips,
+    metrics,
+    subcontractorPartners,
+    fuelTripsList,
+    group63_64,
+    group63_64Trips,
+    group63_64Financials,
+    tripsData
+  ]);
+
+  // Đồng bộ selectedTrip khi dữ liệu chuyến được tải lại ngầm
+  useEffect(() => {
+    if (!selectedTrip || !tripsData.length) return;
+    const fresh = tripsData.find((t) => String(t.id) === String(selectedTrip.id));
+    if (fresh && fresh !== selectedTrip) {
+      setSelectedTrip(fresh);
+    }
+  }, [tripsData, selectedTrip]);
+
+  // Lọc danh sách trong Drawer hiện tại
   const filteredDrawerTrips = useMemo(() => {
-    if (!activeDrawer?.trips) return [];
-    if (!drawerSearch.trim()) return activeDrawer.trips;
+    if (!liveDrawerData?.trips) return [];
+    if (!drawerSearch.trim()) return liveDrawerData.trips;
     const q = drawerSearch.toLowerCase();
-    return activeDrawer.trips.filter(
+    return liveDrawerData.trips.filter(
       (t) =>
         (t.id && String(t.id).toLowerCase().includes(q)) ||
         (t.trip_code && String(t.trip_code).toLowerCase().includes(q)) ||
@@ -684,14 +749,14 @@ export default function BusinessOverviewView({
         (t.container_number && t.container_number.toLowerCase().includes(q)) ||
         (t.route_name && t.route_name.toLowerCase().includes(q))
     );
-  }, [activeDrawer, drawerSearch]);
+  }, [liveDrawerData, drawerSearch]);
 
   const filteredDrawerPartners = useMemo(() => {
-    if (!activeDrawer?.partners) return [];
-    if (!drawerSearch.trim()) return activeDrawer.partners;
+    if (!liveDrawerData?.partners) return [];
+    if (!drawerSearch.trim()) return liveDrawerData.partners;
     const q = drawerSearch.toLowerCase();
-    return activeDrawer.partners.filter((p) => p.name.toLowerCase().includes(q));
-  }, [activeDrawer, drawerSearch]);
+    return liveDrawerData.partners.filter((p) => p.name.toLowerCase().includes(q));
+  }, [liveDrawerData, drawerSearch]);
 
   if (loading && !hasLoadedRef.current) {
     return (

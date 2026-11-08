@@ -324,7 +324,10 @@ export default function CorporateFinancialReportView({
   const [tripsData, setTripsData] = useState(initialTripsData || []);
   const [debtsData, setDebtsData] = useState(null);
   const [loading, setLoading] = useState(!initialTripsData);
+  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const hasLoadedRef = useRef(Array.isArray(initialTripsData) && initialTripsData.length > 0);
+  const requestSeqRef = useRef(0);
 
   // 1. Bộ lọc cấp Tập đoàn (Năm tài chính, Kỳ Năm/Quý/Tháng, Đầu xe, Cơ sở Doanh thu, Từ khóa)
   const [selectedYear, setSelectedYear] = useState(initialYear);
@@ -361,6 +364,9 @@ export default function CorporateFinancialReportView({
   useEffect(() => {
     if (Array.isArray(initialTripsData)) {
       setTripsData(initialTripsData);
+      if (initialTripsData.length > 0) {
+        hasLoadedRef.current = true;
+      }
       setLoading(false);
     }
   }, [initialTripsData]);
@@ -373,25 +379,38 @@ export default function CorporateFinancialReportView({
   }, [selectedPeriod]);
 
   const loadFinancialData = useCallback(async () => {
+    const seq = ++requestSeqRef.current;
     try {
-      setLoading(true);
+      if (!hasLoadedRef.current) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
       setLoadError(null);
       const [trRes, debtsRes] = await Promise.all([
         fetchBusinessTripsApi(),
         fetchBusinessDebtsApi({}).catch(() => ({ success: false }))
       ]);
+      if (seq !== requestSeqRef.current) return;
       if (trRes && trRes.success) {
         setTripsData(trRes.data?.trips || []);
+        hasLoadedRef.current = true;
         if (debtsRes && debtsRes.success) {
           setDebtsData(debtsRes.data);
         }
+        setLoadError(null);
       } else {
         setLoadError(trRes?.error || 'Không thể tải dữ liệu báo cáo tài chính.');
       }
     } catch (err) {
-      setLoadError(err.message || 'Lỗi kết nối máy chủ khi tải báo cáo tài chính.');
+      if (seq === requestSeqRef.current) {
+        setLoadError(err.message || 'Lỗi kết nối máy chủ khi tải báo cáo tài chính.');
+      }
     } finally {
-      setLoading(false);
+      if (seq === requestSeqRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
@@ -405,6 +424,26 @@ export default function CorporateFinancialReportView({
         })
         .catch(() => {});
     }
+    return () => {
+      requestSeqRef.current++;
+    };
+  }, [initialTripsData, loadFinancialData]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!initialTripsData) {
+        loadFinancialData();
+      } else {
+        fetchBusinessDebtsApi({})
+          .then((res) => {
+            if (res?.success) setDebtsData(res.data);
+          })
+          .catch(() => {});
+      }
+    };
+    window.addEventListener('business-data-changed', refresh);
+    return () => window.removeEventListener('business-data-changed', refresh);
   }, [initialTripsData, loadFinancialData]);
 
   // Danh sách các năm tài chính có trong dữ liệu (mặc định luôn có 2026)
@@ -983,7 +1022,7 @@ export default function CorporateFinancialReportView({
     return { maxBar, maxCash };
   }, [monthlyDataList, revenueBasis]);
 
-  if (loading) {
+  if (loading && !hasLoadedRef.current && tripsData.length === 0) {
     return (
       <div className="p-12 bg-white rounded-2xl border border-slate-200 text-center space-y-3">
         <RefreshCw className="w-8 h-8 text-[#1B365D] animate-spin mx-auto" />
@@ -994,7 +1033,7 @@ export default function CorporateFinancialReportView({
     );
   }
 
-  if (loadError) {
+  if (loadError && !hasLoadedRef.current && tripsData.length === 0) {
     return (
       <div className="p-8 bg-white rounded-2xl border border-rose-200 text-center space-y-3">
         <AlertCircle className="w-8 h-8 text-rose-600 mx-auto" />
@@ -1049,6 +1088,24 @@ export default function CorporateFinancialReportView({
       data-testid="corporate-financial-report-view"
       className="space-y-5 bg-[#F8FAFC] rounded-2xl p-3 sm:p-5 border border-slate-200/90 shadow-xs"
     >
+      {loadError && (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 flex items-center justify-between gap-2"
+        >
+          <span>{loadError} Đang giữ số liệu của lần tải thành công gần nhất.</span>
+          {!initialTripsData && (
+            <button
+              type="button"
+              onClick={loadFinancialData}
+              disabled={refreshing}
+              className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded font-semibold shrink-0 cursor-pointer"
+            >
+              Thử lại
+            </button>
+          )}
+        </div>
+      )}
       {/* ============================================================ */}
       {/* 1. HEADER & FILTER BAR CHUẨN CFO DASHBOARD (#1B365D & #0D9488) */}
       {/* ============================================================ */}

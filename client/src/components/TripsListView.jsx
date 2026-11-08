@@ -160,9 +160,11 @@ export default function TripsListView({
 
   // 4. Drawer chi tiết chuyến xe
   const [selectedTrip, setSelectedTrip] = useState(null);
+  const requestSeqRef = useRef(0);
 
   // Tải dữ liệu chuyến xe và nhóm ô gộp song song từ API chuẩn
   const loadTrips = useCallback(async () => {
+    const seq = ++requestSeqRef.current;
     try {
       setLoading(true);
       setError(null);
@@ -171,6 +173,8 @@ export default function TripsListView({
         fetchBusinessGroupsApi().catch(() => ({ success: false, data: [] }))
       ]);
 
+      if (seq !== requestSeqRef.current) return;
+
       if (tripsRes && tripsRes.success && tripsRes.data) {
         setTripsData(tripsRes.data.trips || []);
         setGroupsData(groupsRes?.data || []);
@@ -178,9 +182,13 @@ export default function TripsListView({
         setError(tripsRes?.error || 'Không thể tải danh sách chuyến xe từ máy chủ backend.');
       }
     } catch (e) {
-      setError('Lỗi kết nối khi tải danh sách chuyến xe. Vui lòng thử lại.');
+      if (seq === requestSeqRef.current) {
+        setError('Lỗi kết nối khi tải danh sách chuyến xe. Vui lòng thử lại.');
+      }
     } finally {
-      setLoading(false);
+      if (seq === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -210,6 +218,15 @@ export default function TripsListView({
   const mappedTrips = useMemo(() => {
     return (tripsData || []).map((raw) => mapTripData(raw, groupsMap));
   }, [tripsData, groupsMap]);
+
+  // Đồng bộ selectedTrip khi dữ liệu chuyến được tải lại ngầm
+  useEffect(() => {
+    if (!selectedTrip || !mappedTrips.length) return;
+    const fresh = mappedTrips.find((t) => String(t.id) === String(selectedTrip.id));
+    if (fresh && fresh !== selectedTrip) {
+      setSelectedTrip(fresh);
+    }
+  }, [mappedTrips, selectedTrip]);
 
   // Trích xuất danh mục xe và nhà xe động từ dữ liệu thực tế (không cố định)
   const vehicleOptions = useMemo(() => {
