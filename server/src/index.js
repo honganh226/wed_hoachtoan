@@ -10,6 +10,7 @@ import 'dotenv/config';
 import { idempotentWrites } from './middlewares/idempotency.middleware.js';
 import { readOnlyTest } from './middlewares/readOnlyTest.middleware.js';
 import express from 'express';
+import { startRuntimeDiagnostics } from './services/runtimeDiagnostics.service.js';
 import fs from 'fs';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -45,6 +46,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 if (process.env.ONLINE_EDITING === 'true') process.env.RENDER_READ_ONLY = 'true';
 const app = express();
 app.disable('x-powered-by');
+const diagnostics = process.env.NODE_ENV === 'production' ? startRuntimeDiagnostics({ app, getStatus: durabilityStatus }) : null;
 if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
 const PORT = parseInt(process.env.PORT || '5000', 10);
 
@@ -260,7 +262,7 @@ if (process.env.NODE_ENV !== 'test' || process.env.SERVE_TEST === 'true') {
     if (process.env.ONLINE_EDITING === 'true') process.env.RENDER_READ_ONLY = success ? 'false' : 'true';
     if ((success || !durabilityStatus().configured) && process.env.RENDER_READ_ONLY !== 'true' && !backupTask) backupTask = initOffsiteBackupScheduler();
   }});
-  server.once('close', () => { recovery.stop(); backupTask?.stop?.(); });
+  server.once('close', () => { recovery.stop(); backupTask?.stop?.(); diagnostics?.stop(); });
 }
 
 export default app;
