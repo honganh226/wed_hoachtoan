@@ -503,29 +503,31 @@ export class ExcelImportService {
       const extraLastVal = colMap.extra_last_col ? String(sheet[`${colMap.extra_last_col}${r}`]?.v || '').trim().toUpperCase() : '';
       const combinedTiming = [qVal, pVal, extraLastVal].join(' | ');
 
+      // Cột TƯƠI (thời điểm thanh toán) — chủ dự án xác nhận 25/11/2026:
+      //   TƯƠI hoặc ĐỂ TRỐNG  = khách đã thanh toán (cước; tiền phơi hoàn ngay)
+      //   CN 30/60/90 NGÀY, X, "CHƯA", "... SAU ..." = khách trả sau -> còn nợ, cần nhắc khi đến hạn
+      // Cột ĐÃ TT ghi đã thanh toán / đối trừ vẫn được ưu tiên.
       let paymentTerms = null;
       let phoiTermType = 'CHUA_DAT';
-      if (combinedTiming.includes('CN 30 NGÀY') || combinedTiming.includes('CN 30 NGAY')) {
-        paymentTerms = 'CN 30 NGÀY';
-        phoiTermType = 'CN_30_NGAY';
+      const hasTimingCol = Boolean(colMap.payment_timing);
+      const timing = qVal || extraLastVal;
+      const isCreditTerm = /(^|\s)(CN|CÔNG NỢ|CONG NO)(\s|$|\d)/.test(timing);
+      const isLater = timing === 'X' || timing.includes('CHƯA') || timing.includes('CHUA') || timing.includes('SAU') || isCreditTerm;
+      const isTuoi = !isLater && (timing.includes('TƯƠI') || timing.includes('TUOI'));
+      const isBlankPaid = hasTimingCol && !timing;
+      if (isCreditTerm) {
+        paymentTerms = timing.slice(0, 60);
+        if (/30/.test(timing)) phoiTermType = 'CN_30_NGAY';
       }
-      if (qVal.includes('TƯƠI') || qVal.includes('TUOI') || extraLastVal.includes('TƯƠI')) {
-        if (customerPaymentStatus === 'CHUA_TT' && !colMap.phoi_nang_ha) {
-          customerPaymentStatus = 'TUOI';
-        }
+      if (customerPaymentStatus === 'CHUA_TT' && (timing.includes('ĐÃ TT') || timing.includes('ĐÃ THANH TOÁN'))) customerPaymentStatus = 'DA_TT';
+      if (isTuoi || isBlankPaid) {
+        if (customerPaymentStatus === 'CHUA_TT') customerPaymentStatus = 'TUOI';
         phoiTermType = 'TUOI';
-      } else if (qVal === 'X') {
-        // Chủ dự án xác nhận 25/11/2026: X (hoặc trống) = khách TRẢ SAU, phải nhắc khi đến hạn;
-        // TƯƠI = khách đã thanh toán ngay. X tự nó KHÔNG có nghĩa là đã trả.
-        // - Sheet có cột PHƠI: X thuộc về tiền phơi -> giữ phoiTermType 'CHUA_DAT' (chưa hoàn, cần đặt ngày nhắc),
-        //   không đụng trạng thái thanh toán cước.
-        // - Sheet không có cột PHƠI (mẫu tháng 1): thanh toán cước theo cột P;
-        //   X là trạng thái "trả sau, CHƯA thu" (xác nhận 25/11/2026): chỉ gắn khi P chưa ghi thanh toán.
-        //   P đã ghi thanh toán -> giữ DA_TT; không ghi đè "ĐỐI TRỪ" (P22/Q22 tháng 1).
-        if (!colMap.phoi_nang_ha && customerPaymentStatus === 'CHUA_TT') {
-          customerPaymentStatus = 'X';
-        }
+      } else if (isLater && customerPaymentStatus === 'CHUA_TT' && (timing === 'X' || timing.includes('CHƯA') || timing.includes('CHUA'))) {
+        // X / "chưa" = trả sau, CHƯA thu. Không ghi đè cột ĐÃ TT đã ghi thanh toán hoặc "ĐỐI TRỪ" (P22/Q22 tháng 1).
+        customerPaymentStatus = 'X';
       }
+      void combinedTiming;
 
       const notes = String(getCell('notes', r)?.v || getCell('notes', r)?.w || '').trim();
 

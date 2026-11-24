@@ -32,15 +32,15 @@ Trạng thái: Đã cập nhật bộ quy tắc chuẩn hóa nhập chuyến, ti
 ## Xác nhận của chủ dự án ngày 25/11/2026 (Đang áp dụng)
 
 - **Tiền phơi** chỉ là khoản công ty trả trước / ứng hộ khách. **Không tính vào chi phí, không tính vào lợi nhuận** (khẳng định lại quy tắc 28/10).
-- **TƯƠI** = khách đã thanh toán (hoàn) luôn.
-- **Chưa ghi gì (trống) hoặc X** = khách **trả sau**; phải nhắc khách khi đến hạn. X tự nó **không** có nghĩa là đã trả.
-- Cách áp dụng trong mã (25/11/2026):
-  - Sheet có cột PHƠI: TƯƠI → khoản phơi hoàn đủ ngay; X/trống → khoản phơi `CHUA_HOAN`, nằm ở nhóm *"Chưa đặt ngày nhắc"* cho tới khi nhập ngày hẹn, sau đó nhắc đến hạn/quá hạn. Cột này không làm thay đổi trạng thái thanh toán cước.
-  - Sheet không có cột PHƠI (mẫu tháng 1): thanh toán cước theo cột P; X chỉ là nhãn "trả sau" trên dòng P đã ghi thanh toán, không biến dòng chưa thanh toán thành đã thu, không ghi đè "ĐỐI TRỪ".
-- Không tự đặt ngày hẹn mặc định cho X/trống (giữ quy tắc 28/10: không mặc định 7 hay 30 ngày).
+- **Cột TƯƠI** (sửa lại theo xác nhận chủ dự án 25/11/2026 — thay câu "trống = trả sau" trước đó):
+  - **TƯƠI** hoặc **để trống** = khách **đã thanh toán** (cước; tiền phơi hoàn ngay).
+  - **CN 30/60/90 NGÀY**, **X**, **"chưa"**, hoặc ghi chú có chữ **"sau"** = khách **trả sau**, còn nợ; phải nhắc khi đến hạn. CN… lưu vào `payment_terms`.
+  - Cột **ĐÃ TT** ghi "ĐÃ THANH TOÁN"/"ĐÃ TT" → `DA_TT`; ghi "ĐỐI TRỪ" → `DOI_TRU`; hai trường hợp này được ưu tiên hơn cột TƯƠI.
+  - Áp dụng cho mọi sheet tháng có cột TƯƠI (cả sheet có cột PHƠI). Sheet không có cột TƯƠI thì ô trống không được suy là đã thanh toán.
+- Không tự đặt ngày hẹn mặc định cho khoản trả sau (giữ quy tắc 28/10: không mặc định 7 hay 30 ngày).
 - Chủ dự án xác nhận (25/11/2026): **Khách KHÔNG trả VAT**. VAT 8% chỉ là số hiển thị (và là bước trung gian để tính khoản trừ 17% nội bộ theo quy tắc 28/10). Mọi số **doanh thu thực thu, đã thu, còn phải thu, công nợ khách** tính theo **cước gốc**. Không còn "chênh lệch VAT cần đối soát". Tiền thu + đối trừ không được vượt cước gốc.
 - Chủ dự án xác nhận thêm (25/11/2026): trạng thái thanh toán cước **`X` = khách trả sau, CHƯA thu**. Chỉ `DA_TT` và `TUOI` là đã thu; `DOI_TRU` là đối trừ, không phải tiền thực nhận. Áp dụng cho cả chọn tay trên giao diện và báo cáo (P&L, KPI, lương, công nợ, trợ lý).
-- Khi nhập Excel mẫu tháng 1: cột P đã ghi thanh toán thì giữ `DA_TT` (không đổi thành X); X chỉ gắn cho dòng P chưa thanh toán.
+- Khi nhập Excel: cột ĐÃ TT đã ghi thanh toán thì giữ `DA_TT` (không đổi thành X); X chỉ gắn cho dòng chưa thanh toán.
 - Dữ liệu cũ: **không tự sửa** trạng thái/tiền thu lịch sử. Bước kiểm tra `20261125_01_x_review_only` chỉ đếm và ghi log các dòng X có ô nguồn "ĐÃ THANH TOÁN"/"ĐỐI TRỪ" để kế toán rà tay. Không dùng chữ "ĐÃ TT" ngắn vì cột PHÁT SINH dùng chữ này cho phía nhà xe.
 
 ## Các xác nhận mới đã chốt (28/10/2026 — Đang áp dụng)

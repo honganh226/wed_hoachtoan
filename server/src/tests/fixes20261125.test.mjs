@@ -87,26 +87,37 @@ check('Khóa sổ chặn thêm/sửa/xóa chi phí của chuyến thuộc tháng
   }
 });
 
-// 6. Cột TƯƠI/X ở sheet có cột PHƠI (xác nhận chủ dự án 25/11/2026):
-//    TƯƠI = khách thanh toán phơi ngay; X hoặc trống = trả sau, cần nhắc; X không làm cước thành "đã thu"
-check('Sheet có cột PHƠI: X/trống là phơi trả sau, TƯƠI là đã hoàn ngay; cước không bị coi là đã thu', () => {
+// 6. Cột TƯƠI (xác nhận chủ dự án 25/11/2026): TƯƠI hoặc ĐỂ TRỐNG = đã thanh toán;
+//    CN 30/60/90 NGÀY, X, "chưa", "... sau ..." = trả sau (còn nợ, cần nhắc). Cột ĐÃ TT ghi đã thanh toán/đối trừ được ưu tiên.
+check('Cột TƯƠI: trống/TƯƠI = đã thu; CN/X/chưa/sau = trả sau; cột ĐÃ TT được ưu tiên', () => {
   const aoa = [
     ['STT', 'NGÀY', 'CHỦ HÀNG', 'CƯỚC VÀO', 'PHƠI NÂNG HẠ', 'ĐÃ TT', 'TƯƠI'],
     [1, '05/04/2026', 'KHÁCH A', 1000000, 300000, '', 'X'],
     [2, '06/04/2026', 'KHÁCH B', 1000000, 300000, '', 'TƯƠI'],
     [3, '07/04/2026', 'KHÁCH C', 1000000, 300000, 'ĐÃ THANH TOÁN', ''],
+    [4, '08/04/2026', 'KHÁCH D', 1000000, 0, '', ''],
+    [5, '09/04/2026', 'KHÁCH E', 1000000, 0, '', 'CN 60 NGÀY'],
+    [6, '10/04/2026', 'KHÁCH F', 1000000, 0, '', 'TƯƠI TT SAU 1 TUẦN'],
+    [7, '11/04/2026', 'KHÁCH G', 1000000, 0, 'ĐỐI TRỪ XONG', 'CN 30 NGÀY'],
+    [8, '12/04/2026', 'KHÁCH H', 1000000, 0, '', 'chưa'],
   ];
   const wb = xlsx.utils.book_new();
   xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(aoa), 'T4-2026');
   const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  const rows = ExcelImportService.parseAndPreview({ buffer, filename: 'kiem-thu-phoi.xlsx' }).rows;
-  const byStt = Object.fromEntries(rows.map((r) => [Number(r.stt), r]));
-  assert.equal(byStt[1].customer_payment_status, 'CHUA_TT', 'X không làm cước thành đã thu');
-  assert.equal(byStt[1].phoi_payment_term_type, 'CHUA_DAT', 'X = phơi trả sau, chưa hoàn');
-  assert.equal(byStt[2].phoi_payment_term_type, 'TUOI', 'TƯƠI = phơi hoàn ngay');
-  assert.equal(byStt[2].customer_payment_status, 'CHUA_TT', 'TƯƠI ở cột phơi không tự đánh dấu cước đã thu');
-  assert.equal(byStt[3].customer_payment_status, 'DA_TT');
-  assert.equal(byStt[3].phoi_payment_term_type, 'CHUA_DAT', 'Trống = phơi trả sau');
+  const rows = ExcelImportService.parseAndPreview({ buffer, filename: 'kiem-thu-tuoi.xlsx' }).rows;
+  const by = Object.fromEntries(rows.map((r) => [Number(r.stt), r]));
+  assert.equal(by[1].customer_payment_status, 'X', 'X = trả sau, chưa thu');
+  assert.equal(by[1].phoi_payment_term_type, 'CHUA_DAT', 'X = phơi trả sau');
+  assert.equal(by[2].customer_payment_status, 'TUOI', 'TƯƠI = đã thu');
+  assert.equal(by[2].phoi_payment_term_type, 'TUOI', 'TƯƠI = phơi hoàn ngay');
+  assert.equal(by[3].customer_payment_status, 'DA_TT');
+  assert.equal(by[3].phoi_payment_term_type, 'TUOI', 'TƯƠI trống = phơi đã hoàn');
+  assert.equal(by[4].customer_payment_status, 'TUOI', 'Cột TƯƠI trống = đã thanh toán');
+  assert.equal(by[5].customer_payment_status, 'CHUA_TT', 'CN 60 NGÀY = trả sau');
+  assert.equal(by[5].payment_terms, 'CN 60 NGÀY');
+  assert.equal(by[6].customer_payment_status, 'CHUA_TT', '"... SAU ..." = trả sau');
+  assert.equal(by[7].customer_payment_status, 'DOI_TRU', 'Cột ĐÃ TT ghi đối trừ được ưu tiên');
+  assert.equal(by[8].customer_payment_status, 'X', '"chưa" = trả sau, chưa thu');
 });
 
 // 7. X = khách trả sau, CHƯA thu (xác nhận chủ dự án 25/11/2026)

@@ -11,7 +11,7 @@
   - **Dầu và giá dầu theo ngày**: Dầu ở chuyến là lượng cấp theo lít; tiền dầu từng cuốc = `lít dầu cấp × giá bán đồng/lít của đúng ngày chạy`. Hoãn AI dự đoán giá dầu.
 - Đã xác nhận: “TƯƠI” là thanh toán/hoàn ngay sau giao dịch; không tự suy ra tiền mặt.
 - Xác nhận 25/11/2026: khách không trả VAT; VAT 8% chỉ hiển thị (và dùng để tính khoản trừ 17%). Đã thu / còn phải thu / công nợ khách tính theo cước gốc.
-- Xác nhận 25/11/2026: tiền phơi chỉ là khoản ứng hộ khách, không vào chi phí/lợi nhuận. Trống hoặc “X” = khách trả sau, phải nhắc khi đến hạn; trạng thái thanh toán cước `X` = CHƯA thu (chỉ `DA_TT`, `TUOI` là đã thu). Chi tiết trong `CHUAN_NGHIEP_VU_EXCEL.md`.
+- Xác nhận 25/11/2026: tiền phơi chỉ là khoản ứng hộ khách, không vào chi phí/lợi nhuận. Cột TƯƠI: TƯƠI hoặc để trống = đã thanh toán; CN 30/60/90 NGÀY, X, “chưa” = trả sau, phải nhắc khi đến hạn. Trạng thái thanh toán cước `X` = CHƯA thu (chỉ `DA_TT`, `TUOI` là đã thu). Chi tiết trong `CHUAN_NGHIEP_VU_EXCEL.md`.
 - Những mục “chờ xác nhận” trong tài liệu không phải quy tắc đã duyệt. Chốt nghĩa với người dùng trước khi triển khai các thay đổi phụ thuộc.
 - Giữ nguyên Excel nguồn. Ô gộp là tổng và cần chia lãi; bảng toàn công ty; chưa tính lương; ô khoản phát sinh trống thường không phát sinh; X là khách trả sau, chưa thu (xác nhận 25/11/2026); R là ghi chú; năm 2025 là lỗi đánh máy cần chuẩn hóa thành 2026 khi nhập; LẠCH HUYỆN chỉ đánh dấu cảng. Không tự chọn quy tắc phân bổ, đơn giá dầu hoặc thuế suất. Không nhân đôi ô gộp hoặc xóa cuốc do trùng cont.
 - Yêu cầu lấy Excel làm chuẩn không tự cho phép đưa dữ liệu doanh nghiệp lên link công khai.
