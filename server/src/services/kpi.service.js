@@ -77,11 +77,11 @@ export function getDriverKpiProgress({ startDate = null, endDate = null, month =
       d.notes AS driver_notes,
       d.is_active,
       v.plate_number AS default_vehicle_plate,
-      COALESCE(SUM(t.total_revenue), 0) AS actual_revenue,
+      COALESCE(SUM(t.trip_revenue), 0) AS actual_revenue,
       COALESCE(SUM(t.trip_revenue), 0) AS actual_trip_revenue,
       COUNT(DISTINCT t.id) AS trip_count,
       COALESCE(SUM(t.driver_salary), 0) AS total_driver_salary,
-      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.total_revenue ELSE 0 END), 0) AS collected_revenue,
+      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.trip_revenue ELSE 0 END), 0) AS collected_revenue,
       COALESCE(SUM(CASE WHEN t.status = 'PAID' THEN 1 ELSE 0 END), 0) AS paid_trip_count,
       COALESCE(SUM(CASE WHEN t.status = 'RUNNING' OR t.status = 'DISPATCHED' THEN 1 ELSE 0 END), 0) AS active_trip_count,
       MAX(t.trip_date) AS last_trip_date
@@ -232,7 +232,7 @@ export function getDriverDrilldown({ driverId, startDate = null, endDate = null,
   const trips = db.prepare(`
     SELECT
       t.id, t.trip_code, t.trip_date, t.route_name, t.customer_name,
-      t.vehicle_plate, t.total_revenue, t.trip_revenue, t.vat_amount,
+      t.vehicle_plate, t.total_revenue AS total_revenue_with_vat, t.trip_revenue AS total_revenue, t.trip_revenue, t.vat_amount,
       t.driver_salary, t.status, t.eir_paid_status, t.vat_type,
       t.is_subcontractor, t.subcontractor_cost
     FROM trips t

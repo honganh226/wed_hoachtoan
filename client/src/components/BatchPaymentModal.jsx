@@ -140,7 +140,7 @@ export default function BatchPaymentModal({
     }
   };
 
-  // Tính toán tổng tiền của các chuyến đang được tích chọn
+  // Tính tổng cước gốc thu khách của các chuyến đang được tích chọn
   const totalSelectedAmount = useMemo(() => {
     if (!tripsOfCustomer) return 0;
     return tripsOfCustomer
@@ -355,7 +355,7 @@ export default function BatchPaymentModal({
                       <th className="p-2.5">Số Container</th>
                       <th className="p-2.5">Xe / Lái</th>
                       <th className="p-2.5 text-center">Phơi</th>
-                      <th className="p-2.5 text-right">Tổng Cước</th>
+                      <th className="p-2.5 text-right">Cước gốc thu khách</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">

@@ -77,7 +77,7 @@ export async function getAiDispatchRecommendations(params = {}, user = {}) {
   const kpiRows = db.prepare(`
     SELECT 
       driver_id,
-      COALESCE(SUM(total_revenue), 0) as current_month_revenue,
+      COALESCE(SUM(trip_revenue), 0) as current_month_revenue,
       COUNT(id) as current_month_trips
     FROM trips
     WHERE trip_date LIKE ?

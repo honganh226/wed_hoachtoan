@@ -77,6 +77,7 @@ const rootUrl = `http://127.0.0.1:${port}`;
 const baseUrl = `${rootUrl}/api/v1/business`;
 
 const testResults = [];
+let januarySourceIds = new Set();
 
 function pass(id, name, details = '') {
   testResults.push({ id, name, status: 'PASS', details });
@@ -123,6 +124,7 @@ try {
   await runCase('T02', 'Tổng chuẩn hóa tháng 1.xlsx', () => {
     const m1 = excelMonthService.getData();
     const rows = m1.rows.slice(0, 77);
+    januarySourceIds = new Set(rows.map(r => r.id));
     const sumGoc = rows.reduce((s, r) => s + r.cuoc_goc, 0);
     const sumVat = rows.reduce((s, r) => s + r.vat_amount, 0);
     const sumCoVat = rows.reduce((s, r) => s + r.cuoc_co_vat, 0);
@@ -621,26 +623,31 @@ try {
     return 'Được bảo toàn và ghi lại lịch sử thay đổi';
   });
 
-  // T20: Cuốc mới 10 triệu chưa thu -> Phải thu cước 10,8 triệu thống nhất các màn hình
-  await runCase('T20', 'Công nợ cuốc mới tính theo cước có VAT', () => {
+  // T20: Khách không trả VAT: cước gốc 10 triệu tạo nợ cước 10 triệu
+  await runCase('T20', 'Công nợ cuốc mới tính theo cước gốc', () => {
     createTrip({
       tripData: { trip_date: '2099-07-01', customer_name: 'KHÁCH MỚI T20', base_revenue: 10000000, phoi_advance_amount: 300000 },
       user: directorUser,
     });
     const debts = excelMonthService.getDebtsData({ start_date: '2099-07-01', end_date: '2099-07-01' }).receivables;
-    assert.equal(debts.total_due, 10800000);
-    assert.equal(debts.customers[0].balance_due, 10800000);
+    assert.equal(debts.total_due, 10000000);
+    assert.equal(debts.customers[0].balance_due, 10000000);
     assert.equal(debts.customers[0].phoi_balance_due, 300000);
-    assert.equal(debts.customers[0].total_combined_due, 11100000);
-    return 'Cước phải thu 10.8M, phơi 300k, tổng thu 11.1M';
+    assert.equal(debts.customers[0].total_combined_due, 10300000);
+    return 'Cước phải thu 10M, phơi 300k, tổng thu 10.3M';
   });
 
-  // T21: Chuyến cũ đã thu/đối trừ theo số nguồn -> Không tự tăng thu, chênh lệch VAT lịch sử đối soát riêng
+  // T21: Chuyến cũ đã thu/đối trừ theo số nguồn -> Không tự tăng thu, không tạo nợ VAT
   await runCase('T21', 'Bảo toàn số đã thu/đối trừ lịch sử tháng 1', () => {
     const debtsJan = excelMonthService.getDebtsData({ start_date: '2026-01-01', end_date: '2026-01-31' }).receivables;
     assert.equal(debtsJan.total_offset, 3600000);
-    assert(debtsJan.total_vat_reconciliation_diff > 0);
-    return 'Không tự động tăng thu lịch sử, VAT 8% đưa vào đối soát';
+    assert.equal(debtsJan.total_vat_reconciliation_diff, 0);
+    assert.equal(debtsJan.total_paid, 334600000);
+    // Other cases may add unpaid January trips: assert the isolated source rows too.
+    const sourceCustomers = debtsJan.customers.flatMap(c => c.trips).filter(t => januarySourceIds.has(t.id));
+    assert.equal(sourceCustomers.length, 77);
+    assert.equal(sourceCustomers.reduce((s, t) => s + t.balance, 0), 0);
+    return 'Bảo toàn thu 334.6M, đối trừ 3.6M; 77 dòng nguồn không còn nợ VAT';
   });
 
   // T22 (kèm B05): Đổi chủ hàng của chuyến có cả khoản phơi đang mở và khoản phơi đã hoàn
@@ -746,7 +753,7 @@ try {
   });
 
   // T26 (kèm B06): Trợ lý Giám Đốc đối chiếu số thật, xếp hạng xe khác chi phí dầu, cuốc dương trước trừ nhưng âm sau trừ 17%, thiếu giá dầu & công nợ 10.8M
-  await runCase('T26', 'B06: Trợ lý Giám Đốc kiểm tra số tuyệt đối, thứ hạng xe theo dầu, cuốc lỗ sau trừ 17% & công nợ có VAT', () => {
+  await runCase('T26', 'B06: Trợ lý Giám Đốc kiểm tra số tuyệt đối, thứ hạng xe theo dầu, cuốc lỗ sau trừ 17% & công nợ theo cước gốc', () => {
     const now = new Date('2026-02-01T00:00:00Z');
     const period = { startDate: '2026-01-01', endDate: '2026-01-31', kind: 'month' };
 
@@ -867,17 +874,17 @@ try {
     assert.ok(detailAns.reply.includes('chưa đủ giá dầu'));
     assert.ok(detailAns.reply.includes('Chưa đủ cơ sở'));
 
-    // 4. Kiểm tra công nợ phải thu cuốc 10 triệu chưa VAT = 10,8 triệu đồng bộ với báo cáo debts
+    // 4. Kiểm tra công nợ phải thu cuốc 10 triệu cước gốc = 10 triệu đồng bộ với báo cáo debts
     const debtAns = answerDirector({
       message: 'Công nợ khách KHÁCH NỢ 10M',
       viewContext: { period },
       data: { groups: [], rows: [b06Fixture.rows[0]] },
       now,
     }).response;
-    assert.equal(debtAns.metrics.receivable_due, 10800000);
-    assert.equal(debtAns.items[0].due, 10800000);
+    assert.equal(debtAns.metrics.receivable_due, 10000000);
+    assert.equal(debtAns.items[0].due, 10000000);
 
-    return 'Khớp số tuyệt đối: cuốc lỗ sau trừ (-536k), xếp hạng xe theo dầu (7.964M > 5.964M), cảnh báo thiếu giá dầu, nợ có VAT 10.8M';
+    return 'Khớp số tuyệt đối: cuốc lỗ sau trừ (-536k), xếp hạng xe theo dầu (7.964M > 5.964M), cảnh báo thiếu giá dầu, nợ cước gốc 10M';
   });
 
   // T27: Kiểm tra RBAC HTTP thật: SECRETARY, ACCOUNTANT, DIRECTOR, chưa đăng nhập

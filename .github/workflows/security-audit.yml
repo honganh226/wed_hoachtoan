@@ -29,6 +29,7 @@ jobs:
           npm run test:security --prefix server
           npm run test:auth --prefix server
           npm run test:unit --prefix server
+          npm run test:collections --prefix server
           node server/src/tests/excelImportDates.test.mjs
       - name: Build frontend
         run: npm run build --prefix client

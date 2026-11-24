@@ -111,8 +111,8 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
       COUNT(*) AS total_trips,
       COALESCE(SUM(t.trip_revenue), 0) AS total_trip_revenue,
       COALESCE(SUM(t.vat_amount), 0) AS total_vat_amount,
-      COALESCE(SUM(t.total_revenue), 0) AS total_expected_revenue,
-      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.total_revenue ELSE 0 END), 0) AS total_actual_revenue,
+      COALESCE(SUM(t.trip_revenue), 0) AS total_expected_revenue,
+      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.trip_revenue ELSE 0 END), 0) AS total_actual_revenue,
       COALESCE(SUM(t.driver_salary), 0) AS total_driver_salary,
       COALESCE(SUM(t.subcontractor_cost), 0) AS total_subcontractor_cost,
       COALESCE(SUM(CASE WHEN t.is_subcontractor = 1 THEN 1 ELSE 0 END), 0) AS subcontractor_trips_count,
@@ -229,7 +229,7 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
     SELECT 
       t.vehicle_plate,
       COUNT(t.id) as trip_count,
-      COALESCE(SUM(t.total_revenue), 0) as revenue,
+      COALESCE(SUM(t.trip_revenue), 0) as revenue,
       COALESCE(SUM(t.driver_salary), 0) as salary,
       COALESCE(SUM(t.subcontractor_cost), 0) as sub_cost
     FROM trips t
@@ -252,8 +252,8 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
     SELECT 
       t.customer_name,
       COUNT(t.id) as trip_count,
-      COALESCE(SUM(t.total_revenue), 0) as total_revenue,
-      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.total_revenue ELSE 0 END), 0) as collected_revenue
+      COALESCE(SUM(t.trip_revenue), 0) as total_revenue,
+      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.trip_revenue ELSE 0 END), 0) as collected_revenue
     FROM trips t
     ${tripWhereSql}
     GROUP BY t.customer_name
@@ -276,8 +276,8 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
     SELECT
       t.route_name,
       COUNT(t.id) as trip_count,
-      COALESCE(SUM(t.total_revenue), 0) as total_revenue,
-      COALESCE(AVG(t.total_revenue), 0) as avg_revenue
+      COALESCE(SUM(t.trip_revenue), 0) as total_revenue,
+      COALESCE(AVG(t.trip_revenue), 0) as avg_revenue
     FROM trips t
     ${tripWhereSql}
     GROUP BY t.route_name
@@ -301,8 +301,8 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
       COALESCE(v.plate_number, '') as vehicle_plate,
       COALESCE(d.kpi_target, 0) as kpi_target,
       COUNT(t.id) as trip_count,
-      COALESCE(SUM(t.total_revenue), 0) as total_revenue,
-      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.total_revenue ELSE 0 END), 0) as collected_revenue,
+      COALESCE(SUM(t.trip_revenue), 0) as total_revenue,
+      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.trip_revenue ELSE 0 END), 0) as collected_revenue,
       COALESCE(SUM(t.driver_salary), 0) as salary
     FROM drivers d
     LEFT JOIN vehicles v ON d.default_vehicle_id = v.id
@@ -325,8 +325,8 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
       'Xe ngoài' as vehicle_plate,
       0 as kpi_target,
       COUNT(t.id) as trip_count,
-      COALESCE(SUM(t.total_revenue), 0) as total_revenue,
-      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.total_revenue ELSE 0 END), 0) as collected_revenue,
+      COALESCE(SUM(t.trip_revenue), 0) as total_revenue,
+      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.trip_revenue ELSE 0 END), 0) as collected_revenue,
       COALESCE(SUM(t.subcontractor_cost), 0) as salary
     FROM trips t
     ${subWhere}

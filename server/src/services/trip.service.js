@@ -1011,7 +1011,7 @@ export function getUnpaidTripsByCustomer({ customerName = null, user = null } = 
 
     const group = customerMap.get(cName);
     group.total_trips += 1;
-    group.total_receivable += Math.round(Number(trip.total_revenue) || 0);
+    group.total_receivable += Math.round(Number(trip.trip_revenue) || 0);
     group.trips.push({
       id: trip.id,
       trip_code: trip.trip_code,
@@ -1020,7 +1020,8 @@ export function getUnpaidTripsByCustomer({ customerName = null, user = null } = 
       driver_name: trip.driver_name,
       route_name: trip.route_name,
       vat_type: trip.vat_type,
-      total_revenue: Math.round(Number(trip.total_revenue) || 0),
+      total_revenue: Math.round(Number(trip.trip_revenue) || 0),
+      total_revenue_with_vat: Math.round(Number(trip.total_revenue) || 0),
       eir_status: trip.eir_status,
       eir_paid_status: trip.eir_paid_status,
       container_number: trip.container_numbers,
@@ -1082,7 +1083,7 @@ export function batchPayTrips({
   }
 
   // Tính tổng tiền thanh toán
-  const totalAmount = trips.reduce((sum, t) => sum + (Math.round(Number(t.total_revenue)) || 0), 0);
+  const totalAmount = trips.reduce((sum, t) => sum + (Math.round(Number(t.trip_revenue)) || 0), 0);
 
   // Tạo ID định danh cho đợt thanh toán bảng kê
   const batchId = uuidv4();

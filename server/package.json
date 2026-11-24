@@ -8,6 +8,7 @@
     "dev": "node --watch src/index.js",
     "seed": "node src/scripts/importExcel.js",
     "test:unit": "node src/tests/math.test.js",
+    "test:collections": "node --test src/tests/baseFareCollections.test.mjs src/tests/baseFareDebts.integration.test.mjs",
     "test:task45": "node src/scripts/verifyTask45.js",
     "test:cross-excel": "node src/scripts/testCrossExcel.js",
     "test:cross-excel:py": "python src/scripts/test_cross_excel.py",

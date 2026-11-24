@@ -87,7 +87,7 @@ async function gatherRoleContext(user = {}) {
 
       // Top khách hàng nợ
       const unpaidTrips = db.prepare(`
-        SELECT customer_name, SUM(total_revenue) as debt, COUNT(*) as count
+        SELECT customer_name, SUM(trip_revenue) as debt, COUNT(*) as count
         FROM trips
         WHERE status != 'PAID'
         GROUP BY customer_name

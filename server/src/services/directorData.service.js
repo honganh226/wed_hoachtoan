@@ -180,14 +180,14 @@ export function overlayBusiness(rows){
   r.is_result_incomplete = fin.is_result_incomplete;
   r.result_note = fin.result_note;
 
-  // 6. Thanh toán cước & Đối soát VAT lịch sử
+  // 6. Khách thanh toán theo cước gốc; VAT chỉ dùng đối chiếu chỉ tiêu chênh lệch.
   r.customer_payment_status ||= r.is_offset ? 'DOI_TRU' : r.is_x ? 'X' : r.is_customer_paid ? 'DA_TT' : 'CHUA_TT';
   r.subcontractor_payment_status ||= r.phat_sinh_note?.includes('ĐÃ TT') ? 'DA_TT' : 'CHUA_TT';
   r.is_offset = r.customer_payment_status === 'DOI_TRU';
   r.is_customer_paid = ['TUOI', 'X', 'DA_TT'].includes(r.customer_payment_status);
   r.payment_status_p = r.is_offset ? 'ĐỐI TRỪ XONG' : r.is_customer_paid ? 'ĐÃ THANH TOÁN' : 'CHƯA TT';
   r.payment_timing_q = r.customer_payment_status === 'TUOI' ? 'TƯƠI' : r.customer_payment_status === 'X' ? 'X' : (r.payment_terms || '');
-  // Bảo toàn số tiền khách đã trả / đối trừ lịch sử (tránh tự tăng tiền đã nhận khi áp quy tắc cộng 8% VAT mới)
+  // Bảo toàn số tiền đã thu và đối trừ; không tự sửa dữ liệu lịch sử.
   r.received_amount ??= r.is_customer_paid ? r.cuoc_goc : 0;
   r.offset_amount ??= r.is_offset ? r.cuoc_goc : 0;
   r.sub_paid_amount ??= r.subcontractor_payment_status === 'DA_TT' ? r.cuoc_ra : 0;
@@ -195,10 +195,8 @@ export function overlayBusiness(rows){
   const settledBase = toIntVnd(r.received_amount) + toIntVnd(r.offset_amount);
   r.fare_balance_base = Math.max(0, r.cuoc_goc - settledBase);
   r.fare_balance_with_vat = Math.max(0, r.cuoc_co_vat - settledBase);
-  // Nếu cuốc lịch sử đã ghi nhận ĐÃ TT/ĐỐI TRỪ đủ theo cước gốc nhưng thiếu phần VAT 8% mới -> đưa vào chênh lệch cần đối soát VAT
-  r.vat_reconciliation_diff = (r.is_customer_paid || r.is_offset) && settledBase === r.cuoc_goc
-    ? r.vat_amount
-    : 0;
+  // Giữ trường tương thích API cũ, không coi VAT là khoản khách còn nợ.
+  r.vat_reconciliation_diff = 0;
 
   // 7. Tiền phơi trả hộ chủ hàng (EIR Advances) — Tách biệt hoàn toàn khỏi doanh thu/chi phí cước
   const tripAdvances = advancesByTrip.get(String(r.id)) || [];
@@ -263,7 +261,7 @@ export function saveEntity(entity,id,values,expectedVersion,user,reason=''){
   if(c.business){
    const fare = calculateFareBreakdown(clean.cuoc_goc ?? clean.cuoc_vao ?? 0);
    if(!old){const created=createTrip({tripData:{trip_date:clean.trip_date,customer_name:clean.customer_name,route_name:clean.route_name,vehicle_plate:clean.vehicle_plate,driver_name:clean.driver_name,container_number:clean.container_number,container_size:clean.container_size,base_revenue:fare.cuoc_goc,trip_revenue:fare.cuoc_goc,lift_on_location:clean.lift_on_location,lift_on_fee:clean.lift_on_fee,lift_off_location:clean.lift_off_location,lift_off_fee:clean.lift_off_fee,subcontractor_cost:clean.cuoc_ra,is_subcontractor:clean.is_subcontractor,subcontractor_name:clean.subcontractor_name,toll_fee:clean.tien_duong,port_fee:clean.port_fee,parking_fee:clean.parking_fee,handling_fee:clean.handling_fee,meal_allowance:clean.meal_allowance,other_costs:clean.other_costs,fuel_liters:clean.dau_liters,customer_payment_status:clean.customer_payment_status,subcontractor_payment_status:clean.subcontractor_payment_status,payment_terms:clean.payment_terms,source_type:'MANUAL',notes:clean.notes_r},user});id=created.id;}
-   if(Number(clean.received_amount||0)+Number(clean.offset_amount||0)>fare.cuoc_co_vat)throw Error('Tiền thu và đối trừ vượt cước vào (có VAT)');
+   if(Number(clean.received_amount||0)+Number(clean.offset_amount||0)>fare.cuoc_goc)throw Error('Tiền thu và đối trừ vượt cước gốc (khách không trả VAT)');
    if(Number(clean.sub_paid_amount||0)>clean.cuoc_ra)throw Error('Tiền trả nhà xe vượt cước ra');
    const dbTrip=db.prepare('SELECT * FROM trips WHERE id=?').get(id);
    if(dbTrip)updateTrip({tripId:id,updateData:{trip_date:clean.trip_date,customer_name:clean.customer_name,route_name:clean.route_name,vehicle_plate:clean.vehicle_plate,driver_name:clean.driver_name,base_revenue:fare.cuoc_goc,trip_revenue:fare.cuoc_goc,lift_on_location:clean.lift_on_location,lift_on_fee:clean.lift_on_fee,lift_off_location:clean.lift_off_location,lift_off_fee:clean.lift_off_fee,subcontractor_cost:clean.cuoc_ra,toll_fee:clean.tien_duong,port_fee:clean.port_fee,parking_fee:clean.parking_fee,handling_fee:clean.handling_fee,meal_allowance:clean.meal_allowance,other_costs:clean.other_costs,fuel_liters:clean.dau_liters,customer_payment_status:clean.customer_payment_status,subcontractor_payment_status:clean.subcontractor_payment_status,payment_terms:clean.payment_terms,notes:clean.notes_r,phoi_customer_sync_mode:values.phoi_customer_sync_mode,sync_open_advances_customer:values.sync_open_advances_customer},user,reason});

@@ -155,7 +155,7 @@ export default function PayrollView({ currentUser }) {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6">
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
               <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider">
-                Doanh Thu Đội Xe
+                Doanh Thu Đội Xe (cước gốc)
               </p>
               <p className="text-lg font-bold font-mono text-slate-900 mt-1">
                 {formatMoney(payrollData.summary.total_revenue_generated)}
@@ -243,7 +243,7 @@ export default function PayrollView({ currentUser }) {
               <thead>
                 <tr className="bg-slate-50 text-[11px] font-bold text-slate-600 uppercase border-b border-slate-200">
                   <th className="py-3 px-4">Lái Xe & Đầu Xe</th>
-                  <th className="py-3 px-4 text-right text-slate-900 font-extrabold">Doanh Thu</th>
+                  <th className="py-3 px-4 text-right text-slate-900 font-extrabold">Doanh Thu (cước gốc)</th>
                   <th className="py-3 px-4 text-right">Lương Cứng</th>
                   <th className="py-3 px-4 text-right">Lương Chuyến</th>
                   <th className="py-3 px-4 text-right">Động Viên GĐ</th>
@@ -376,7 +376,7 @@ export default function PayrollView({ currentUser }) {
                                             +{formatMoney(t.driver_salary)}
                                           </div>
                                           <div className="text-[10px] text-slate-500 font-mono">
-                                            Cước: {formatMoney(t.total_revenue)}
+                                            Cước gốc: {formatMoney(t.total_revenue)}
                                           </div>
                                         </div>
                                       </div>

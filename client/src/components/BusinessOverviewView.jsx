@@ -1403,8 +1403,7 @@ export default function BusinessOverviewView({
                     </strong>
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Chênh lệch VAT lịch sử:{' '}
-                    {formatVnd(effectiveDebts?.receivables?.total_vat_reconciliation_diff ?? 0)}
+                    Công nợ theo cước gốc; khách không trả VAT.
                   </div>
                 </div>
               )}

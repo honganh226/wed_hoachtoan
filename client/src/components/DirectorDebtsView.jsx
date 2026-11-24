@@ -360,7 +360,6 @@ export default function DirectorDebtsView({
         total_received: c.total_paid ?? c.total_received ?? 0,
         total_offset: c.total_offset ?? 0,
         fare_remaining: fareDue,
-        vat_reconciliation_diff: c.vat_reconciliation_diff ?? 0,
         phoi_advance_total: c.phoi_total_advance ?? 0,
         phoi_refunded_total: c.phoi_total_refunded ?? 0,
         phoi_remaining: phoiDue,
@@ -538,7 +537,7 @@ export default function DirectorDebtsView({
     return list;
   }, [allReminderItems, dateFilter, rangeStart, rangeEnd, exactDate, filterStatus, searchQuery]);
 
-  // Tóm tắt chỉ số tài chính Phải thu khách hàng (khớp chuẩn API total_receivable_with_vat)
+  // Công nợ khách hàng theo cước gốc; VAT chỉ dùng đối chiếu.
   const recSummary = {
     total_cuoc_goc: receivables.total_receivable ?? receivables.total_receivable_pre_vat ?? 0,
     total_cuoc_co_vat: receivables.total_receivable_with_vat ?? (receivables.total_cuoc_co_vat ?? 0),
@@ -548,7 +547,6 @@ export default function DirectorDebtsView({
     total_received: receivables.total_paid ?? 0,
     total_offset: receivables.total_offset ?? 0,
     fare_remaining: receivables.total_due ?? 0,
-    total_vat_reconciliation_diff: receivables.total_vat_reconciliation_diff ?? 0,
     total_phoi_advance: receivables.total_phoi_advance ?? 0,
     total_phoi_refunded: receivables.total_phoi_refunded ?? 0,
     total_phoi_due: receivables.total_phoi_due ?? 0,
@@ -890,7 +888,7 @@ export default function DirectorDebtsView({
           {/* KPI TỔNG HỢP PHẢI THU (4 CARD CHUẨN) */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-              <span className="text-xs text-slate-500 block font-medium">Cước phát sinh (Gốc / Có VAT)</span>
+              <span className="text-xs text-slate-500 block font-medium">Cước phát sinh (cước gốc)</span>
               <p className="text-base sm:text-lg font-bold text-slate-900 font-mono mt-1">
                 {isDataCurrent ? formatVnd(recSummary.total_cuoc_goc) : 'Đang tải...'}
               </p>
@@ -905,7 +903,7 @@ export default function DirectorDebtsView({
             </div>
 
             <div className="bg-white p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-xs">
-              <span className="text-xs text-emerald-700 block font-medium">Tiền thực thu vào quỹ</span>
+              <span className="text-xs text-emerald-700 block font-medium">Tiền thực thu (cước gốc)</span>
               <p className="text-base sm:text-lg font-bold text-emerald-700 font-mono mt-1">
                 {isDataCurrent ? formatVnd(recSummary.total_received) : 'Đang tải...'}
               </p>
@@ -924,7 +922,7 @@ export default function DirectorDebtsView({
                 {isDataCurrent ? formatVnd(recSummary.fare_remaining) : 'Chưa xác định'}
               </p>
               <span className="text-[11px] text-slate-500 block mt-0.5">
-                Chênh lệch VAT lịch sử: {isDataCurrent ? formatVnd(recSummary.total_vat_reconciliation_diff) : '--'}
+                Cước gốc − đã thu − đối trừ; khách không trả VAT.
               </span>
             </div>
 

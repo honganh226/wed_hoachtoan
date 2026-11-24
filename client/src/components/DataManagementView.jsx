@@ -426,6 +426,7 @@ export default function DataManagementView({ assistantFocus, onAssistantFocusCon
               {entity === 'trips' && draftFin && (
                 <div className="bg-slate-50 p-3 text-xs rounded-lg space-y-1 border">
                   <div>Cước gốc chưa VAT: <b>{moneyText(draftFin.cuoc_goc)} ₫</b> · VAT 8%: <b>+{moneyText(draftFin.vat_amount)} ₫</b> · Cước có VAT: <b>{moneyText(draftFin.cuoc_co_vat)} ₫</b></div>
+                  <div>Khách không trả VAT. Tổng tiền đã thu và đối trừ không được vượt cước gốc.</div>
                   <div>Khoản trừ 17% nội bộ: <b>-{moneyText(draftFin.khoan_tru_17)} ₫</b> · Cước sau trừ 17%: <b>{moneyText(draftFin.cuoc_sau_tru_17)} ₫</b> · Chi phí công ty: <b>-{moneyText(draftFin.chi_phi_cong_ty)} ₫</b></div>
                   <div className="font-bold text-slate-900 pt-1 border-t border-slate-200">Chênh lệch tạm tính sau trừ 17% & chi phí: {moneyText(draftFin.chenh_lech_sau_tru_17)} ₫ (Chưa trừ lương; không trừ tiền phơi trả hộ)</div>
                 </div>

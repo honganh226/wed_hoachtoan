@@ -36,7 +36,7 @@ router.get('/summary', (req, res) => {
     const userId = scope.userId || scope.id;
     const fullName = scope.full_name;
 
-    let revenueQuery = 'SELECT SUM(total_revenue) as sum FROM trips';
+    let revenueQuery = 'SELECT SUM(trip_revenue) as sum FROM trips';
     let tripsQuery = 'SELECT COUNT(*) as count FROM trips';
     let revenueParams = [];
     let tripsParams = [];
@@ -52,7 +52,7 @@ router.get('/summary', (req, res) => {
       tripsParams = [fullName, userId];
 
       revenueQuery = `
-        SELECT SUM(t.total_revenue) as sum 
+        SELECT SUM(t.trip_revenue) as sum
         FROM trips t 
         JOIN drivers d ON t.driver_id = d.id 
         WHERE d.full_name = ? OR d.user_id = ?
@@ -62,7 +62,7 @@ router.get('/summary', (req, res) => {
       tripsQuery = 'SELECT COUNT(*) as count FROM trips WHERE area_id = ?';
       tripsParams = [areaId];
 
-      revenueQuery = 'SELECT SUM(total_revenue) as sum FROM trips WHERE area_id = ?';
+      revenueQuery = 'SELECT SUM(trip_revenue) as sum FROM trips WHERE area_id = ?';
       revenueParams = [areaId];
     }
 

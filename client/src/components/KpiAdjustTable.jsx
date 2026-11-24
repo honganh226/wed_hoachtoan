@@ -156,7 +156,7 @@ function KpiTargetModal({ driver, isOpen, onClose, onSave, isDirector, onSwitchT
           {/* Thông tin hiện tại */}
           <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
             <div>
-              <span className="text-slate-500 block">Doanh thu hiện tại trong kỳ:</span>
+              <span className="text-slate-500 block">Doanh thu cước gốc trong kỳ:</span>
               <strong className="font-mono text-slate-900 text-sm">{formatVnd(driver.actual_revenue)}</strong>
             </div>
             <div>
@@ -332,7 +332,7 @@ function DriverTripsDrilldown({ driverId, dateFilter, onClose }) {
 
       <div className="p-3 bg-slate-50/50 grid grid-cols-2 sm:grid-cols-4 gap-2 border-b border-slate-200 text-xs">
         <div>
-          <span className="text-slate-400 text-[11px] block">Doanh thu kỳ:</span>
+          <span className="text-slate-400 text-[11px] block">Doanh thu kỳ (cước gốc):</span>
           <strong className="font-mono text-slate-900">{formatVnd(summary.total_revenue)}</strong>
         </div>
         <div>
@@ -566,7 +566,7 @@ export default function KpiAdjustTable({ dateFilter = {}, currentUser }) {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Thống kê doanh thu thực tế, số chuyến hoàn thành, tiến độ KPI và phân bổ chỉ tiêu mục tiêu
+              Doanh thu và tiến độ KPI tính theo cước gốc, khách không trả VAT. Chỉ tiêu đã đặt được giữ nguyên.
               {dateFilter.label && (
                 <span className="ml-2 font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px] font-mono">
                   📅 {dateFilter.label}
@@ -593,7 +593,7 @@ export default function KpiAdjustTable({ dateFilter = {}, currentUser }) {
         {/* 4 Thẻ chỉ số tổng hợp toàn đội */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
-            <span className="text-[11px] text-slate-500 font-medium block">Tổng Doanh Thu Toàn Đội</span>
+            <span className="text-[11px] text-slate-500 font-medium block">Tổng Doanh Thu Toàn Đội (cước gốc)</span>
             <div className="text-lg font-bold font-mono text-slate-900 mt-0.5">
               {formatVnd(team.total_actual_revenue)}
             </div>

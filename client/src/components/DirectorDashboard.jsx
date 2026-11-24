@@ -172,7 +172,7 @@ export default function DirectorDashboard({
           <div className="flex items-start justify-between">
             <div>
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Doanh Thu Kế Hoạch
+                Doanh Thu Kế Hoạch (cước gốc)
               </span>
               <h3 className="text-2xl font-bold text-slate-900 mt-1 font-mono tracking-tight">
                 {formatVnd(cf.expected_revenue)}
@@ -187,7 +187,7 @@ export default function DirectorDashboard({
             <span className="font-semibold text-slate-800">{plData?.trips_overview?.total_trips || 0} cuốc xe</span>
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">
-            Tổng doanh thu dự kiến theo các lệnh điều vận.
+            Tổng cước gốc theo các lệnh điều vận; khách không trả VAT.
           </div>
         </div>
 
@@ -197,7 +197,7 @@ export default function DirectorDashboard({
             <div>
               <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wider flex items-center space-x-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Doanh Thu Thực Thu</span>
+                <span>Doanh Thu Thực Thu (cước gốc)</span>
               </span>
               <h3 className="text-2xl font-bold text-emerald-700 mt-1 font-mono tracking-tight">
                 {formatVnd(cf.actual_revenue)}
@@ -228,7 +228,7 @@ export default function DirectorDashboard({
             <div>
               <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider flex items-center space-x-1">
                 <Clock className="w-3.5 h-3.5 text-amber-600" />
-                <span>Công Nợ Còn Phải Thu</span>
+                <span>Công Nợ Còn Phải Thu (cước gốc)</span>
               </span>
               <h3 className="text-2xl font-bold text-amber-800 mt-1 font-mono tracking-tight">
                 {formatVnd(cf.pending_receivables)}
@@ -459,7 +459,7 @@ export default function DirectorDashboard({
                       {t.route_name}
                     </td>
                     <td className="py-2.5 text-right font-mono font-bold text-slate-900">
-                      {formatVnd(t.total_revenue)}
+                      {formatVnd(t.trip_revenue ?? t.total_revenue)}
                     </td>
                     <td className="py-2.5 text-center">
                       {isPaid ? (

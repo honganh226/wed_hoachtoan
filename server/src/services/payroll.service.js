@@ -76,7 +76,7 @@ export function getPayrollSummary({ periodMonth = null, user = null } = {}) {
     // 1. Tính tổng lương chuyến và lấy danh sách cuốc xe trong tháng
     const trips = db.prepare(`
       SELECT id, trip_code, trip_date, vehicle_plate, route_name, customer_name,
-             driver_salary, total_revenue, status, eir_status, eir_paid_status, eir_photo_url
+             driver_salary, total_revenue AS total_revenue_with_vat, trip_revenue AS total_revenue, status, eir_status, eir_paid_status, eir_photo_url
       FROM trips
       WHERE driver_id = ? AND trip_date LIKE ?
       ORDER BY trip_date ASC, trip_code ASC

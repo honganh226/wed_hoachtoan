@@ -857,7 +857,7 @@ export class ExcelMonthService {
           total_paid: 0,
           total_offset: 0,
           balance_due: 0, // Số dư nợ cước xác nhận
-          vat_reconciliation_diff: 0, // Chênh lệch VAT lịch sử cần đối soát
+          vat_reconciliation_diff: 0, // Tương thích API cũ: khách không trả VAT
           phoi_total_advance: 0, // Tổng tiền phơi trả hộ
           phoi_total_refunded: 0, // Tổng tiền phơi đã hoàn
           phoi_balance_due: 0, // Tiền phơi còn phải hoàn
@@ -876,13 +876,11 @@ export class ExcelMonthService {
 
       const received = Number(r.received_amount || 0);
       const offset = Number(r.offset_amount || 0);
-      // Nếu cuốc chưa thanh toán (CHUA_TT), công nợ phải thu tính trên cước có VAT;
-      // đối với chuyến lịch sử đã tất toán theo cước gốc: giữ 0 nợ và ghi nhận vatReconciliationDiff để đối soát:
-      const isHistoricalSettledAtBase = (r.is_customer_paid || r.is_offset) && (received + offset === r.cuoc_goc);
-      const balanceWithVat = isHistoricalSettledAtBase ? 0 : Math.max(0, r.cuoc_co_vat - received - offset);
-      const balancePreVat = isHistoricalSettledAtBase ? 0 : Math.max(0, r.cuoc_goc - received - offset);
-      const vatReconcile = isHistoricalSettledAtBase ? r.vat_amount : 0;
-      const effectiveDue = balanceWithVat;
+      // Khách không trả VAT: tiền thu, đối trừ và công nợ đều theo cước gốc.
+      const balancePreVat = Math.max(0, r.cuoc_goc - received - offset);
+      const balanceWithVat = Math.max(0, r.cuoc_co_vat - received - offset); // Chỉ đối chiếu
+      const vatReconcile = 0; // Tương thích API cũ, không tạo nợ VAT
+      const effectiveDue = balancePreVat;
 
       const phoiAdvance = Number(r.phoi_total_advance || 0);
       const phoiRefunded = Number(r.phoi_total_refunded || 0);

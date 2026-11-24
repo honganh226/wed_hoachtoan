@@ -102,8 +102,8 @@ assert.equal(missingFuelTripCheck.metrics.missing_fuel_price_trips,1);
 assert.equal(missingFuelTripCheck.metrics.incomplete_cost,true);
 assert.ok(missingFuelTripCheck.reply.includes('chưa đủ giá dầu'));
 assert.ok(missingFuelTripCheck.reply.includes('Chưa đủ cơ sở'));
-// 4. New 10M pre-VAT unpaid trip has receivable_due = 10,800,000
+// 4. Customers do not pay VAT: a 10M base fare creates 10M receivables
 const debtCheck=answerDirector({message:'Công nợ khách KHÁCH A',viewContext:january,data:{groups:[],rows:[b06Data.rows[0]]},now}).response;
-assert.equal(debtCheck.metrics.receivable_due,10800000);
-assert.equal(debtCheck.items[0].due,10800000);
+assert.equal(debtCheck.metrics.receivable_due,10000000);
+assert.equal(debtCheck.items[0].due,10000000);
 console.log(`PASS: ${passed} Vietnamese intent examples + exact figures, B06 scenarios, time ranges, missing data, clarification, permissions, context binding, rate limit and zero writes/network.`);
