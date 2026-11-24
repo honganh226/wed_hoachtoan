@@ -27,6 +27,7 @@ function configuredSalary(driverId, month) {
 import { recordAuditLog, AUDIT_ACTIONS } from '../services/audit.service.js';
 import { calculateDriverPayroll, toVndInteger } from '../utils/financialMath.js';
 import { USER_ROLES } from '../db/schema.js';
+import { getVietnamTodayIso } from '../utils/tripFinancials.js';
 
 /**
  * Lấy Bảng Lương tổng hợp toàn đội theo kỳ tháng (YYYY-MM)
@@ -39,7 +40,7 @@ export function getPayrollSummary({ periodMonth = null, user = null } = {}) {
   let targetMonth = periodMonth;
   if (!targetMonth) {
     const latestTrip = db.prepare(`SELECT SUBSTR(trip_date, 1, 7) as month FROM trips ORDER BY trip_date DESC LIMIT 1`).get();
-    targetMonth = latestTrip?.month || new Date().toISOString().slice(0, 7);
+    targetMonth = latestTrip?.month || getVietnamTodayIso().slice(0, 7);
   }
 
   // Lọc tài xế theo RBAC
@@ -76,7 +77,7 @@ export function getPayrollSummary({ periodMonth = null, user = null } = {}) {
     // 1. Tính tổng lương chuyến và lấy danh sách cuốc xe trong tháng
     const trips = db.prepare(`
       SELECT id, trip_code, trip_date, vehicle_plate, route_name, customer_name,
-             driver_salary, total_revenue AS total_revenue_with_vat, trip_revenue AS total_revenue, status, eir_status, eir_paid_status, eir_photo_url
+             driver_salary, total_revenue AS total_revenue_with_vat, trip_revenue AS total_revenue, status, customer_payment_status, eir_status, eir_paid_status, eir_photo_url
       FROM trips
       WHERE driver_id = ? AND trip_date LIKE ?
       ORDER BY trip_date ASC, trip_code ASC
@@ -85,7 +86,7 @@ export function getPayrollSummary({ periodMonth = null, user = null } = {}) {
     const tripSalarySum = trips.reduce((sum, t) => sum + toVndInteger(t.driver_salary), 0);
     const tripsCount = trips.length;
     const driverRevenueSum = trips.reduce((sum, t) => sum + toVndInteger(t.total_revenue), 0);
-    const driverCollectedSum = trips.reduce((sum, t) => sum + (t.status === 'PAID' || t.eir_paid_status === 'DA_TT' ? toVndInteger(t.total_revenue) : 0), 0);
+    const driverCollectedSum = trips.reduce((sum, t) => sum + (t.status === 'PAID' || ['DA_TT', 'TUOI'].includes(t.customer_payment_status) ? toVndInteger(t.total_revenue) : 0), 0);
 
     // 2. Lấy cấu hình Khoản Động Viên & Lương Cứng Override trong tháng
     const incentiveRec = db.prepare(`

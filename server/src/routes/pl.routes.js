@@ -18,6 +18,8 @@ import { requireRole } from '../middlewares/rbac.middleware.js';
 import { USER_ROLES, TRIP_STATUSES } from '../db/schema.js';
 import { db } from '../db/database.js';
 import { recordAuditLog, AUDIT_ACTIONS } from '../services/audit.service.js';
+import { isPeriodLocked } from '../services/periodLock.service.js';
+import { invalidateExcelMonthCache } from '../services/excelMonthService.js';
 
 const router = Router();
 
@@ -137,15 +139,30 @@ router.post('/mark-paid', authenticateToken, requireRole(USER_ROLES.DIRECTOR, US
       return res.status(404).json({ success: false, error: 'Không tìm thấy cuốc xe' });
     }
 
+    if (trip.is_locked === 1 || isPeriodLocked(trip.trip_date)) {
+      return res.status(423).json({ success: false, error: `Kỳ kế toán tháng ${String(trip.trip_date || '').slice(0, 7)} đã bị khóa sổ.` });
+    }
+
+    // Thanh toán cước của khách lưu ở customer_payment_status.
+    // eir_paid_status là trạng thái thanh toán PHƠI, không được ghi đè ở đây (sửa 25/11/2026).
     const newStatus = isPaid ? TRIP_STATUSES.PAID : TRIP_STATUSES.COMPLETED;
-    const newEirPaid = isPaid ? 'DA_TT' : 'CHUA_TT';
+    const newCustomerPaid = isPaid ? 'DA_TT' : 'CHUA_TT';
     const now = new Date().toISOString();
 
     db.prepare(`
-      UPDATE trips 
-      SET status = ?, eir_paid_status = ?, updated_at = ?
+      UPDATE trips
+      SET status = ?, customer_payment_status = ?, updated_at = ?
       WHERE id = ?
-    `).run(newStatus, newEirPaid, now, tripId);
+    `).run(newStatus, newCustomerPaid, now, tripId);
+
+    // Đồng bộ lớp phủ dữ liệu giám đốc nếu chuyến đã có bản ghi ở đó
+    const overlay = db.prepare("SELECT value FROM director_records WHERE entity = 'trips' AND record_id = ?").get(tripId);
+    if (overlay) {
+      const patch = JSON.parse(overlay.value);
+      patch.customer_payment_status = newCustomerPaid;
+      db.prepare("UPDATE director_records SET value = ? WHERE entity = 'trips' AND record_id = ?").run(JSON.stringify(patch), tripId);
+    }
+    invalidateExcelMonthCache();
 
     // Ghi Audit Log
     recordAuditLog({
@@ -154,8 +171,8 @@ router.post('/mark-paid', authenticateToken, requireRole(USER_ROLES.DIRECTOR, US
       action: AUDIT_ACTIONS.UPDATE,
       tableName: 'trips',
       recordId: tripId,
-      oldValues: { status: trip.status, eir_paid_status: trip.eir_paid_status },
-      newValues: { status: newStatus, eir_paid_status: newEirPaid },
+      oldValues: { status: trip.status, customer_payment_status: trip.customer_payment_status },
+      newValues: { status: newStatus, customer_payment_status: newCustomerPaid },
       reason: isPaid ? `Đánh dấu đã thu cước chuyến ${trip.trip_code}` : `Hủy đánh dấu thanh toán ${trip.trip_code}`,
       ipAddress: req.ip
     });
@@ -171,7 +188,7 @@ router.post('/mark-paid', authenticateToken, requireRole(USER_ROLES.DIRECTOR, US
       data: {
         tripId,
         status: newStatus,
-        eir_paid_status: newEirPaid
+        customer_payment_status: newCustomerPaid
       },
       message: isPaid ? 'Đã xác nhận thu tiền cuốc xe thành công' : 'Đã chuyển cuốc xe về trạng thái chưa thanh toán'
     });

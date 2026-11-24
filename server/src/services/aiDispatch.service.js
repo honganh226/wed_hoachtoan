@@ -11,6 +11,7 @@
  */
 import { db } from '../db/database.js';
 import { calculateExpiryAlert, calculateOilChangeStatus } from './fleet.service.js';
+import { getVietnamTodayIso } from '../utils/tripFinancials.js';
 
 /**
  * Đề xuất phân bổ xe & tài xế dựa trên 4 tiêu chí vàng
@@ -24,7 +25,7 @@ import { calculateExpiryAlert, calculateOilChangeStatus } from './fleet.service.
  * @param {object} [user] - Thông tin người dùng đăng nhập
  */
 export async function getAiDispatchRecommendations(params = {}, user = {}) {
-  const targetDate = params.tripDate || new Date().toISOString().slice(0, 10);
+  const targetDate = params.tripDate || getVietnamTodayIso();
   const routeId = params.routeId || null;
   const isMultiCont = Boolean(params.isMultiContainer);
 

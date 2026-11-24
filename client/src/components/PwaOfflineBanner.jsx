@@ -10,6 +10,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import { getOfflineQueueStats, syncOfflineQueue, saveOfflineTrip } from '../utils/offlineDb.js';
+import { todayInVietnam } from '../utils/businessDate.js';
 
 export default function PwaOfflineBanner({ onDataSynced }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -109,7 +110,7 @@ export default function PwaOfflineBanner({ onDataSynced }) {
   const handleTestCreateOffline = async () => {
     const mockTrip = {
       trip_code: `OFFLINE-TEST-${Date.now().toString().slice(-4)}`,
-      trip_date: new Date().toISOString().split('T')[0],
+      trip_date: todayInVietnam(),
       vehicle_id: 'veh_01',
       driver_id: 'drv_01',
       customer_id: 'cus_01',

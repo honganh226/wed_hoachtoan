@@ -19,6 +19,16 @@
  * ============================================================
  */
 
+// Mật khẩu kiểm thử đọc từ biến môi trường, không viết cứng trong mã (25/11/2026).
+// Đặt TEST_DIRECTOR_PASSWORD, TEST_ACCOUNTANT_PASSWORD, TEST_AREA_MANAGER_PASSWORD, TEST_DRIVER_PASSWORD trước khi chạy.
+const testPassword = (name) => {
+  const value = process.env[name];
+  if (!value) console.warn(`[TEST] Thiếu biến môi trường ${name}; ca đăng nhập tương ứng sẽ thất bại.`);
+  return value || '';
+};
+const WRONG_TEST_PASSWORD = `mat-khau-sai-${Date.now()}`;
+
+
 const BASE_URL = 'http://localhost:5000/api/v1';
 
 async function request(endpoint, options = {}) {
@@ -55,7 +65,7 @@ async function testAll() {
   const loginDirector = await request('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'giamdoc', password: 'admin123' })
+    body: JSON.stringify({ username: 'giamdoc', password: testPassword('TEST_DIRECTOR_PASSWORD') })
   });
   assert(loginDirector.status === 200 && loginDirector.data?.success === true, 'Đăng nhập Giám Đốc (giamdoc) thành công với Bcrypt hash');
   const tokenDirector = loginDirector.data?.data?.token;
@@ -73,7 +83,7 @@ async function testAll() {
   const loginAccountant = await request('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'ketoan', password: 'ketoan123' })
+    body: JSON.stringify({ username: 'ketoan', password: testPassword('TEST_ACCOUNTANT_PASSWORD') })
   });
   assert(loginAccountant.status === 200 && loginAccountant.data?.data?.user?.role === 'ACCOUNTANT', 'Đăng nhập Kế Toán (ketoan) thành công');
   const tokenAccountant = loginAccountant.data?.data?.token;
@@ -82,7 +92,7 @@ async function testAll() {
   const loginManager = await request('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'tuan', password: 'quanly123' })
+    body: JSON.stringify({ username: 'tuan', password: testPassword('TEST_AREA_MANAGER_PASSWORD') })
   });
   assert(loginManager.status === 200 && loginManager.data?.data?.user?.role === 'AREA_MANAGER', 'Đăng nhập Quản Lý Khu (tuan) thành công');
   assert(loginManager.data?.data?.user?.area_id === 'TUAN', 'Quản Lý Khu mang đúng mã area_id = TUAN');
@@ -92,7 +102,7 @@ async function testAll() {
   const loginDriver = await request('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'liem', password: 'driver123' })
+    body: JSON.stringify({ username: 'liem', password: testPassword('TEST_DRIVER_PASSWORD') })
   });
   assert(loginDriver.status === 200 && loginDriver.data?.data?.user?.role === 'DRIVER', 'Đăng nhập Lái Xe (liem) thành công');
   const tokenDriver = loginDriver.data?.data?.token;
@@ -101,7 +111,7 @@ async function testAll() {
   const loginWrongPass = await request('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'giamdoc', password: 'wrongpassword' })
+    body: JSON.stringify({ username: 'giamdoc', password: WRONG_TEST_PASSWORD })
   });
   assert(loginWrongPass.status === 401 && loginWrongPass.data?.success === false, 'Chặn mật khẩu sai với HTTP 401 và thông báo lỗi rõ ràng');
 
@@ -109,7 +119,7 @@ async function testAll() {
   const loginNotExist = await request('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'nonexistent_user', password: '123' })
+    body: JSON.stringify({ username: 'nonexistent_user', password: WRONG_TEST_PASSWORD })
   });
   assert(loginNotExist.status === 401, 'Chặn tài khoản không tồn tại với HTTP 401');
 

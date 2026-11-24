@@ -28,6 +28,7 @@ import { fileURLToPath } from 'url';
 import { db } from '../db/database.js';
 import { overlayBusiness } from './directorData.service.js';
 import { legacyDemoIds } from './demoData.service.js';
+import { getVietnamTodayIso } from '../utils/tripFinancials.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -584,9 +585,10 @@ export class ExcelMonthService {
           is_subcontractor: Boolean(dt.is_subcontractor),
           subcontractor_name: dt.subcontractor_name || null,
           driver_name: dt.driver_name || (dt.is_subcontractor ? `Xe ngoài ${dt.subcontractor_name || ''}` : 'Chưa xác định'),
-          container_size: dt.container_type_raw || dt.container_size || '40DC',
-          container_type: dt.container_type_raw || dt.container_size || 'DC',
-          container_type_raw: dt.container_type_raw || dt.container_size || '40DC',
+          // Không tự gán 40DC khi nguồn trống (sửa 25/11/2026)
+          container_size: dt.container_type_raw || dt.container_size || '',
+          container_type: dt.container_type_raw || dt.container_size || '',
+          container_type_raw: dt.container_type_raw || dt.container_size || '',
           is_lach_huyen: Boolean((dt.lift_on_location || '').toUpperCase().includes('LẠCH HUYỆN') || (dt.lift_off_location || '').toUpperCase().includes('LẠCH HUYỆN')),
           pickup_location: dt.lift_on_location || dt.pickup_location || null,
           lift_on_location: dt.lift_on_location || dt.pickup_location || null,
@@ -602,7 +604,7 @@ export class ExcelMonthService {
           phat_sinh_note: dt.notes || null,
           cuoc_ra: subCost,
           customer_payment_status: dt.customer_payment_status || 'CHUA_TT',
-          is_customer_paid: ['DA_TT','TUOI','X'].includes(dt.customer_payment_status),
+          is_customer_paid: ['DA_TT','TUOI'].includes(dt.customer_payment_status), // X = trả sau, chưa thu (25/11/2026)
           is_offset: dt.customer_payment_status === 'DOI_TRU',
           subcontractor_payment_status: dt.subcontractor_payment_status || 'CHUA_TT',
           payment_terms: dt.payment_terms || null,
@@ -1118,7 +1120,7 @@ export class ExcelMonthService {
     // 1. Lọc tập cuốc theo phạm vi thời gian
     let filteredTrips = rows;
     if (filter.period === 'today') {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getVietnamTodayIso();
       filteredTrips = rows.filter(r => r.trip_date === today);
     } else if (filter.period === 'day_09') {
       filteredTrips = rows.filter(r => r.trip_date === '2026-01-09');

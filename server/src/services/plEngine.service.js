@@ -112,7 +112,9 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
       COALESCE(SUM(t.trip_revenue), 0) AS total_trip_revenue,
       COALESCE(SUM(t.vat_amount), 0) AS total_vat_amount,
       COALESCE(SUM(t.trip_revenue), 0) AS total_expected_revenue,
-      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.trip_revenue ELSE 0 END), 0) AS total_actual_revenue,
+      COALESCE(SUM(t.deduction_amount), 0) AS total_deduction_17,
+      COALESCE(SUM(t.revenue_after_deduction), 0) AS total_revenue_after_deduction,
+      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.customer_payment_status IN ('DA_TT','TUOI') THEN t.trip_revenue ELSE 0 END), 0) AS total_actual_revenue,
       COALESCE(SUM(t.driver_salary), 0) AS total_driver_salary,
       COALESCE(SUM(t.subcontractor_cost), 0) AS total_subcontractor_cost,
       COALESCE(SUM(CASE WHEN t.is_subcontractor = 1 THEN 1 ELSE 0 END), 0) AS subcontractor_trips_count,
@@ -124,6 +126,7 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
     ${tripWhereSql}
   `).get(...tripParams);
 
+  // Từ 25/11/2026: doanh thu/đã thu/công nợ tính theo CƯỚC GỐC (khách không trả VAT; VAT chỉ để hiển thị)
   const totalExpectedRevenue = Math.round(Number(tripSummary?.total_expected_revenue || 0));
   const totalActualRevenue = Math.round(Number(tripSummary?.total_actual_revenue || 0));
   const totalReceivables = totalExpectedRevenue - totalActualRevenue; // Tiền nợ chưa thu
@@ -211,6 +214,19 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
     ? Math.round((expectedGrossProfit / totalExpectedRevenue) * 100) 
     : 0;
 
+  // Chỉ tiêu chính theo CHUAN_NGHIEP_VU_EXCEL.md (28/10/2026), bổ sung 25/11/2026:
+  // Chênh lệch tạm tính = cước sau khoản trừ 17% − chi phí công ty; CHƯA trừ lương.
+  // expected_gross_profit (cước có VAT − toàn bộ chi phí) chỉ giữ để đối chiếu.
+  const totalRevenuePreVat = Math.round(Number(tripSummary?.total_trip_revenue || 0));
+  const totalVat8 = Math.round(Number(tripSummary?.total_vat_amount || 0));
+  const totalDeduction17 = Math.round(Number(tripSummary?.total_deduction_17 || 0));
+  const totalRevenueAfterDeduction = Math.round(Number(tripSummary?.total_revenue_after_deduction || 0));
+  const companyCostExcludingSalary = totalOperatingCosts - totalDriverSalary;
+  const marginAfterDeduction17 = totalRevenueAfterDeduction - companyCostExcludingSalary;
+  const marginAfterDeduction17Percent = totalRevenueAfterDeduction > 0
+    ? Math.round((marginAfterDeduction17 / totalRevenueAfterDeduction) * 100)
+    : 0;
+
   // 4. TẠM ỨNG & QUYẾT TOÁN LÁI XE
   const advanceStats = db.prepare(`
     SELECT
@@ -253,7 +269,7 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
       t.customer_name,
       COUNT(t.id) as trip_count,
       COALESCE(SUM(t.trip_revenue), 0) as total_revenue,
-      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.trip_revenue ELSE 0 END), 0) as collected_revenue
+      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.customer_payment_status IN ('DA_TT','TUOI') THEN t.trip_revenue ELSE 0 END), 0) as collected_revenue
     FROM trips t
     ${tripWhereSql}
     GROUP BY t.customer_name
@@ -302,7 +318,7 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
       COALESCE(d.kpi_target, 0) as kpi_target,
       COUNT(t.id) as trip_count,
       COALESCE(SUM(t.trip_revenue), 0) as total_revenue,
-      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.trip_revenue ELSE 0 END), 0) as collected_revenue,
+      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.customer_payment_status IN ('DA_TT','TUOI') THEN t.trip_revenue ELSE 0 END), 0) as collected_revenue,
       COALESCE(SUM(t.driver_salary), 0) as salary
     FROM drivers d
     LEFT JOIN vehicles v ON d.default_vehicle_id = v.id
@@ -326,7 +342,7 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
       0 as kpi_target,
       COUNT(t.id) as trip_count,
       COALESCE(SUM(t.trip_revenue), 0) as total_revenue,
-      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.trip_revenue ELSE 0 END), 0) as collected_revenue,
+      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.customer_payment_status IN ('DA_TT','TUOI') THEN t.trip_revenue ELSE 0 END), 0) as collected_revenue,
       COALESCE(SUM(t.subcontractor_cost), 0) as salary
     FROM trips t
     ${subWhere}
@@ -369,6 +385,14 @@ export function calculatePL({ month = null, year = null, startDate = null, endDa
       expected_gross_profit: expectedGrossProfit, // Lợi nhuận gộp kỳ vọng
       actual_gross_profit: actualGrossProfit,     // Lợi nhuận gộp thực thu
       profit_margin_percent: profitMarginPercent, // Tỉ suất lợi nhuận gộp (%)
+      revenue_pre_vat: totalRevenuePreVat,                      // Cước gốc chưa VAT
+      vat_8: totalVat8,                                         // VAT 8%
+      deduction_17: totalDeduction17,                           // Khoản trừ 17% nội bộ
+      revenue_after_deduction_17: totalRevenueAfterDeduction,   // Cước sau khoản trừ 17%
+      company_cost_excluding_salary: companyCostExcludingSalary,// Chi phí công ty (chưa gồm lương)
+      margin_after_deduction_17: marginAfterDeduction17,        // CHỈ TIÊU CHÍNH: chênh lệch tạm tính, chưa trừ lương
+      margin_after_deduction_17_percent: marginAfterDeduction17Percent,
+      margin_before_deduction_with_vat: totalRevenuePreVat + totalVat8 - totalOperatingCosts, // Đối chiếu: cước có VAT − toàn bộ chi phí
       total_operating_costs: totalOperatingCosts  // Tổng chi phí
     },
     expenses_breakdown: {

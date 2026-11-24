@@ -81,7 +81,7 @@ export function getDriverKpiProgress({ startDate = null, endDate = null, month =
       COALESCE(SUM(t.trip_revenue), 0) AS actual_trip_revenue,
       COUNT(DISTINCT t.id) AS trip_count,
       COALESCE(SUM(t.driver_salary), 0) AS total_driver_salary,
-      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.eir_paid_status = 'DA_TT' THEN t.trip_revenue ELSE 0 END), 0) AS collected_revenue,
+      COALESCE(SUM(CASE WHEN t.status = 'PAID' OR t.customer_payment_status IN ('DA_TT','TUOI') THEN t.trip_revenue ELSE 0 END), 0) AS collected_revenue,
       COALESCE(SUM(CASE WHEN t.status = 'PAID' THEN 1 ELSE 0 END), 0) AS paid_trip_count,
       COALESCE(SUM(CASE WHEN t.status = 'RUNNING' OR t.status = 'DISPATCHED' THEN 1 ELSE 0 END), 0) AS active_trip_count,
       MAX(t.trip_date) AS last_trip_date
@@ -259,7 +259,7 @@ export function getDriverDrilldown({ driverId, startDate = null, endDate = null,
   `).all(...expenseParams);
 
   // Tổng hợp nhanh
-  const totalRevenue = trips.reduce((s, t) => s + Math.round(Number(t.total_revenue || 0)), 0);
+  const totalRevenue = trips.reduce((s, t) => s + Math.round(Number(t.trip_revenue || 0)), 0); // cước gốc (khách không trả VAT)
   const totalSalary = trips.reduce((s, t) => s + Math.round(Number(t.driver_salary || 0)), 0);
   const totalExpenses = expenses.reduce((s, e) => s + Math.round(Number(e.amount || 0)), 0);
   const kpiTarget = Math.round(Number(driver.kpi_target || 0));

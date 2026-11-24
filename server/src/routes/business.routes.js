@@ -14,6 +14,7 @@ import { successResponse, errorResponse } from '../utils/response.js';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 import { requireRole } from '../middlewares/rbac.middleware.js';
 import { USER_ROLES } from '../db/schema.js';
+import { getVietnamTodayIso } from '../utils/tripFinancials.js';
 
 const router = Router();
 
@@ -289,7 +290,7 @@ router.get('/financial-report', (req, res) => {
         company: 'CÔNG TY VẬN TẢI CONTAINER & LOGISTICS',
         fiscalYear,
         currency: 'VND',
-        asOfDate: new Date().toISOString().slice(0, 10),
+        asOfDate: getVietnamTodayIso(),
         summaryKPIs: summary,
         monthlyReports
       },

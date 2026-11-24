@@ -15,6 +15,10 @@ import {
   performOffsiteBackup 
 } from '../services/offsiteBackup.service.js';
 
+// Token kiểm thử ký trực tiếp cho tài khoản có sẵn trong DB kiểm thử — không cần mật khẩu (25/11/2026).
+// Giao diện tài xế đã ngừng (06/11/2026) nên ca phân quyền dùng tài khoản Kế toán thay cho Lái xe.
+import jwt from 'jsonwebtoken';
+
 const { default: app } = await import('../index.js');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,7 +51,8 @@ async function runTests() {
   assert(fs.existsSync(manifestPath), 'File client/public/manifest.json tồn tại');
 
   const manifestContent = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-  assert(manifestContent.name && manifestContent.name.includes('Container'), 'Manifest name hợp lệ');
+  // Tên ứng dụng đổi thành "Quản lý vận tải" ngày 01/11/2026 (CODEX_BAN_GIAO_TEN_CONG_TY_2026-11-01.md)
+  assert(manifestContent.name === 'Quản lý vận tải' && manifestContent.short_name, 'Manifest name hợp lệ');
   assert(manifestContent.display === 'standalone', 'PWA display mode là standalone');
   assert(manifestContent.theme_color === '#0f172a', 'Theme color khớp màu chuẩn logistics (#0f172a)');
   assert(Array.isArray(manifestContent.icons) && manifestContent.icons.length >= 3, 'Manifest có đủ bộ icon');
@@ -156,67 +161,53 @@ async function runTests() {
   const baseUrl = `http://localhost:${testPort}`;
 
   try {
-    // 1. Kiểm tra API Info & Static serving
-    const infoRes = await fetch(`${baseUrl}/api/v1/info`);
-    const infoJson = await infoRes.json();
-    assert(infoJson.success === true, 'GET /api/v1/info trả về 200 OK');
-    assert(infoJson.data.hasClientDist === true, 'Backend nhận diện chính xác thư mục client/dist đã build');
+    const { db } = await import('../db/database.js');
+    const signFor = (role) => {
+      const user = db.prepare('SELECT id, username, role FROM users WHERE role = ? AND is_active = 1 LIMIT 1').get(role);
+      if (!user) return null;
+      return jwt.sign({ id: user.id, userId: user.id, username: user.username, role: user.role }, process.env.JWT_SECRET || 'hoachtoan_jwt_secret_key_change_in_production_2026_super_long_string', { algorithm: 'HS256', expiresIn: '10m' });
+    };
+    const directorToken = signFor('DIRECTOR');
+    const accountantToken = signFor('ACCOUNTANT');
+    assert(Boolean(directorToken), 'DB kiểm thử có tài khoản Giám Đốc đang hoạt động');
+    const authHeaders = (token) => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` });
 
-    // 2. Kiểm tra GET /api/v1/backup/offsite/status
-    const statusApiRes = await fetch(`${baseUrl}/api/v1/backup/offsite/status`);
+    // 1. API Info: từ khi siết bảo mật, mọi API (trừ health/login) đều cần đăng nhập
+    const infoUnauthRes = await fetch(`${baseUrl}/api/v1/info`);
+    assert(infoUnauthRes.status === 401, 'GET /api/v1/info chặn 401 khi chưa đăng nhập');
+    const infoRes = await fetch(`${baseUrl}/api/v1/info`, { headers: authHeaders(directorToken) });
+    const infoJson = await infoRes.json();
+    assert(infoRes.status === 200 && infoJson.success === true, 'GET /api/v1/info trả về 200 OK khi đã đăng nhập');
+    assert(typeof infoJson.data?.hasClientDist === 'boolean', 'Backend báo trạng thái thư mục client/dist');
+
+    // 2. GET /api/v1/backup/offsite/status
+    const statusApiRes = await fetch(`${baseUrl}/api/v1/backup/offsite/status`, { headers: authHeaders(directorToken) });
     const statusApiJson = await statusApiRes.json();
     assert(statusApiJson.success === true && statusApiJson.data.cronExpression === '59 23 * * *', 'GET /api/v1/backup/offsite/status hoạt động chuẩn');
 
-    // 3. Kiểm tra GET /api/v1/backup/offsite/history
-    const historyApiRes = await fetch(`${baseUrl}/api/v1/backup/offsite/history`);
+    // 3. GET /api/v1/backup/offsite/history
+    const historyApiRes = await fetch(`${baseUrl}/api/v1/backup/offsite/history`, { headers: authHeaders(directorToken) });
     const historyApiJson = await historyApiRes.json();
     assert(historyApiJson.success === true && Array.isArray(historyApiJson.data.history), 'GET /api/v1/backup/offsite/history trả về danh sách lịch sử');
 
-    // 4. Kiểm tra POST /api/v1/backup/offsite/trigger bảo vệ bởi Auth & RBAC
+    // 4. POST /api/v1/backup/offsite/trigger bảo vệ bởi Auth & RBAC
     const unauthTriggerRes = await fetch(`${baseUrl}/api/v1/backup/offsite/trigger`, { method: 'POST' });
     assert(unauthTriggerRes.status === 401, 'POST /api/v1/backup/offsite/trigger chặn 401 khi chưa đăng nhập');
 
-    // Đăng nhập tài khoản Giám Đốc
-    const loginRes = await fetch(`${baseUrl}/api/v1/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'giamdoc', password: 'admin123' })
-    });
-    const loginJson = await loginRes.json();
-    assert(loginJson.success === true, 'Đăng nhập Giám Đốc lấy JWT Token thành công');
-    const token = loginJson.data.token;
-
-    // Trigger backup với quyền Giám Đốc
     const directorTriggerRes = await fetch(`${baseUrl}/api/v1/backup/offsite/trigger`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ channel: 'TELEGRAM' })
+      method: 'POST', headers: authHeaders(directorToken), body: JSON.stringify({ channel: 'TELEGRAM' })
     });
     const directorTriggerJson = await directorTriggerRes.json();
     assert(directorTriggerRes.status === 201 && directorTriggerJson.success === true, 'Giám Đốc kích hoạt POST /api/v1/backup/offsite/trigger thành công');
 
-    // Đăng nhập tài khoản Lái Xe và thử trigger (kỳ vọng 403 Forbidden)
-    const driverLoginRes = await fetch(`${baseUrl}/api/v1/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'liem', password: 'driver123' })
-    });
-    const driverLoginJson = await driverLoginRes.json();
-    assert(driverLoginJson.success === true, 'Đăng nhập tài khoản Lái Xe thành công');
-    const driverToken = driverLoginJson.data.token;
-
-    const driverTriggerRes = await fetch(`${baseUrl}/api/v1/backup/offsite/trigger`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${driverToken}`
-      },
-      body: JSON.stringify({ channel: 'TELEGRAM' })
-    });
-    assert(driverTriggerRes.status === 403, 'Tài khoản Lái xe bị chặn 403 Forbidden khi cố kích hoạt sao lưu offsite');
+    if (accountantToken) {
+      const accountantTriggerRes = await fetch(`${baseUrl}/api/v1/backup/offsite/trigger`, {
+        method: 'POST', headers: authHeaders(accountantToken), body: JSON.stringify({ channel: 'TELEGRAM' })
+      });
+      assert(accountantTriggerRes.status === 403, 'Kế toán bị chặn 403 khi kích hoạt sao lưu offsite (chỉ Giám Đốc)');
+    } else {
+      console.log('  ⏭️ [SKIP] DB kiểm thử không có tài khoản Kế toán');
+    }
 
   } finally {
     await new Promise((resolve) => server.close(resolve));

@@ -21,6 +21,8 @@ const { excelMonthService } = await import('../services/excelMonthService.js');
 const { saveEntity, listEntity } = await import('../services/directorData.service.js');
 const { createTrip, batchPayTrips, getUnpaidTripsByCustomer } = await import('../services/trip.service.js');
 const user = { id: 'base-fare-review', username: 'local-test', role: 'DIRECTOR' };
+// Từ 06/11/2026 dữ liệu lấy từ bảng trips, không đọc thẳng Excel: nạp 77 dòng tháng 1 qua đúng luồng nhập Excel.
+await (await import('./helpers/seedJanuary.mjs')).seedJanuaryIfMissing({ excelPath: process.env.EXCEL_PATH });
 after(() => { db.close(); fs.rmSync(temp, { recursive: true, force: true }); });
 
 test('January source payments settle base fares without a VAT debt', () => {

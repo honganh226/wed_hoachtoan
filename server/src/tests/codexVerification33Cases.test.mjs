@@ -50,15 +50,33 @@ const businessRouter = (await imp('server/src/routes/business.routes.js')).defau
 const dataRouter = (await imp('server/src/routes/data.routes.js')).default;
 const manageRouter = (await imp('server/src/routes/directorData.routes.js')).default;
 const tripRouter = (await imp('server/src/routes/trip.routes.js')).default;
+// Giao diện từ 08/11/2026 (commit 650843e) gọi /api/v1/auth/me khi mở trang; thiếu route này ca trình duyệt bị coi là hết phiên.
+const authRouter = (await imp('server/src/routes/auth.routes.js')).default;
 const { idempotentWrites } = await imp('server/src/middlewares/idempotency.middleware.js');
+// Từ 06/11/2026 dữ liệu lấy từ bảng trips: nạp 77 cuốc tháng 1 từ Excel vào DB kiểm thử mới (25/11/2026)
+await (await imp('server/src/tests/helpers/seedJanuary.mjs')).seedJanuaryIfMissing();
 
 const directorUser = { id: 'u-dir', username: 'giamdoc', role: 'DIRECTOR' };
 const accountantUser = { id: 'u-acc', username: 'ketoan', role: 'ACCOUNTANT' };
 const secretaryUser = { id: 'u-sec', username: 'thuky', role: 'SECRETARY' };
 
+// Từ 08/11/2026 middleware xác thực đối chiếu người dùng trong DB: tạo/ghép tài khoản kiểm thử (25/11/2026)
+for (const u of [directorUser, accountantUser, secretaryUser]) {
+  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(u.username);
+  const nowIso = new Date().toISOString();
+  if (existing) {
+    u.id = existing.id;
+    db.prepare('UPDATE users SET role = ?, is_active = 1 WHERE id = ?').run(u.role, u.id);
+  } else {
+    db.prepare(`INSERT INTO users (id, username, password_hash, full_name, role, area_id, phone, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, NULL, NULL, 1, ?, ?)`).run(u.id, u.username, 'khong-dang-nhap-bang-mat-khau-' + crypto.randomUUID(), u.username, u.role, nowIso, nowIso);
+  }
+}
+
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use('/api/v1', idempotentWrites);
+app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/business', businessRouter);
 app.use('/api/v1/data', dataRouter);
 app.use('/api/v1/manage', manageRouter);
@@ -417,15 +435,12 @@ try {
           { token, user: directorUser }
         );
         const page = await context.newPage();
-        await page.goto(rootUrl, { waitUntil: 'domcontentloaded' });
-        await page.getByRole('button', { name: 'Tổng quan kinh doanh', exact: true }).click();
+        // Từ 08/11/2026 nhắc hoàn phơi nằm ở tab Công nợ > "B. Tiền phơi trả hộ", nút "Ghi hoàn tiền" (cập nhật 25/11/2026)
+        await page.goto(`${rootUrl}/?tab=debts`, { waitUntil: 'domcontentloaded' });
+        await page.getByRole('button', { name: /B\. Tiền phơi trả hộ/ }).click();
 
-        // Tìm dòng nhắc việc của KHÁCH MODAL T10 và bấm nút Thu Hoàn Tiền
-        const reminderRow = page
-          .locator('div', { hasText: 'KHÁCH MODAL T10' })
-          .filter({ has: page.getByRole('button', { name: /Thu Hoàn Tiền/i }) })
-          .last();
-        const refundBtn = reminderRow.getByRole('button', { name: /Thu Hoàn Tiền/i });
+        const reminderRow = page.locator('tr', { hasText: 'KHÁCH MODAL T10' }).first();
+        const refundBtn = reminderRow.getByRole('button', { name: 'Ghi hoàn tiền', exact: true });
         await refundBtn.waitFor({ state: 'visible', timeout: 10000 });
         await refundBtn.click();
 
@@ -1078,7 +1093,8 @@ try {
         });
         assert.equal(res1.status, 503, 'Lỗi lưu Cloud phải trả HTTP 503');
         assert.equal(routeRuns, 1, 'Handler nghiệp vụ phải thực sự được gọi trước khi flush');
-        assert.equal(patches, 1, 'Lệnh PATCH Cloud phải thực sự được gọi');
+        // durableState thử ghi lại tối đa 3 lần khi Supabase lỗi (thêm sau bản test gốc)
+        assert.equal(patches, 3, 'Lệnh PATCH Cloud phải thực sự được gọi (3 lần thử)');
         // Số tiền hoàn và khóa chống trùng được rollback
         assert.equal(eir.getAdvanceById(adv.id).refunded_amount, 40000, 'Số tiền hoàn phải rollback về 40.000đ');
         const writeReqCount = db.prepare('SELECT count(*) AS n FROM write_requests WHERE id = ?').get(cloudKey);
@@ -1188,7 +1204,7 @@ try {
 
         await page.goto(rootUrl, { waitUntil: 'domcontentloaded' });
         await page.getByRole('button', { name: 'Tổng quan kinh doanh', exact: true }).click();
-        await page.getByRole('button', { name: 'Giá Dầu Theo Ngày', exact: true }).click();
+        await page.getByRole('button', { name: /^Giá dầu theo ngày$/i }).click();
         await page.getByText(/Bảng Giá Dầu Theo Ngày Chạy/i).waitFor({ state: 'visible', timeout: 5000 });
         await page.screenshot({ path: path.join(testRunDir, `t32_fuel_modal_${vp.name}.png`) });
         await page.getByRole('button', { name: 'Đóng' }).first().click();

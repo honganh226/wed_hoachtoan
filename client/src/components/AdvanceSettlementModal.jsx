@@ -26,6 +26,7 @@ import {
   settleAdvanceApi, 
   fetchTrips 
 } from '../services/api.js';
+import { todayInVietnam } from '../utils/businessDate.js';
 
 export default function AdvanceSettlementModal({ 
   isOpen, 
@@ -46,7 +47,7 @@ export default function AdvanceSettlementModal({
 
   // Form Xuất Ứng Mới
   const [selectedTripId, setSelectedTripId] = useState(targetTrip?.id || '');
-  const [advanceDate, setAdvanceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [advanceDate, setAdvanceDate] = useState(() => todayInVietnam());
   const [advanceAmount, setAdvanceAmount] = useState(1500000); // 1.500.000 đ mặc định
   const [notes, setNotes] = useState('Tạm ứng dầu & vé cầu đường BOT');
 

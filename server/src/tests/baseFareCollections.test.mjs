@@ -33,28 +33,30 @@ for (const [id, status, paid] of [['unpaid', 'COMPLETED', 'CHUA_TT'], ['paid', '
 }
 after(() => { db.close(); fs.rmSync(temp, { recursive: true, force: true }); });
 
+// Chuyến 'eir-paid' chỉ đã thanh toán PHƠI (eir_paid_status), chưa thu CƯỚC (customer_payment_status CHUA_TT).
+// Theo quy tắc đã chốt (Đợt 3, 25/11/2026) chuyến này KHÔNG tính là đã thu cước -> chỉ 1/3 chuyến đã thu.
 test('P&L expected, collected and remaining fare exclude VAT', () => {
   const p = calculatePL({ month: '2099-01' });
   assert.equal(p.cash_flow.expected_revenue, 3000000);
-  assert.equal(p.cash_flow.actual_revenue, 2000000);
-  assert.equal(p.cash_flow.pending_receivables, 1000000);
-  assert.equal(p.cash_flow.collection_rate_percent, 67);
+  assert.equal(p.cash_flow.actual_revenue, 1000000);
+  assert.equal(p.cash_flow.pending_receivables, 2000000);
+  assert.equal(p.cash_flow.collection_rate_percent, 33);
 });
 test('all P&L breakdowns use the same customer fare basis', () => {
   const b = calculatePL({ month: '2099-01' }).breakdowns;
   assert.equal(b.vehicles[0].revenue, 3000000);
   assert.equal(b.customers[0].total_revenue, 3000000);
-  assert.equal(b.customers[0].collected_revenue, 2000000);
-  assert.equal(b.customers[0].receivable, 1000000);
+  assert.equal(b.customers[0].collected_revenue, 1000000);
+  assert.equal(b.customers[0].receivable, 2000000);
   assert.equal(b.routes[0].total_revenue, 3000000);
   assert.equal(b.drivers[0].total_revenue, 3000000);
-  assert.equal(b.drivers[0].collected_revenue, 2000000);
+  assert.equal(b.drivers[0].collected_revenue, 1000000);
 });
 test('KPI target is compared to base fare and is not automatically changed', () => {
   const k = getDriverKpiProgress({ month: '2099-01' });
   const d = k.drivers.find(d => d.driver_id === 'base-fare-driver');
   assert.equal(d.actual_revenue, 3000000);
-  assert.equal(d.collected_revenue, 2000000);
+  assert.equal(d.collected_revenue, 1000000);
   assert.equal(d.kpi_percent, 75);
   assert.equal(d.kpi_target, 4000000);
 });
@@ -69,7 +71,7 @@ test('payroll uses base-fare revenue without changing trip wages', () => {
   assert.equal(p.summary.total_revenue_generated, 3000000);
   const d = p.drivers.find(d => d.driver_id === 'base-fare-driver');
   assert.equal(d.total_revenue, 3000000);
-  assert.equal(d.collected_revenue, 2000000);
+  assert.equal(d.collected_revenue, 1000000);
   assert.equal(d.trip_salary, 300000);
 });
 const period = { startDate: '2099-01-01', endDate: '2099-01-31', kind: 'custom', label: 'TEST' };

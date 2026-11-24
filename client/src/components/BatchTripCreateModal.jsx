@@ -1297,7 +1297,7 @@ export default function BatchTripCreateModal({
                     >
                       <option value="CHUA_TT">Chưa TT</option>
                       <option value="TUOI">TƯƠI</option>
-                      <option value="X">X (Đã TT)</option>
+                      <option value="X">X (Trả sau – chưa thu)</option>
                       <option value="DA_TT">ĐÃ TT</option>
                       <option value="CN_30_NGAY">CN 30 NGÀY</option>
                       <option value="DOI_TRU">ĐỐI TRỪ</option>

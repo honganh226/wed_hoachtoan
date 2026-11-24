@@ -515,7 +515,16 @@ export class ExcelImportService {
         }
         phoiTermType = 'TUOI';
       } else if (qVal === 'X') {
-        customerPaymentStatus = 'X';
+        // Chủ dự án xác nhận 25/11/2026: X (hoặc trống) = khách TRẢ SAU, phải nhắc khi đến hạn;
+        // TƯƠI = khách đã thanh toán ngay. X tự nó KHÔNG có nghĩa là đã trả.
+        // - Sheet có cột PHƠI: X thuộc về tiền phơi -> giữ phoiTermType 'CHUA_DAT' (chưa hoàn, cần đặt ngày nhắc),
+        //   không đụng trạng thái thanh toán cước.
+        // - Sheet không có cột PHƠI (mẫu tháng 1): thanh toán cước theo cột P;
+        //   X là trạng thái "trả sau, CHƯA thu" (xác nhận 25/11/2026): chỉ gắn khi P chưa ghi thanh toán.
+        //   P đã ghi thanh toán -> giữ DA_TT; không ghi đè "ĐỐI TRỪ" (P22/Q22 tháng 1).
+        if (!colMap.phoi_nang_ha && customerPaymentStatus === 'CHUA_TT') {
+          customerPaymentStatus = 'X';
+        }
       }
 
       const notes = String(getCell('notes', r)?.v || getCell('notes', r)?.w || '').trim();
@@ -817,8 +826,9 @@ export class ExcelImportService {
             customer_name: r.customer_name,
             route_name: r.route_name || null,
             container_number: r.container_number || null,
-            container_size: r.container_size || '40DC',
-            container_type_raw: r.container_type_raw || r.container_size || '40DC',
+            // Ô loại cont trống trong Excel: giữ trống, không tự gán 40DC (CHUAN_NGHIEP_VU_EXCEL.md mục 6). Sửa 25/11/2026.
+            container_size: r.container_size || '',
+            container_type_raw: r.container_type_raw || r.container_size || '',
             lift_on_location: r.lift_on_location || null,
             lift_on_fee: r.lift_on_fee || 0,
             lift_off_location: r.lift_off_location || null,

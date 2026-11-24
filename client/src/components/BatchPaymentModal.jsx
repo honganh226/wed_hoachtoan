@@ -31,6 +31,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { fetchUnpaidTripsByCustomerApi, batchPayTripsApi } from '../services/api.js';
+import { todayInVietnam } from '../utils/businessDate.js';
 
 export default function BatchPaymentModal({
   isOpen,
@@ -48,7 +49,7 @@ export default function BatchPaymentModal({
   const [selectedCustomer, setSelectedCustomer] = useState(defaultCustomerName || '');
   const [selectedTripIds, setSelectedTripIds] = useState(new Set());
 
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(() => todayInVietnam());
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('BANK_TRANSFER');
 

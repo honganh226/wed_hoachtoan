@@ -18,6 +18,7 @@ import { recordAuditLog, AUDIT_ACTIONS } from '../services/audit.service.js';
 import { isPeriodLocked } from '../services/periodLock.service.js';
 import { EXPENSE_CATEGORIES, USER_ROLES } from '../db/schema.js';
 import { broadcastPLUpdate } from './plEngine.service.js';
+import { getVietnamTodayIso } from '../utils/tripFinancials.js';
 
 // Đơn giá dầu quy chuẩn ước tính để quy đổi lít sang tiền: 20.000 VNĐ / lít
 export const BENCHMARK_FUEL_PRICE_VND = 20000;
@@ -398,7 +399,7 @@ export function createExpense({ expenseData, user, ipAddress = null }) {
   }
 
   if (!effectiveDate) {
-    effectiveDate = new Date().toISOString().slice(0, 10);
+    effectiveDate = getVietnamTodayIso();
   }
 
   // Kiểm tra Khóa Sổ Kỳ

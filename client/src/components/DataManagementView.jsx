@@ -5,7 +5,7 @@ import { calculateTripFinancials } from '../utils/tripFinancials.js';
 const paymentLabels = {
   CHUA_TT: 'Chưa thanh toán',
   TUOI: 'Thanh toán ngay (Tươi)',
-  X: 'Đã trả sau một thời gian',
+  X: 'Trả sau – chưa thu',
   DA_TT: 'Đã thanh toán',
   DOI_TRU: 'Đối trừ',
   CN_30_NGAY: 'Công nợ 30 ngày'

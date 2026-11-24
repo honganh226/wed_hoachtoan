@@ -18,7 +18,7 @@ import { isPeriodLocked } from '../services/periodLock.service.js';
 import { TRIP_STATUSES, VAT_TYPES, EIR_STATUSES, EIR_PAID_STATUSES } from '../db/schema.js';
 import { validateIso6346 } from '../utils/iso6346.js';
 import { broadcastPLUpdate } from './plEngine.service.js';
-import { calculateFareBreakdown, calculateFuelCost, calculateTripFinancials, normalizeContainerType, toIntVnd, isValidCalendarDate } from '../utils/tripFinancials.js';
+import { calculateFareBreakdown, calculateFuelCost, calculateTripFinancials, normalizeContainerType, toIntVnd, isValidCalendarDate, getVietnamTodayIso } from '../utils/tripFinancials.js';
 import { getFuelPriceForDate } from './fuelPrice.service.js';
 import { createEirAdvance } from './eirAdvance.service.js';
 import { invalidateExcelMonthCache } from './excelMonthService.js';
@@ -273,7 +273,7 @@ export function createTrip({ tripData, user, ipAddress = null }) {
     liftOnLocation, liftOffLocation, vat_type, numRevenue, vatAmount,
     totalRevenue, numRevenue, deductionAmount, revenueAfterDeduction,
     liftOnLocation, numLiftOn, liftOffLocation, numLiftOff, portClassStatus,
-    fuelCalc.fuel_unit_price, fuelCalc.fuel_cost, contNorm.container_code || container_size || '40DC', paymentTerms, sttSource,
+    fuelCalc.fuel_unit_price, fuelCalc.fuel_cost, contNorm.container_code || container_size || '', paymentTerms, sttSource,
     Math.round(Number(autoDriverSalary) || 0), TRIP_STATUSES.NEW,
     is_subcontractor ? 1 : 0, subcontractor_id || null, finalSubName || null, numSubCost,
     numToll, numPort, numParking, numHandling, numMeal, numFuelLiters, numOtherCosts,
@@ -342,8 +342,9 @@ export function createTrip({ tripData, user, ipAddress = null }) {
   } else if (container_number || liftOnLocation || liftOffLocation || contNorm.container_code) {
     containerListToInsert.push({
       container_number: container_number ? container_number.trim().toUpperCase() : null,
-      container_size: contNorm.container_size || container_size || '40',
-      container_type: contNorm.container_kind || 'DC',
+      // container_size chỉ trống khi nguồn trống (nhập Excel); form nhập tay mặc định '40' qua tham số
+      container_size: contNorm.container_size || container_size || '',
+      container_type: contNorm.container_kind || (contNorm.container_code || container_size ? 'DC' : ''),
       is_second_cont: 0,
       pickup_yard: liftOnLocation || null,
       dropoff_yard: liftOffLocation || null,
@@ -529,7 +530,7 @@ export function duplicateTrip({ sourceTripId, targetDate, user, ipAddress = null
   const container = db.prepare('SELECT * FROM containers WHERE trip_id = ? AND is_second_cont = 0 LIMIT 1').get(sourceTripId);
 
   const newTripData = {
-    trip_date: targetDate || new Date().toISOString().slice(0, 10),
+    trip_date: targetDate || getVietnamTodayIso(),
     vehicle_id: source.vehicle_id,
     vehicle_plate: source.vehicle_plate,
     driver_id: source.driver_id,
@@ -1064,7 +1065,7 @@ export function batchPayTrips({
     throw new Error('Vui lòng chọn ít nhất 1 chuyến xe để thanh toán');
   }
 
-  const effectiveDate = paymentDate || new Date().toISOString().slice(0, 10);
+  const effectiveDate = paymentDate || getVietnamTodayIso();
   const now = new Date().toISOString();
 
   // Tra cứu toàn bộ chuyến trong danh sách

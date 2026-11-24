@@ -21,6 +21,7 @@ import {
   rollbackExcelBatchApi
 } from '../services/api.js';
 import { formatVnd } from '../data/unifiedBusinessData.js';
+import { calculateFareBreakdown } from '../utils/tripFinancials.js';
 
 const FIELD_LABELS = {
   stt: 'STT',
@@ -747,10 +748,10 @@ export default function ExcelImportModal({
                             {formatVnd(r.base_revenue ?? r.trip_revenue)}
                           </td>
                           <td className="py-1.5 px-2 text-right font-bold text-emerald-700">
-                            {formatVnd(r.cuoc_co_vat ?? Math.round((r.base_revenue || r.trip_revenue || 0) * 1.08))}
+                            {formatVnd(r.cuoc_co_vat ?? calculateFareBreakdown(r.base_revenue ?? r.trip_revenue ?? 0).cuoc_co_vat)}
                           </td>
                           <td className="py-1.5 px-2 text-right font-bold text-blue-700">
-                            {formatVnd(r.cuoc_sau_tru_17 ?? Math.round((r.base_revenue || r.trip_revenue || 0) * 1.08 * 0.83))}
+                            {formatVnd(r.cuoc_sau_tru_17 ?? calculateFareBreakdown(r.base_revenue ?? r.trip_revenue ?? 0).cuoc_sau_tru_17)}
                           </td>
                           <td className="py-1.5 px-2 text-slate-700 font-sans">{r.lift_on_location || '-'}</td>
                           <td className="py-1.5 px-2 text-right text-indigo-700 font-sans">{formatVnd(r.lift_on_fee || 0)}</td>

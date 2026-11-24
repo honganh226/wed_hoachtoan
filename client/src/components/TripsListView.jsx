@@ -77,7 +77,7 @@ export function mapTripData(raw = {}, groupsMap = new Map()) {
   const isPaid = Boolean(
     raw.is_customer_paid ||
     isTuoi ||
-    ['DA_TT', 'TUOI', 'X'].includes(raw.customer_payment_status) ||
+    ['DA_TT', 'TUOI'].includes(raw.customer_payment_status) ||
     String(raw.payment_status_p || '').toUpperCase().includes('ĐÃ THANH TOÁN') ||
     String(raw.payment_status_p || '').toUpperCase().includes('ĐÃ TT')
   );

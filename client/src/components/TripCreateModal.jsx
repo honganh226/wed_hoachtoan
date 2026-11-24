@@ -1436,7 +1436,7 @@ export default function TripCreateModal({
                 >
                   <option value="CHUA_TT">Chưa thanh toán cước</option>
                   <option value="TUOI">TƯƠI (Thanh toán cước ngay sau giao dịch)</option>
-                  <option value="X">X (Đã thanh toán sau một thời gian)</option>
+                  <option value="X">X (Khách trả sau – chưa thu, cần nhắc)</option>
                   <option value="DA_TT">ĐÃ THANH TOÁN</option>
                   <option value="CN_30_NGAY">CN 30 NGÀY (Điều khoản công nợ 30 ngày)</option>
                   <option value="DOI_TRU">ĐỐI TRỪ (Đối trừ công nợ)</option>

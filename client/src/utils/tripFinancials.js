@@ -386,16 +386,23 @@ export function computeAggregateMetrics(tripsList = []) {
       if (pName && pName !== 'ĐÃ TT' && pName !== 'MẸ ĐÃ TT') {
         subPartnersSet.add(pName);
       }
-      const isSubPaid = Boolean(
-        t.is_subcontractor_paid ||
-          String(t.subcontractor_payment_note || t.raw_M || '').toUpperCase().includes('ĐÃ TT') ||
-          String(t.vehicle_plate || '').toUpperCase().includes('ĐÃ TT')
-      );
-      if (isSubPaid) {
-        totalDaTraNhaXe += f.cuoc_ngoai;
+      // Sửa 25/11/2026: đọc số đã trả / trạng thái thanh toán nhà xe máy chủ lưu (khớp màn Công nợ),
+      // chỉ dò chữ "ĐÃ TT" khi dữ liệu cũ không có các trường này.
+      let subPaid;
+      if (t.sub_paid_amount !== undefined && t.sub_paid_amount !== null) {
+        subPaid = Math.min(f.cuoc_ngoai, Math.max(0, Math.round(Number(t.sub_paid_amount) || 0)));
+      } else if (t.subcontractor_payment_status) {
+        subPaid = t.subcontractor_payment_status === 'DA_TT' ? f.cuoc_ngoai : 0;
       } else {
-        totalConPhaiTraNhaXe += f.cuoc_ngoai;
+        const legacyPaid = Boolean(
+          t.is_subcontractor_paid ||
+            String(t.subcontractor_payment_note || t.raw_M || '').toUpperCase().includes('ĐÃ TT') ||
+            String(t.vehicle_plate || '').toUpperCase().includes('ĐÃ TT')
+        );
+        subPaid = legacyPaid ? f.cuoc_ngoai : 0;
       }
+      totalDaTraNhaXe += subPaid;
+      totalConPhaiTraNhaXe += f.cuoc_ngoai - subPaid;
     } else {
       houseTripsCount += 1;
       ownCuocGoc += f.cuoc_goc;

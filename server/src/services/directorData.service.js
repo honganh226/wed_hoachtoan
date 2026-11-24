@@ -7,6 +7,35 @@ import { legacyDemoIds } from './demoData.service.js';
 import { calculateFareBreakdown, calculateFuelCost, calculateTripFinancials, normalizeContainerType, toIntVnd } from '../utils/tripFinancials.js';
 import { getFuelPriceMap } from './fuelPrice.service.js';
 import { getAdvancesForTripMap, summarizeTripAdvances } from './eirAdvance.service.js';
+import { isPeriodLocked } from './periodLock.service.js';
+
+// Khóa sổ cho các danh mục gắn với chuyến/ngày phát sinh (bổ sung 25/11/2026).
+// Chuyến xe đã được kiểm qua createTrip/updateTrip; các bảng dưới đây trước đây ghi thẳng nên lọt khóa sổ.
+const PERIOD_LOCKED_ENTITIES = { expenses: 'expense_date', advances: 'advance_date', eir_advances: 'advance_date', containers: null };
+function lockDatesFor(entity, row) {
+  if (!row || !(entity in PERIOD_LOCKED_ENTITIES)) return [];
+  const dates = [];
+  const dateField = PERIOD_LOCKED_ENTITIES[entity];
+  if (dateField && row[dateField]) dates.push(String(row[dateField]).slice(0, 10));
+  if (row.trip_id) {
+    const trip = db.prepare('SELECT trip_date, is_locked FROM trips WHERE id = ?').get(row.trip_id);
+    if (trip?.trip_date) dates.push(trip.is_locked === 1 ? 'LOCKED_TRIP' : String(trip.trip_date).slice(0, 10));
+  }
+  return dates;
+}
+function assertEntityNotLocked(entity, ...rows) {
+  for (const row of rows) {
+    for (const date of lockDatesFor(entity, row)) {
+      if (date === 'LOCKED_TRIP' || isPeriodLocked(date)) {
+        const e = Error(date === 'LOCKED_TRIP'
+          ? 'Chuyến liên quan đã bị khóa. Không thể sửa hoặc xóa dữ liệu kèm theo.'
+          : `Kỳ kế toán tháng ${date.slice(0, 7)} đã bị khóa sổ. Mở khóa sổ trước khi sửa hoặc xóa.`);
+        e.status = 423;
+        throw e;
+      }
+    }
+  }
+}
 
 db.exec(`CREATE TABLE IF NOT EXISTS director_records(entity TEXT NOT NULL, record_id TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(entity,record_id));
 CREATE TABLE IF NOT EXISTS director_history(id TEXT PRIMARY KEY,entity TEXT NOT NULL,record_id TEXT NOT NULL,before_value TEXT NOT NULL,after_value TEXT NOT NULL,actor TEXT NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL);
@@ -184,7 +213,7 @@ export function overlayBusiness(rows){
   r.customer_payment_status ||= r.is_offset ? 'DOI_TRU' : r.is_x ? 'X' : r.is_customer_paid ? 'DA_TT' : 'CHUA_TT';
   r.subcontractor_payment_status ||= r.phat_sinh_note?.includes('ĐÃ TT') ? 'DA_TT' : 'CHUA_TT';
   r.is_offset = r.customer_payment_status === 'DOI_TRU';
-  r.is_customer_paid = ['TUOI', 'X', 'DA_TT'].includes(r.customer_payment_status);
+  r.is_customer_paid = ['TUOI', 'DA_TT'].includes(r.customer_payment_status); // X = trả sau, chưa thu (25/11/2026)
   r.payment_status_p = r.is_offset ? 'ĐỐI TRỪ XONG' : r.is_customer_paid ? 'ĐÃ THANH TOÁN' : 'CHƯA TT';
   r.payment_timing_q = r.customer_payment_status === 'TUOI' ? 'TƯƠI' : r.customer_payment_status === 'X' ? 'X' : (r.payment_terms || '');
   // Bảo toàn số tiền đã thu và đối trừ; không tự sửa dữ liệu lịch sử.
@@ -226,6 +255,7 @@ export function saveEntity(entity,id,values,expectedVersion,user,reason=''){
  if(id&&!old)throw Error('Không tìm thấy dữ liệu');
  if(old&&version(old)!==expectedVersion){const e=Error('Dữ liệu đã được sửa ở nơi khác. Tải lại trước khi sửa tiếp.');e.status=409;throw e;}
  const clean=validate(c,{...(old||{}),...values});const now=new Date().toISOString();
+ assertEntityNotLocked(entity, old, clean);
  if(c.business){
    // Đồng bộ cuoc_goc và cuoc_vao (cả hai đều là cước gốc chưa VAT)
    if(values.cuoc_goc !== undefined && values.cuoc_vao === undefined) clean.cuoc_vao = clean.cuoc_goc;
@@ -235,7 +265,7 @@ export function saveEntity(entity,id,values,expectedVersion,user,reason=''){
    clean.cuoc_vao = fare.cuoc_goc;
 
    if(values.customer_payment_status && values.customer_payment_status!==old?.customer_payment_status){
-     if(values.received_amount===undefined||clean.received_amount===old?.received_amount)clean.received_amount=['TUOI','X','DA_TT'].includes(clean.customer_payment_status)?fare.cuoc_goc:0;
+     if(values.received_amount===undefined||clean.received_amount===old?.received_amount)clean.received_amount=['TUOI','DA_TT'].includes(clean.customer_payment_status)?fare.cuoc_goc:0;
      if(values.offset_amount===undefined||clean.offset_amount===old?.offset_amount)clean.offset_amount=clean.customer_payment_status==='DOI_TRU'?fare.cuoc_goc:0;
    }
    if(values.subcontractor_payment_status && values.subcontractor_payment_status!==old?.subcontractor_payment_status)clean.sub_paid_amount=clean.subcontractor_payment_status==='DA_TT'?clean.cuoc_ra:0;
@@ -313,6 +343,7 @@ export function deleteEntity(entity, id, user, reason = '', expectedVersion = nu
     err.status = 404;
     throw err;
   }
+  assertEntityNotLocked(entity, old);
   if (!expectedVersion || typeof expectedVersion !== 'string' || !expectedVersion.trim()) {
     const err = new Error('Bắt buộc cung cấp mã phiên bản (version) để xác thực tính toàn vẹn khi xóa/hủy bản ghi.');
     err.status = 400;
@@ -358,7 +389,7 @@ export function deleteEntity(entity, id, user, reason = '', expectedVersion = nu
       // 2. Kiểm tra đầy đủ các giao dịch thực tế & chi phí phát sinh trước khi cho phép xóa/hủy
       const blockingReasons = [];
 
-      if (Number(old.received_amount || 0) > 0 || ['TUOI', 'X', 'DA_TT'].includes(old.customer_payment_status)) {
+      if (Number(old.received_amount || 0) > 0 || ['TUOI', 'DA_TT'].includes(old.customer_payment_status)) {
         blockingReasons.push(`tiền đã thu khách (${Number(old.received_amount || 0).toLocaleString('vi-VN')} đ / trạng thái ${old.customer_payment_status})`);
       }
       if (Number(old.offset_amount || 0) > 0 || old.customer_payment_status === 'DOI_TRU') {
@@ -556,6 +587,17 @@ export function undoChange(historyId, user) {
   const before = JSON.parse(h.before_value || 'null');
   const after = JSON.parse(h.after_value || 'null');
   const now = new Date().toISOString();
+  // Hoàn tác cũng là sửa dữ liệu: tôn trọng khóa sổ (25/11/2026)
+  assertEntityNotLocked(h.entity, before, after);
+  if (h.entity === 'trips') {
+    for (const row of [before, after]) {
+      if (row?.trip_date && isPeriodLocked(String(row.trip_date))) {
+        const e = Error(`Kỳ kế toán tháng ${String(row.trip_date).slice(0, 7)} đã bị khóa sổ. Mở khóa sổ trước khi hoàn tác.`);
+        e.status = 423;
+        throw e;
+      }
+    }
+  }
 
   let message = 'Đã hoàn tác thay đổi thành công';
 

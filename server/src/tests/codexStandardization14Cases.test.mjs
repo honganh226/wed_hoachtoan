@@ -29,6 +29,7 @@ import {
 } from '../services/eirAdvance.service.js';
 import { createTrip, createBatchTrips } from '../services/trip.service.js';
 import { excelMonthService, invalidateExcelMonthCache } from '../services/excelMonthService.js';
+import { seedJanuaryIfMissing } from './helpers/seedJanuary.mjs';
 import { ExcelImportService } from '../services/excelImportService.js';
 import { chatWithDirectorAssistant } from '../services/directorAssistant.service.js';
 
@@ -283,6 +284,8 @@ try {
   assert.equal(normRaw.container_type, '15H00267', 'Ca 8: Giá trị chưa xác định phải giữ nguyên nội dung nguồn');
   assert.equal(normRaw.is_standard, false, 'Ca 8: Đánh dấu loại cont nguồn chưa chuẩn hóa');
 
+  // Từ 06/11/2026 dữ liệu lấy từ bảng trips; nạp tháng 1 từ Excel nếu DB kiểm thử chưa có
+  await seedJanuaryIfMissing();
   const janDataset = excelMonthService.getData();
   const janRows = janDataset.rows.filter((r) => r.row_index >= 3 && r.row_index <= 79);
   const row71 = janRows.find((t) => t.row_index === 71);

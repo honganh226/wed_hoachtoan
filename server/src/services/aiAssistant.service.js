@@ -72,8 +72,8 @@ async function gatherRoleContext(user = {}) {
         fixedExpenses: formatVND(pl.expenses_breakdown.total_fixed),
         variableExpenses: formatVND(pl.expenses_breakdown.total_variable),
         totalExpenses: formatVND(pl.profit_and_loss.total_operating_costs),
-        grossProfit: formatVND(pl.profit_and_loss.expected_gross_profit),
-        grossMargin: `${pl.profit_and_loss.profit_margin_percent}%`,
+        grossProfit: formatVND(pl.profit_and_loss.margin_after_deduction_17 ?? pl.profit_and_loss.expected_gross_profit),
+        grossMargin: `${pl.profit_and_loss.margin_after_deduction_17_percent ?? pl.profit_and_loss.profit_margin_percent}%`,
         collectionRate: `${pl.cash_flow.collection_rate_percent}%`,
         tripCount: pl.trips_overview.total_trips
       };
@@ -184,7 +184,7 @@ Bạn cần tra cứu thông tin gì hôm nay?`;
       text += `- ⚖️ **Tổng chi phí vận hành:** ${fin.totalExpenses}\n`;
       text += `  + Chi phí biến động (Nâng, hạ, BOT, Dầu): ${fin.variableExpenses}\n`;
       text += `  + Chi phí cố định (sửa chữa, khấu hao, bảo hiểm): ${fin.fixedExpenses}\n`;
-      text += `- 💰 **Lợi nhuận gộp ước tính:** **${fin.grossProfit}** (Biên lợi nhuận: ${fin.grossMargin})\n\n`;
+      text += `- 💰 **Chênh lệch tạm tính sau trừ 17% (chưa trừ lương):** **${fin.grossProfit}** (Tỷ lệ trên cước sau trừ 17%: ${fin.grossMargin})\n\n`;
 
       if (context.topDebtors && context.topDebtors.length > 0) {
         text += `*Top khách hàng có công nợ lớn nhất:*\n`;

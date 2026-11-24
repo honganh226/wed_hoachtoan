@@ -92,6 +92,7 @@ import {
   SlidersHorizontal,
   FolderOpen
 } from 'lucide-react';
+import { todayInVietnam } from './utils/businessDate.js';
 
 export default function App() {
   const [directorAnalyticsState, setDirectorAnalyticsState] = useState(INITIAL_ANALYTICS_STATE);
@@ -1375,7 +1376,7 @@ export default function App() {
       <AiDispatchModal
         isOpen={isAiDispatchOpen}
         onClose={() => setIsAiDispatchOpen(false)}
-        tripParams={{ tripDate: new Date().toISOString().slice(0, 10) }}
+        tripParams={{ tripDate: todayInVietnam() }}
         onSelectRecommendation={(rec) => {
           setIsAiDispatchOpen(false);
           setDuplicateTargetTrip({

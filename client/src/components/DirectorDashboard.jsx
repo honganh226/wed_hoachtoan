@@ -256,29 +256,34 @@ export default function DirectorDashboard({
 
       {/* 3. KHỐI LỢI NHUẬN GỘP & HIỆU SUẤT HOẠT ĐỘNG (P&L METRICS) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Lợi nhuận gộp kỳ vọng */}
+        {/* Chỉ tiêu chính: chênh lệch tạm tính sau khoản trừ 17% (chưa trừ lương) — CHUAN_NGHIEP_VU_EXCEL.md */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <div className="text-xs font-semibold text-slate-500 flex items-center space-x-1">
             <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Lợi Nhuận Gộp (Kỳ vọng)</span>
+            <span>Chênh lệch tạm tính sau trừ 17%</span>
           </div>
-          <div className={`text-lg font-black font-mono mt-1 ${pnl.expected_gross_profit >= 0 ? 'text-indigo-700' : 'text-rose-600'}`}>
-            {formatVnd(pnl.expected_gross_profit)}
+          <div className={`text-lg font-black font-mono mt-1 ${(pnl.margin_after_deduction_17 ?? 0) >= 0 ? 'text-indigo-700' : 'text-rose-600'}`}>
+            {formatVnd(pnl.margin_after_deduction_17)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">
-            Doanh thu kỳ vọng - Toàn bộ chi phí
+            Cước sau trừ 17% − chi phí công ty · Chưa trừ lương
           </div>
+          {pnl.margin_before_deduction_with_vat !== undefined && (
+            <div className="text-[10px] text-slate-400 mt-0.5">
+              Đối chiếu trước khoản trừ 17% (có VAT): {formatVnd(pnl.margin_before_deduction_with_vat)}
+            </div>
+          )}
         </div>
 
-        {/* Biên lợi nhuận % */}
+        {/* Tỷ lệ chênh lệch trên cước sau trừ 17% */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <div className="text-xs font-semibold text-slate-500 flex items-center space-x-1">
             <PieChart className="w-3.5 h-3.5 text-blue-600" />
-            <span>Biên Lợi Nhuận Gộp (%)</span>
+            <span>Tỷ lệ chênh lệch (%)</span>
           </div>
           <div className="text-lg font-black font-mono mt-1 text-blue-700 flex items-center space-x-1">
-            <span>{pnl.profit_margin_percent || 0}%</span>
-            {pnl.profit_margin_percent >= 30 ? (
+            <span>{pnl.margin_after_deduction_17_percent || 0}%</span>
+            {(pnl.margin_after_deduction_17_percent || 0) >= 30 ? (
               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
                 Đạt Chuẩn
               </span>
@@ -289,7 +294,7 @@ export default function DirectorDashboard({
             )}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">
-            Tỷ suất LN gộp / Doanh thu
+            Chênh lệch tạm tính / Cước sau trừ 17%
           </div>
         </div>
 
@@ -441,7 +446,8 @@ export default function DirectorDashboard({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {trips.slice(0, 8).map((t) => {
-                const isPaid = t.status === 'PAID' || t.eir_paid_status === 'DA_TT';
+                // Thanh toán cước của khách (không dùng eir_paid_status — đó là trạng thái thanh toán phơi)
+                const isPaid = t.status === 'PAID' || ['DA_TT', 'TUOI'].includes(t.customer_payment_status);
                 const isProcessing = actionLoadingId === t.id;
 
                 return (

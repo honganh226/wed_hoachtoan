@@ -10,6 +10,7 @@ const {answerDirector,resolvePeriod,comparisonPeriod,detectIntent}=await import(
 const {chatWithDirectorAssistant,resetDirectorAssistantMemory}=await import('../services/directorAssistant.service.js');
 const {excelMonthService}=await import('../services/excelMonthService.js');
 const {db}=await import('../db/database.js');
+const {seedJanuaryIfMissing}=await import('./helpers/seedJanuary.mjs');await seedJanuaryIfMissing({excelPath:process.env.EXCEL_PATH});
 const user={id:'director-test',username:'director-test',role:'DIRECTOR'};
 const now=new Date('2026-10-25T02:00:00Z');
 const january={period:{startDate:'2026-01-01',endDate:'2026-01-31',kind:'month'}};

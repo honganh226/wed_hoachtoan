@@ -11,6 +11,26 @@ import { toIntVnd, isValidCalendarDate } from '../utils/tripFinancials.js';
 import { isPeriodLocked } from './periodLock.service.js';
 import { invalidateExcelMonthCache } from './excelMonthService.js';
 
+/**
+ * Đồng bộ dòng chi phí FUEL (source_component = 'fuel_cost') của một chuyến với tiền dầu hiện tại.
+ * P&L đọc chi phí từ bảng expenses, nên khi giá dầu được thêm/sửa/xóa sau khi tạo chuyến
+ * phải cập nhật cả dòng chi phí này (sửa 25/11/2026 — trước đây P&L bỏ sót hoặc giữ giá cũ).
+ */
+function syncTripFuelExpense(trip, cost, price, nowIso) {
+  db.prepare("DELETE FROM expenses WHERE trip_id = ? AND source_component = 'fuel_cost'").run(trip.id);
+  if (cost > 0) {
+    db.prepare(`
+      INSERT INTO expenses (
+        id, trip_id, vehicle_id, expense_type, category, amount,
+        expense_date, note, receipt_url, is_anomaly, created_at, updated_at, source_component
+      ) VALUES (?, ?, ?, 'FUEL', 'VARIABLE', ?, ?, ?, NULL, 0, ?, ?, 'fuel_cost')
+    `).run(
+      crypto.randomUUID(), trip.id, trip.vehicle_id || null, cost, trip.trip_date,
+      `Tiền dầu (${Number(trip.fuel_liters)}L × ${price.toLocaleString('vi-VN')}đ)`, nowIso, nowIso
+    );
+  }
+}
+
 export function getFuelPriceMap() {
   const rows = db.prepare('SELECT apply_date, price_per_liter, note, updated_by, updated_at FROM fuel_prices ORDER BY apply_date DESC').all();
   const map = new Map();
@@ -61,7 +81,7 @@ export function upsertFuelPrice({ apply_date, price_per_liter, note = '', actor 
   const oldPrice = existing ? toIntVnd(existing.price_per_liter) : null;
 
   // Cập nhật các chuyến trong bảng trips có cùng trip_date
-  const matchingTrips = db.prepare('SELECT id, fuel_liters FROM trips WHERE trip_date = ?').all(dateStr);
+  const matchingTrips = db.prepare('SELECT id, fuel_liters, vehicle_id, trip_date FROM trips WHERE trip_date = ?').all(dateStr);
   const tripsWithFuel = matchingTrips.filter((t) => Number(t.fuel_liters || 0) > 0);
 
   const tx = db.transaction(() => {
@@ -88,6 +108,7 @@ export function upsertFuelPrice({ apply_date, price_per_liter, note = '', actor 
       const liters = Math.max(0, Number(t.fuel_liters || 0));
       const cost = liters > 0 ? Math.round(liters * price) : 0;
       updateTripFuel.run(price, cost, nowIso, t.id);
+      syncTripFuelExpense(t, cost, price, nowIso);
     }
 
     const histId = crypto.randomUUID();
@@ -125,12 +146,13 @@ export function deleteFuelPrice({ apply_date, actor = 'system', reason = '' }) {
   }
 
   const nowIso = new Date().toISOString();
-  const matchingTrips = db.prepare('SELECT id, fuel_liters FROM trips WHERE trip_date = ?').all(dateStr);
+  const matchingTrips = db.prepare('SELECT id, fuel_liters, vehicle_id, trip_date FROM trips WHERE trip_date = ?').all(dateStr);
   const tripsWithFuel = matchingTrips.filter((t) => Number(t.fuel_liters || 0) > 0);
 
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM fuel_prices WHERE apply_date = ?').run(dateStr);
     db.prepare('UPDATE trips SET fuel_unit_price = NULL, fuel_cost = 0, updated_at = ? WHERE trip_date = ?').run(nowIso, dateStr);
+    for (const t of matchingTrips) syncTripFuelExpense(t, 0, 0, nowIso);
     db.prepare(`
       INSERT INTO fuel_price_history (id, apply_date, old_price, new_price, affected_trips_count, note, actor, created_at)
       VALUES (?, ?, ?, 0, ?, ?, ?, ?)

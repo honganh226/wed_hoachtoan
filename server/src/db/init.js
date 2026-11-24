@@ -2,6 +2,7 @@
  * Module khởi tạo bảng dữ liệu SQLite (DDL) theo chuẩn Schema Drizzle ORM
  * Tự động tạo toàn bộ bảng, khóa chính, khóa ngoại và chỉ mục nếu chưa tồn tại.
  */
+import { randomUUID } from 'node:crypto';
 import { db } from './database.js';
 
 export function initDatabase() {
@@ -545,6 +546,70 @@ export function initDatabase() {
         );
       })();
       console.log(`[DB MIGRATION] Đã chạy migration ${migrationVersion2} thành công.`);
+    }
+
+    // Kiểm tra 3 (25/11/2026) — CHỈ ĐẾM, KHÔNG SỬA DỮ LIỆU.
+    // Chủ dự án xác nhận "X" = khách trả sau, CHƯA thu, đồng thời yêu cầu không tự sửa dữ liệu thu tiền lịch sử.
+    // Bản nhập Excel cũ có thể đã gán X cho dòng mà ô nguồn ghi "ĐÃ THANH TOÁN" / "ĐỐI TRỪ".
+    // Ở đây chỉ ghi log số dòng cần kế toán rà để sửa tay; không đổi customer_payment_status.
+    const reviewVersion3 = '20261125_01_x_review_only';
+    const hasReviewed3 = db.prepare('SELECT version FROM schema_migrations WHERE version = ?').get(reviewVersion3);
+    if (!hasReviewed3) {
+      const nowIso = new Date().toISOString();
+      const fold = (v) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'D').toUpperCase();
+      let paidInSource = 0;
+      let offsetInSource = 0;
+      let keptX = 0;
+      for (const t of db.prepare("SELECT raw_data FROM trips WHERE customer_payment_status = 'X'").all()) {
+        let cells = {};
+        try { cells = JSON.parse(t.raw_data || '{}')?.source_cells || {}; } catch (_) { cells = {}; }
+        const values = Object.values(cells).map((c) => fold(c && typeof c === 'object' ? c.value : c));
+        if (values.some((v) => v.includes('DOI TRU'))) offsetInSource += 1;
+        else if (values.some((v) => v.includes('DA THANH TOAN'))) paidInSource += 1;
+        else keptX += 1;
+      }
+      db.prepare('INSERT INTO schema_migrations (version, description, applied_at) VALUES (?, ?, ?)').run(
+        reviewVersion3,
+        `Chỉ kiểm, không sửa: ${paidInSource} dòng X có ô nguồn ĐÃ THANH TOÁN, ${offsetInSource} dòng X có ô nguồn ĐỐI TRỪ cần kế toán rà; ${keptX} dòng X khác.`,
+        nowIso
+      );
+      if (paidInSource || offsetInSource) console.log(`[DB REVIEW] ${reviewVersion3}: ${paidInSource} dòng X có nguồn ĐÃ THANH TOÁN, ${offsetInSource} dòng X có nguồn ĐỐI TRỪ — cần rà tay, chưa sửa.`);
+    }
+
+    // Migration 4 (25/11/2026): đồng bộ dòng chi phí FUEL với trips.fuel_cost.
+    // Trước đây khi nhập/sửa/xóa giá dầu sau khi tạo chuyến, trips.fuel_cost đổi nhưng bảng expenses
+    // (nguồn của P&L) không đổi -> P&L thiếu tiền dầu hoặc giữ giá cũ.
+    const migrationVersion4 = '20261125_02_sync_fuel_expenses';
+    const hasMigrated4 = db.prepare('SELECT version FROM schema_migrations WHERE version = ?').get(migrationVersion4);
+    if (!hasMigrated4) {
+      const nowIso = new Date().toISOString();
+      let fixed = 0;
+      if (!db.prepare('PRAGMA table_info(expenses)').all().some((c) => c.name === 'source_component')) {
+        db.exec('ALTER TABLE expenses ADD COLUMN source_component TEXT');
+      }
+      db.transaction(() => {
+        const rows = db.prepare(`
+          SELECT t.id, t.vehicle_id, t.trip_date, t.fuel_liters, t.fuel_unit_price, COALESCE(t.fuel_cost, 0) AS fuel_cost,
+            COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.trip_id = t.id AND e.source_component = 'fuel_cost'), 0) AS expense_fuel
+          FROM trips t
+        `).all();
+        for (const t of rows) {
+          const cost = Math.round(Number(t.fuel_cost) || 0);
+          if (cost === Math.round(Number(t.expense_fuel) || 0)) continue;
+          db.prepare("DELETE FROM expenses WHERE trip_id = ? AND source_component = 'fuel_cost'").run(t.id);
+          if (cost > 0) {
+            db.prepare(`
+              INSERT INTO expenses (id, trip_id, vehicle_id, expense_type, category, amount, expense_date, note, receipt_url, is_anomaly, created_at, updated_at, source_component)
+              VALUES (?, ?, ?, 'FUEL', 'VARIABLE', ?, ?, ?, NULL, 0, ?, ?, 'fuel_cost')
+            `).run(randomUUID(), t.id, t.vehicle_id || null, cost, t.trip_date,
+              `Tiền dầu (${Number(t.fuel_liters) || 0}L × ${Math.round(Number(t.fuel_unit_price) || 0).toLocaleString('vi-VN')}đ)`, nowIso, nowIso);
+          }
+          fixed += 1;
+        }
+        db.prepare('INSERT INTO schema_migrations (version, description, applied_at) VALUES (?, ?, ?)').run(
+          migrationVersion4, `Đồng bộ chi phí dầu (expenses FUEL) với trips.fuel_cost cho ${fixed} chuyến.`, nowIso);
+      })();
+      if (fixed) console.log(`[DB MIGRATION] ${migrationVersion4}: đồng bộ tiền dầu cho ${fixed} chuyến.`);
     }
 
     // Đảm bảo có tài khoản thư ký (SECRETARY) để kiểm thử và vận hành nhắc việc nếu chưa tồn tại
