@@ -324,6 +324,33 @@ export function saveEntity(entity,id,values,expectedVersion,user,reason=''){
  try { broadcastPLUpdate('DIRECTOR_DATA_SAVED', `Cập nhật ${entity} [${id}]`); } catch (_) {}
  return listEntity(entity).find(r=>r.id===id);
 }
+// Sửa trạng thái thu tiền cho nhiều cuốc trong MỘT yêu cầu (một lần lưu snapshot Supabase).
+// Chỉ đổi cuốc đang CHUA_TT, chưa có tiền thu/đối trừ; mỗi cuốc đi qua saveEntity (kiểm tra phiên bản, khóa sổ, ghi lịch sử).
+export function savePaymentStatusBatch(items, status, user, reason = '') {
+ if (!['TUOI', 'DA_TT'].includes(status)) throw Error('Trạng thái hàng loạt chỉ nhận TUOI hoặc DA_TT');
+ if (!Array.isArray(items) || !items.length || items.length > 500) throw Error('Danh sách cuốc phải có từ 1 đến 500 dòng');
+ if (!String(reason || '').trim()) throw Error('Cần nhập lý do sửa hàng loạt');
+ const results = [];
+ db.transaction(() => {
+  for (const item of items) {
+   const id = String(item?.id || '');
+   const old = rowsFor('trips').find(r => r.id === id);
+   if (!old) { results.push({ id, ok: false, error: 'Không tìm thấy cuốc' }); continue; }
+   if (old.customer_payment_status !== 'CHUA_TT' || Number(old.received_amount || 0) + Number(old.offset_amount || 0) > 0) {
+    results.push({ id, ok: false, skipped: true, error: 'Cuốc không còn ở trạng thái Chưa TT không có tiền thu' });
+    continue;
+   }
+   try {
+    db.transaction(() => saveEntity('trips', id, { customer_payment_status: status }, item.version, user, reason))();
+    results.push({ id, ok: true });
+   } catch (e) {
+    results.push({ id, ok: false, error: e.message });
+   }
+  }
+ })();
+ const ok = results.filter(r => r.ok).length;
+ return { ok, failed: results.length - ok, results };
+}
 export function deleteEntity(entity, id, user, reason = '', expectedVersion = null) {
   const c = entities[entity];
   if (!c) {

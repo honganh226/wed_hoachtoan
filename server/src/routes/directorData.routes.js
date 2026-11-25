@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 import { requireRole } from '../middlewares/rbac.middleware.js';
-import { metadata, listEntity, saveEntity, deleteEntity, history, undoChange, resetBusinessData } from '../services/directorData.service.js';
+import { metadata, listEntity, saveEntity, deleteEntity, history, undoChange, resetBusinessData, savePaymentStatusBatch } from '../services/directorData.service.js';
 const router = Router();
 router.use(authenticateToken, requireRole('DIRECTOR'));
 function handler(fn) {
@@ -21,6 +21,7 @@ router.post('/reset-business-data', handler(req => resetBusinessData({
 router.get('/metadata', handler(() => metadata()));
 router.get('/history', handler(() => history()));
 router.post('/history/:id/undo', handler(req => undoChange(req.params.id, req.user)));
+router.post('/trips/batch-payment-status', handler(req => savePaymentStatusBatch(req.body?.items, req.body?.status, req.user, req.body?.reason)));
 router.get('/:entity', handler(req => listEntity(req.params.entity)));
 router.post('/:entity', handler(req => saveEntity(req.params.entity, null, req.body.values, null, req.user, req.body.reason)));
 router.put('/:entity/:id', handler(req => saveEntity(req.params.entity, req.params.id, req.body.values, req.body.version, req.user, req.body.reason)));

@@ -19,7 +19,7 @@ const { db } = await import('../db/database.js');
 const { createTrip } = await import('../services/trip.service.js');
 const { calculatePL } = await import('../services/plEngine.service.js');
 const { lockPeriod, unlockPeriod } = await import('../services/periodLock.service.js');
-const { saveEntity, deleteEntity, listEntity } = await import('../services/directorData.service.js');
+const { saveEntity, deleteEntity, listEntity, savePaymentStatusBatch } = await import('../services/directorData.service.js');
 const { seedJanuaryIfMissing } = await import('./helpers/seedJanuary.mjs');
 const { ExcelImportService } = await import('../services/excelImportService.js');
 const { default: xlsx } = await import('xlsx');
@@ -221,6 +221,30 @@ check('Chuyến trạng thái X không tính vào thực thu ở P&L', () => {
   });
 }
 
-console.log(`\nKẾT QUẢ: ${passed}/14 ca đạt`);
+check('Sửa hàng loạt TƯƠI: một lần, chỉ đổi cuốc Chưa TT, bỏ qua cuốc đã thu và sai phiên bản', () => {
+  const jan = listEntity('trips').filter(r => String(r.trip_date).startsWith('2026-01') && r.customer_payment_status === 'DA_TT' && r.cuoc_goc > 0);
+  const [a, b, c, paid] = jan;
+  for (const r of [a, b, c]) saveEntity('trips', r.id, { customer_payment_status: 'CHUA_TT' }, r._version, director, 'chuẩn bị kiểm thử');
+  const cur = id => listEntity('trips').find(r => r.id === id);
+  assert.equal(cur(a.id).received_amount, 0);
+  const res = savePaymentStatusBatch([
+    { id: a.id, version: cur(a.id)._version },
+    { id: b.id, version: cur(b.id)._version },
+    { id: c.id, version: 'sai-phien-ban' },
+    { id: paid.id, version: paid._version },
+  ], 'TUOI', director, 'kiểm thử hàng loạt');
+  assert.equal(res.ok, 2);
+  assert.equal(res.failed, 2);
+  assert.equal(cur(a.id).customer_payment_status, 'TUOI');
+  assert.equal(cur(a.id).received_amount, a.cuoc_goc);
+  assert.equal(cur(b.id).customer_payment_status, 'TUOI');
+  assert.equal(cur(c.id).customer_payment_status, 'CHUA_TT');
+  assert.equal(cur(paid.id).customer_payment_status, 'DA_TT');
+  assert.equal(db.prepare('SELECT customer_payment_status s FROM trips WHERE id=?').get(a.id).s, 'TUOI');
+  assert.throws(() => savePaymentStatusBatch([{ id: a.id }], 'X', director, 'x'));
+  assert.throws(() => savePaymentStatusBatch([{ id: a.id }], 'TUOI', director, ''));
+});
+
+console.log(`\nKẾT QUẢ: ${passed}/15 ca đạt`);
 db.close?.();
 try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) {}
