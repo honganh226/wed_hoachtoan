@@ -8,3 +8,6 @@ server/data/
 **/security-audit.json
 **/ai-test-runtime/
 scratch/
+
+# Bản sao lưu do test tạo ra
+server/test_backups/

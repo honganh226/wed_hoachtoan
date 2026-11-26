@@ -1,0 +1,2 @@
+# Script Windows cần CRLF để cmd đọc đúng nhãn/goto
+*.bat text eol=crlf

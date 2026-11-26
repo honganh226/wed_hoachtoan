@@ -1,0 +1,24 @@
+# ============================================================
+# CẤU HÌNH CLOUDFLARE TUNNEL - HỆ THỐNG ĐIỀU VẬN CONTAINER
+# ============================================================
+# Cho phép Giám Đốc và Tài xế truy cập từ xa qua điện thoại 4G/Wifi
+# với kết nối HTTPS mã hóa 100%, bảo vệ chống DDoS và không cần mở port Router (NAT).
+# ============================================================
+
+# ID của Tunnel (lấy sau khi chạy: cloudflared tunnel create hoachtoan-tunnel)
+tunnel: 00000000-0000-0000-0000-000000000000
+
+# Đường dẫn file chứng chỉ xác thực của Tunnel
+credentials-file: C:\WED_HOACHTOAN\cloudflare\credentials.json
+
+# Quy tắc định tuyến Ingress Rules
+ingress:
+  # 1. Định tuyến domain tùy chỉnh (ví dụ: dieuvan.congtyban.vn) về Server nội bộ port 5000
+  - hostname: dieuvan.congtyban.vn
+    service: http://localhost:5000
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: false
+
+  # 2. Quy tắc bắt buộc cuối cùng: Trả về 404 cho các hostname không khớp
+  - service: http_status:404

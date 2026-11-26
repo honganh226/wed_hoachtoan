@@ -24,6 +24,7 @@ const { default: app } = await import('../index.js');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '../../../');
 
+const tempUserIds = [];
 let passCount = 0;
 let failCount = 0;
 
@@ -162,6 +163,17 @@ async function runTests() {
 
   try {
     const { db } = await import('../db/database.js');
+    // DB thử có thể chỉ có tài khoản thư ký (bản clone mới). Khi thiếu, tạo tạm tài khoản
+    // Giám Đốc/Kế toán với hash ngẫu nhiên (không đăng nhập bằng mật khẩu được), xóa sau khi chạy.
+    const { randomBytes, randomUUID } = await import('node:crypto');
+    for (const role of ['DIRECTOR', 'ACCOUNTANT']) {
+      if (db.prepare('SELECT 1 FROM users WHERE role = ? AND is_active = 1').get(role)) continue;
+      const id = `test-72-74-${role.toLowerCase()}-${randomUUID()}`;
+      const now = new Date().toISOString();
+      db.prepare('INSERT INTO users (id, username, password_hash, full_name, role, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)')
+        .run(id, id, `!disabled-${randomBytes(16).toString('hex')}`, `Tài khoản thử ${role}`, role, now, now);
+      tempUserIds.push(id);
+    }
     const signFor = (role) => {
       const user = db.prepare('SELECT id, username, role FROM users WHERE role = ? AND is_active = 1 LIMIT 1').get(role);
       if (!user) return null;
@@ -211,6 +223,10 @@ async function runTests() {
 
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    if (tempUserIds.length) {
+      const { db } = await import('../db/database.js');
+      for (const id of tempUserIds) db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    }
   }
 
   // =========================================================
