@@ -781,6 +781,8 @@ export class ExcelImportService {
    * Thực hiện nạp toàn bộ danh sách dòng đã duyệt vào cơ sở dữ liệu
    */
   static commitImport({ rows, filename, sheetName, fileHash = null, user, ipAddress = null, confirmDuplicates = false }) {
+    // Tên sheet trong file có thể có khoảng trắng cuối ("T11-2026 "); chỉ lưu bản đã trim.
+    const storedSheetName = String(sheetName || '').trim() || null;
     if (!Array.isArray(rows) || rows.length === 0) {
       throw new Error('Không có dòng dữ liệu nào để nhập');
     }
@@ -860,7 +862,7 @@ export class ExcelImportService {
           UPDATE trips 
           SET source_file = ?, source_sheet = ?, source_row = ?, raw_data = ?, updated_at = created_at
           WHERE id = ?
-        `).run(filename || null, sheetName || null, r.source_row || null, JSON.stringify({ batch_id: batchId, ...r }), created.id);
+        `).run(filename || null, storedSheetName, r.source_row || null, JSON.stringify({ batch_id: batchId, ...r }), created.id);
 
         insertedTrips.push(created);
 
@@ -895,7 +897,7 @@ export class ExcelImportService {
         batchId,
         `Nhập Excel ${filename || 'dữ liệu'} (${insertedTrips.length} cuốc)`,
         filename || null,
-        sheetName || null,
+        storedSheetName,
         insertedTrips.length,
         totalRev,
         totalCost,

@@ -48,4 +48,20 @@ db.prepare("DELETE FROM trips WHERE trip_date LIKE '2026-01%'").run();
 restoreState(__snapshotCodec.decrypt(packed));
 assert.equal(db.prepare("SELECT COUNT(*) n FROM trips WHERE trip_date LIKE '2026-01%'").get().n, 77);
 
+// Snapshot cũ có tên sheet thừa khoảng trắng ("T11-2026 ") -> khôi phục xong phải được trim,
+// ở cả bảng trips lẫn lớp phủ director_records; raw_data giữ nguyên bản gốc.
+const dirty = JSON.parse(json);
+const sample = dirty.tables.trips.find(t => t.trip_date?.startsWith('2026-01'));
+sample.source_sheet = 'T11-2026 ';
+sample.raw_data = JSON.stringify({ source_sheet: 'T11-2026 ' });
+dirty.tables.director_records = [...(dirty.tables.director_records || []).filter(r => r.record_id !== sample.id),
+  { entity: 'trips', record_id: sample.id, value: JSON.stringify({ id: sample.id, source_sheet: 'T11-2026 ', notes_r: 'giữ' }) }];
+restoreState(__snapshotCodec.decrypt(__snapshotCodec.encrypt(dirty)));
+assert.equal(db.prepare('SELECT source_sheet FROM trips WHERE id = ?').get(sample.id).source_sheet, 'T11-2026');
+assert.equal(JSON.parse(db.prepare('SELECT raw_data FROM trips WHERE id = ?').get(sample.id).raw_data).source_sheet, 'T11-2026 ');
+const overlay = JSON.parse(db.prepare("SELECT value FROM director_records WHERE entity = 'trips' AND record_id = ?").get(sample.id).value);
+assert.equal(overlay.source_sheet, 'T11-2026');
+assert.equal(overlay.notes_r, 'giữ');
+assert.equal(db.prepare("SELECT COUNT(*) n FROM trips WHERE source_sheet <> TRIM(source_sheet)").get().n, 0);
+
 console.log(`PASS snapshot codec: ${Buffer.byteLength(json)} B JSON -> ${packed.length} B (gz1), legacy ${legacy.length} B`);

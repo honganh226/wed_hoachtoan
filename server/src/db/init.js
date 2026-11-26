@@ -627,7 +627,39 @@ export function initDatabase() {
     console.warn('[DB INIT] Cảnh báo nâng cấp cột trips:', err.message);
   }
 
+  normalizeSourceSheetNames();
   console.log('[DB INIT] Hoàn tất khởi tạo 23 bảng dữ liệu và chỉ mục SQLite thành công!');
+}
+
+/**
+ * Bỏ khoảng trắng thừa ở tên sheet nguồn (VD "T11-2026 " trong KẾ HOẠCH 2026(M).xlsx).
+ * Chạy mỗi lần initDatabase (kể cả sau khi khôi phục snapshot Supabase, vì restoreState gọi lại
+ * initDatabase), không đánh dấu migration để luôn áp cho dữ liệu khôi phục. Giữ nguyên raw_data
+ * và director_history (bản gốc / lịch sử).
+ */
+export function normalizeSourceSheetNames() {
+  try {
+    const trips = db.prepare("UPDATE trips SET source_sheet = TRIM(source_sheet) WHERE source_sheet IS NOT NULL AND source_sheet <> TRIM(source_sheet)").run().changes;
+    const batches = db.prepare("UPDATE import_batches SET sheet_name = TRIM(sheet_name) WHERE sheet_name IS NOT NULL AND sheet_name <> TRIM(sheet_name)").run().changes;
+    let overlays = 0;
+    const hasOverlay = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='director_records'").get();
+    if (hasOverlay) {
+      overlays = db.prepare(`
+        UPDATE director_records
+        SET value = json_set(value, '$.source_sheet', TRIM(json_extract(value, '$.source_sheet')))
+        WHERE entity = 'trips' AND json_valid(value)
+          AND json_type(value, '$.source_sheet') = 'text'
+          AND json_extract(value, '$.source_sheet') <> TRIM(json_extract(value, '$.source_sheet'))
+      `).run().changes;
+    }
+    if (trips || batches || overlays) {
+      console.log(`[DB INIT] Đã bỏ khoảng trắng tên sheet nguồn: ${trips} cuốc, ${batches} đợt nhập, ${overlays} bản ghi công nợ.`);
+    }
+    return { trips, batches, overlays };
+  } catch (err) {
+    console.warn('[DB INIT] Không chuẩn hóa được tên sheet nguồn:', err.message);
+    return { trips: 0, batches: 0, overlays: 0 };
+  }
 }
 
 export default initDatabase;
