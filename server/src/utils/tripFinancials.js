@@ -79,7 +79,8 @@ export function normalizeContainerType(rawInput, fallbackSize = '') {
     };
   }
 
-  const upper = combined.toUpperCase().replace(/\s+/g, '');
+  // 20' / 40' / 45' chỉ là cách ghi feet: hiểu như 20 / 40 / 45 (chuẩn hóa 27/11/2026)
+  const upper = combined.toUpperCase().replace(/\s+/g, '').replace(/^(20|40|45)['’′`"]+$/, '$1');
 
   // Exact standard types
   if (upper === '20DC' || upper === '20') {

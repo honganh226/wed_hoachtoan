@@ -351,15 +351,26 @@ export function savePaymentStatusBatch(items, status, user, reason = '') {
  const ok = results.filter(r => r.ok).length;
  return { ok, failed: results.length - ok, results };
 }
-// Đưa loại cont về TRỐNG cho các cuốc mà Excel nguồn để trống nhưng bản nhập cũ (trước 25/11/2026) tự gán 40DC.
+// Sửa loại cont hàng loạt theo các cặp đã được chủ dự án chốt:
+//  - 40DC -> trống (26/11/2026): Excel nguồn để trống nhưng bản nhập cũ (trước 25/11/2026) tự gán 40DC.
+//  - 20' -> 20, 40' -> 40 (27/11/2026): chỉ là cách ghi feet. KẸP, X, biển số giữ nguyên (không ảnh hưởng số liệu).
 // Sửa ở cả 3 nơi: cột trips.container_type_raw, bảng containers, lớp phủ director_records (nếu có).
-// Chỉ nhận cuốc đang là 40DC; kiểm tra phiên bản và khóa sổ; raw_data giữ nguyên.
+// Chỉ nhận cuốc đang mang đúng giá trị cũ; kiểm tra phiên bản và khóa sổ; raw_data giữ nguyên.
 // Lịch sử ghi bản rút gọn (chỉ các trường loại cont) để snapshot không phình; nút hoàn tác không áp cho thao tác này.
 export const CONTAINER_BLANK_FIX = 'CONTAINER_TYPE_BLANK_20261126';
-const is40DC = v => String(v ?? '').trim().toUpperCase().replace(/\s+/g, '') === '40DC';
-export function clearContainerTypeBatch(items, user, reason = '') {
+const CONTAINER_TYPE_FIXES = {
+  '40DC': { to: '', size: '', kind: '', marker: CONTAINER_BLANK_FIX },
+  "20'": { to: '20', size: '20', kind: 'DC', marker: 'CONTAINER_TYPE_NOTATION_20261127' },
+  "40'": { to: '40', size: '40', kind: 'DC', marker: 'CONTAINER_TYPE_NOTATION_20261127' },
+};
+const contKey = v => String(v ?? '').trim().toUpperCase().replace(/\s+/g, '').replace(/[’′`"]/g, "'");
+export function clearContainerTypeBatch(items, user, reason = '', from = '40DC') {
   if (!Array.isArray(items) || !items.length || items.length > 50) throw Error('Danh sách cuốc phải có từ 1 đến 50 dòng');
   if (!String(reason || '').trim()) throw Error('Cần nhập lý do sửa hàng loạt');
+  const fromKey = contKey(from || '40DC');
+  const fix = CONTAINER_TYPE_FIXES[fromKey];
+  if (!fix) throw Error(`Chưa có quy tắc chuẩn hóa cho loại cont "${from}"`);
+  const isFrom = v => contKey(v) === fromKey;
   const rowsById = new Map(rowsFor('trips').map(r => [String(r.id), r]));
   const now = new Date().toISOString();
   const results = [];
@@ -370,8 +381,8 @@ export function clearContainerTypeBatch(items, user, reason = '') {
       const old = rowsById.get(id);
       if (!old) { results.push({ id, ok: false, error: 'Không tìm thấy cuốc' }); continue; }
       if (version(old) !== item?.version) { results.push({ id, ok: false, error: 'Phiên bản không khớp, tải lại trước khi sửa' }); continue; }
-      if (![old.container_type_raw, old.container_size, old.container_code].some(is40DC)) {
-        results.push({ id, ok: false, skipped: true, error: 'Cuốc không còn là 40DC' });
+      if (![old.container_type_raw, old.container_size, old.container_code].some(isFrom)) {
+        results.push({ id, ok: false, skipped: true, error: `Cuốc không còn là ${fromKey}` });
         continue;
       }
       try {
@@ -383,23 +394,27 @@ export function clearContainerTypeBatch(items, user, reason = '') {
           const dbTrip = db.prepare('SELECT container_type_raw FROM trips WHERE id = ?').get(id);
           const contsBefore = db.prepare('SELECT id, container_size, container_type FROM containers WHERE trip_id = ?').all(id);
           const overlayRow = db.prepare("SELECT value FROM director_records WHERE entity = 'trips' AND record_id = ?").get(id);
-          if (dbTrip && is40DC(dbTrip.container_type_raw)) db.prepare("UPDATE trips SET container_type_raw = '', updated_at = ? WHERE id = ?").run(now, id);
+          if (dbTrip && isFrom(dbTrip.container_type_raw)) db.prepare('UPDATE trips SET container_type_raw = ?, updated_at = ? WHERE id = ?').run(fix.to, now, id);
           for (const c of contsBefore) {
-            const dc = is40DC(c.container_size) || (String(c.container_size ?? '').trim() === '40' && String(c.container_type ?? '').trim().toUpperCase() === 'DC');
-            if (dc) db.prepare("UPDATE containers SET container_size = '', container_type = '' WHERE id = ?").run(c.id);
+            const hit = isFrom(c.container_size) || isFrom(c.container_type)
+              || (fromKey === '40DC' && String(c.container_size ?? '').trim() === '40' && String(c.container_type ?? '').trim().toUpperCase() === 'DC');
+            if (hit) db.prepare('UPDATE containers SET container_size = ?, container_type = ? WHERE id = ?').run(fix.size, fix.kind, c.id);
           }
           let overlayBefore = null;
           if (overlayRow) {
             const patch = JSON.parse(overlayRow.value);
             overlayBefore = pick(patch);
-            for (const k of ['container_size', 'container_type_raw', 'container_code']) {
-              if (k in patch && (is40DC(patch[k]) || String(patch[k] ?? '').trim() === '40')) patch[k] = '';
+            for (const k of ['container_size', 'container_type_raw', 'container_code', 'container_type']) {
+              if (k in patch && isFrom(patch[k])) patch[k] = fix.to;
             }
-            if ('container_type' in patch && ['DC', '40DC'].includes(String(patch.container_type ?? '').trim().toUpperCase())) patch.container_type = '';
+            if (fromKey === '40DC') {
+              for (const k of ['container_size', 'container_type_raw', 'container_code']) if (k in patch && String(patch[k] ?? '').trim() === '40') patch[k] = '';
+              if ('container_type' in patch && String(patch.container_type ?? '').trim().toUpperCase() === 'DC') patch.container_type = '';
+            }
             db.prepare("UPDATE director_records SET value = ? WHERE entity = 'trips' AND record_id = ?").run(JSON.stringify(patch), id);
           }
-          const before = { bulk_fix: CONTAINER_BLANK_FIX, id, source_sheet: old.source_sheet ?? null, source_row: old.source_row ?? old.row_index ?? null, ...pick(old), trip_column: dbTrip?.container_type_raw ?? null, containers: contsBefore, overlay: overlayBefore };
-          const after = { bulk_fix: CONTAINER_BLANK_FIX, id, container_size: '', container_type: '', container_type_raw: '', container_code: '' };
+          const before = { bulk_fix: fix.marker, id, source_sheet: old.source_sheet ?? null, source_row: old.source_row ?? old.row_index ?? null, ...pick(old), trip_column: dbTrip?.container_type_raw ?? null, containers: contsBefore, overlay: overlayBefore };
+          const after = { bulk_fix: fix.marker, id, container_size: fix.to, container_type: fix.to, container_type_raw: fix.to, container_code: fix.to };
           db.prepare('INSERT INTO director_history (id, entity, record_id, before_value, after_value, actor, reason, created_at, is_undone) VALUES(?,?,?,?,?,?,?,?,0)')
             .run(randomUUID(), 'trips', id, JSON.stringify(before), JSON.stringify(after), user.username, String(reason).trim(), now);
         })();
@@ -410,7 +425,7 @@ export function clearContainerTypeBatch(items, user, reason = '') {
     }
   })();
   invalidateExcelMonthCache();
-  try { broadcastPLUpdate('DIRECTOR_DATA_SAVED', 'Sửa loại cont trống hàng loạt'); } catch (_) {}
+  try { broadcastPLUpdate('DIRECTOR_DATA_SAVED', `Sửa loại cont hàng loạt (${fromKey})`); } catch (_) {}
   const ok = results.filter(r => r.ok).length;
   return { ok, failed: results.length - ok, results };
 }
@@ -676,7 +691,7 @@ export function undoChange(historyId, user) {
 
   const before = JSON.parse(h.before_value || 'null');
   const after = JSON.parse(h.after_value || 'null');
-  if (after?.bulk_fix === CONTAINER_BLANK_FIX) {
+  if (String(after?.bulk_fix || '').startsWith('CONTAINER_TYPE_')) {
     const err = new Error('Thao tác sửa loại cont hàng loạt không hoàn tác bằng nút này; lịch sử đã lưu giá trị cũ để đối chiếu.');
     err.status = 400;
     throw err;

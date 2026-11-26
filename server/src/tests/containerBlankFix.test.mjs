@@ -124,4 +124,47 @@ await check('Từ chối danh sách rỗng, quá 50 dòng hoặc thiếu lý do'
   assert.throws(() => clearContainerTypeBatch([{ id: plain }], director, ' '));
 });
 
-console.log(`PASS container blank fix: ${passed}/7`);
+// 27/11/2026: 20' -> 20, 40' -> 40 (cách ghi feet); KẸP giữ nguyên
+const legacyNotation = (date, v) => {
+  const id = mk(date, '40HC');
+  db.prepare('UPDATE trips SET container_type_raw = ? WHERE id = ?').run(v, id);
+  db.prepare("UPDATE containers SET container_size = ?, container_type = '' WHERE trip_id = ?").run(v, id);
+  return id;
+};
+const feet20 = legacyNotation('2099-05-02', "20'");
+const feet40 = legacyNotation('2099-05-03', "40'");
+const kep = legacyNotation('2099-05-04', 'KẸP');
+const r20 = clearContainerTypeBatch([feet20, kep].map(id => ({ id, version: row(id)._version })), director, 'chuẩn hóa cách ghi feet', "20'");
+const r40 = clearContainerTypeBatch([{ id: feet40, version: row(feet40)._version }], director, 'chuẩn hóa cách ghi feet', "40'");
+
+await check("20' thành 20, 40' thành 40 ở trips, containers, hiển thị; KẸP bỏ qua", () => {
+  assert.equal(r20.ok, 1);
+  assert.equal(r20.results.find(x => x.id === kep).skipped, true);
+  assert.equal(r40.ok, 1);
+  for (const [id, v] of [[feet20, '20'], [feet40, '40']]) {
+    assert.equal(db.prepare('SELECT container_type_raw FROM trips WHERE id=?').get(id).container_type_raw, v);
+    for (const c of db.prepare('SELECT container_size, container_type FROM containers WHERE trip_id=?').all(id)) {
+      assert.equal(c.container_size, v);
+      assert.equal(c.container_type, 'DC');
+    }
+    const r = row(id);
+    assert.equal(r.container_type_raw, v);
+    assert.equal(r.container_code, v);
+  }
+  assert.equal(db.prepare('SELECT container_type_raw FROM trips WHERE id=?').get(kep).container_type_raw, 'KẸP');
+  const h = db.prepare("SELECT * FROM director_history WHERE record_id=? AND after_value LIKE '%CONTAINER_TYPE_NOTATION%'").get(feet20);
+  assert.equal(JSON.parse(h.before_value).trip_column, "20'");
+  assert.throws(() => undoChange(h.id, director), /không hoàn tác/);
+});
+
+await check('Từ chối loại cont chưa có quy tắc (KẸP, X)', () => {
+  assert.throws(() => clearContainerTypeBatch([{ id: kep, version: row(kep)._version }], director, 'x', 'KẸP'), /Chưa có quy tắc/);
+  assert.throws(() => clearContainerTypeBatch([{ id: kep, version: row(kep)._version }], director, 'x', 'X'), /Chưa có quy tắc/);
+});
+
+await check("Nhập mới: 20' được lưu thành 20", () => {
+  const id = mk('2099-05-05', "20'");
+  assert.equal(db.prepare('SELECT container_type_raw FROM trips WHERE id=?').get(id).container_type_raw, '20');
+});
+
+console.log(`PASS container type fix: ${passed}/10`);
