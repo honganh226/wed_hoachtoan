@@ -39,9 +39,14 @@ const COMPRESSED_PREFIX = 'gz1:';
 const REMOTE_TIMEOUT_MS = 300000;
 
 function encrypt(data) {
+  return encryptJson(JSON.stringify(data));
+}
+
+// Nhận chuỗi JSON đã có sẵn để không phải stringify snapshot lần thứ hai.
+function encryptJson(json) {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key(), iv);
-  const packed = gzipSync(Buffer.from(JSON.stringify(data), 'utf8'), { level: 6 });
+  const packed = gzipSync(json, { level: 6 });
   const body = Buffer.concat([cipher.update(packed), cipher.final()]);
   return COMPRESSED_PREFIX + Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64');
 }
@@ -177,11 +182,16 @@ async function initializeState() {
 async function flushState() {
   const next = revision + 1;
   const writeId = randomUUID();
-  const rawState = captureState();
-  const rawString = JSON.stringify(rawState);
+  // Chỉ giữ một bản JSON của snapshot, rồi bỏ ngay sau khi băm và mã hóa
+  // (giảm bộ nhớ đỉnh trên gói Render 512 MB).
+  const startedAt = Date.now();
+  let rawString = JSON.stringify(captureState());
+  const rawBytes = Buffer.byteLength(rawString);
   const payloadHash = createHash('sha256').update(rawString).digest('hex');
-  const encryptedPayload = encrypt(rawState);
+  const encryptedPayload = encryptJson(rawString);
+  rawString = null;
   const now = new Date().toISOString();
+  console.log(`[DURABLE STATE] Snapshot r${next}: JSON ${Math.round(rawBytes / 1024)} KB -> gửi ${Math.round(encryptedPayload.length / 1024)} KB (chuẩn bị ${Date.now() - startedAt} ms)`);
   let patchSuccess = false;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -285,7 +295,8 @@ export function durableWrites(req, res, next) {
       });
       return;
     }
-    const before = captureState();
+    let beforeJson = JSON.stringify(captureState());
+    const rollback = () => { if (beforeJson) restoreState(JSON.parse(beforeJson)); };
     const end = res.end.bind(res);
     let finished = false;
     await new Promise(resolve => {
@@ -297,6 +308,7 @@ export function durableWrites(req, res, next) {
             if (res.statusCode < 400) {
               if (res.getHeader('X-Idempotent-Replay') !== 'true') {
                 await flushState();
+                beforeJson = null;
                 const context = durableWriteContext.getStore();
                 if (context) context.pending = false;
                 try {
@@ -310,11 +322,11 @@ export function durableWrites(req, res, next) {
                 }
               }
             } else {
-              restoreState(before);
+              rollback();
             }
             end(...args);
           } catch (e) {
-            restoreState(before);
+            rollback();
             res.statusCode = 503;
             res.removeHeader('Content-Length');
             res.setHeader('Content-Type', 'application/json');
@@ -331,7 +343,7 @@ export function durableWrites(req, res, next) {
       res.once('close', () => {
         if (!finished) {
           finished = true;
-          restoreState(before);
+          rollback();
           resolve();
         }
       });
