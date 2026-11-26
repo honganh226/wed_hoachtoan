@@ -17,7 +17,7 @@
     "test:security": "node src/tests/securityBoundaries.test.mjs",
     "test:auth": "node src/tests/authRecovery.test.mjs && node src/tests/authClient.test.mjs",
     "test:snapshot": "node src/tests/snapshotCodec.test.mjs",
-    "test:fixes": "node src/tests/fixes20261125.test.mjs"
+    "test:fixes": "node src/tests/fixes20261125.test.mjs && node src/tests/containerBlankFix.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

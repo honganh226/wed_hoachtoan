@@ -147,7 +147,7 @@ export function overlayBusiness(rows){
 
   // 2. Loại container chuẩn hóa (bảo toàn 40FR, 40RF, 45, 20DC, 40DC, 40HC, và 15H00267 ở G71:G72)
   const contNorm = normalizeContainerType(r.container_type_raw || r.raw_G || r.raw_H || r.container_type || r.container_size, r.container_size);
-  r.container_code = contNorm.container_code || r.container_size || '40';
+  r.container_code = contNorm.container_code || r.container_size || '';
   r.container_type_raw = contNorm.raw_container_type || r.container_code;
   r.container_needs_classification = contNorm.needs_classification;
 
@@ -350,6 +350,69 @@ export function savePaymentStatusBatch(items, status, user, reason = '') {
  })();
  const ok = results.filter(r => r.ok).length;
  return { ok, failed: results.length - ok, results };
+}
+// Đưa loại cont về TRỐNG cho các cuốc mà Excel nguồn để trống nhưng bản nhập cũ (trước 25/11/2026) tự gán 40DC.
+// Sửa ở cả 3 nơi: cột trips.container_type_raw, bảng containers, lớp phủ director_records (nếu có).
+// Chỉ nhận cuốc đang là 40DC; kiểm tra phiên bản và khóa sổ; raw_data giữ nguyên.
+// Lịch sử ghi bản rút gọn (chỉ các trường loại cont) để snapshot không phình; nút hoàn tác không áp cho thao tác này.
+export const CONTAINER_BLANK_FIX = 'CONTAINER_TYPE_BLANK_20261126';
+const is40DC = v => String(v ?? '').trim().toUpperCase().replace(/\s+/g, '') === '40DC';
+export function clearContainerTypeBatch(items, user, reason = '') {
+  if (!Array.isArray(items) || !items.length || items.length > 50) throw Error('Danh sách cuốc phải có từ 1 đến 50 dòng');
+  if (!String(reason || '').trim()) throw Error('Cần nhập lý do sửa hàng loạt');
+  const rowsById = new Map(rowsFor('trips').map(r => [String(r.id), r]));
+  const now = new Date().toISOString();
+  const results = [];
+  const pick = r => ({ container_size: r?.container_size ?? null, container_type: r?.container_type ?? null, container_type_raw: r?.container_type_raw ?? null, container_code: r?.container_code ?? null });
+  db.transaction(() => {
+    for (const item of items) {
+      const id = String(item?.id || '');
+      const old = rowsById.get(id);
+      if (!old) { results.push({ id, ok: false, error: 'Không tìm thấy cuốc' }); continue; }
+      if (version(old) !== item?.version) { results.push({ id, ok: false, error: 'Phiên bản không khớp, tải lại trước khi sửa' }); continue; }
+      if (![old.container_type_raw, old.container_size, old.container_code].some(is40DC)) {
+        results.push({ id, ok: false, skipped: true, error: 'Cuốc không còn là 40DC' });
+        continue;
+      }
+      try {
+        assertEntityNotLocked('trips', old);
+        if (old.trip_date && isPeriodLocked(String(old.trip_date).slice(0, 10))) {
+          const e = Error(`Kỳ kế toán tháng ${String(old.trip_date).slice(0, 7)} đã bị khóa sổ.`); e.status = 423; throw e;
+        }
+        db.transaction(() => {
+          const dbTrip = db.prepare('SELECT container_type_raw FROM trips WHERE id = ?').get(id);
+          const contsBefore = db.prepare('SELECT id, container_size, container_type FROM containers WHERE trip_id = ?').all(id);
+          const overlayRow = db.prepare("SELECT value FROM director_records WHERE entity = 'trips' AND record_id = ?").get(id);
+          if (dbTrip && is40DC(dbTrip.container_type_raw)) db.prepare("UPDATE trips SET container_type_raw = '', updated_at = ? WHERE id = ?").run(now, id);
+          for (const c of contsBefore) {
+            const dc = is40DC(c.container_size) || (String(c.container_size ?? '').trim() === '40' && String(c.container_type ?? '').trim().toUpperCase() === 'DC');
+            if (dc) db.prepare("UPDATE containers SET container_size = '', container_type = '' WHERE id = ?").run(c.id);
+          }
+          let overlayBefore = null;
+          if (overlayRow) {
+            const patch = JSON.parse(overlayRow.value);
+            overlayBefore = pick(patch);
+            for (const k of ['container_size', 'container_type_raw', 'container_code']) {
+              if (k in patch && (is40DC(patch[k]) || String(patch[k] ?? '').trim() === '40')) patch[k] = '';
+            }
+            if ('container_type' in patch && ['DC', '40DC'].includes(String(patch.container_type ?? '').trim().toUpperCase())) patch.container_type = '';
+            db.prepare("UPDATE director_records SET value = ? WHERE entity = 'trips' AND record_id = ?").run(JSON.stringify(patch), id);
+          }
+          const before = { bulk_fix: CONTAINER_BLANK_FIX, id, source_sheet: old.source_sheet ?? null, source_row: old.source_row ?? old.row_index ?? null, ...pick(old), trip_column: dbTrip?.container_type_raw ?? null, containers: contsBefore, overlay: overlayBefore };
+          const after = { bulk_fix: CONTAINER_BLANK_FIX, id, container_size: '', container_type: '', container_type_raw: '', container_code: '' };
+          db.prepare('INSERT INTO director_history (id, entity, record_id, before_value, after_value, actor, reason, created_at, is_undone) VALUES(?,?,?,?,?,?,?,?,0)')
+            .run(randomUUID(), 'trips', id, JSON.stringify(before), JSON.stringify(after), user.username, String(reason).trim(), now);
+        })();
+        results.push({ id, ok: true });
+      } catch (e) {
+        results.push({ id, ok: false, error: e.message });
+      }
+    }
+  })();
+  invalidateExcelMonthCache();
+  try { broadcastPLUpdate('DIRECTOR_DATA_SAVED', 'Sửa loại cont trống hàng loạt'); } catch (_) {}
+  const ok = results.filter(r => r.ok).length;
+  return { ok, failed: results.length - ok, results };
 }
 export function deleteEntity(entity, id, user, reason = '', expectedVersion = null) {
   const c = entities[entity];
@@ -613,6 +676,11 @@ export function undoChange(historyId, user) {
 
   const before = JSON.parse(h.before_value || 'null');
   const after = JSON.parse(h.after_value || 'null');
+  if (after?.bulk_fix === CONTAINER_BLANK_FIX) {
+    const err = new Error('Thao tác sửa loại cont hàng loạt không hoàn tác bằng nút này; lịch sử đã lưu giá trị cũ để đối chiếu.');
+    err.status = 400;
+    throw err;
+  }
   const now = new Date().toISOString();
   // Hoàn tác cũng là sửa dữ liệu: tôn trọng khóa sổ (25/11/2026)
   assertEntityNotLocked(h.entity, before, after);
