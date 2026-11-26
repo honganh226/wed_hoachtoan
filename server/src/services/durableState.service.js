@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, createHash } from 'node:crypto';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { db } from '../db/database.js';
 import { initDatabase } from '../db/init.js';
 import { excelMonthService, invalidateExcelMonthCache } from './excelMonthService.js';
@@ -31,20 +32,32 @@ function key() {
   return Buffer.from(value, 'hex');
 }
 
+// Snapshot nén (26/11/2026): "gz1:" + base64(iv | tag | AES-256-GCM(gzip(JSON))).
+// Bản cũ không có tiền tố (AES-256-GCM(JSON)) vẫn đọc được. Sau khi đã ghi bản nén,
+// không quay về code trước commit này vì code cũ không đọc được tiền tố gz1.
+const COMPRESSED_PREFIX = 'gz1:';
+const REMOTE_TIMEOUT_MS = 300000;
+
 function encrypt(data) {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key(), iv);
-  const body = Buffer.concat([cipher.update(JSON.stringify(data), 'utf8'), cipher.final()]);
-  return Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64');
+  const packed = gzipSync(Buffer.from(JSON.stringify(data), 'utf8'), { level: 6 });
+  const body = Buffer.concat([cipher.update(packed), cipher.final()]);
+  return COMPRESSED_PREFIX + Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64');
 }
 
 function decrypt(value) {
-  const bytes = Buffer.from(value, 'base64');
+  const text = String(value || '');
+  const compressed = text.startsWith(COMPRESSED_PREFIX);
+  const bytes = Buffer.from(compressed ? text.slice(COMPRESSED_PREFIX.length) : text, 'base64');
   if (bytes.length < 28) throw Error('Dữ liệu snapshot không hợp lệ (độ dài quá ngắn)');
   const cipher = createDecipheriv('aes-256-gcm', key(), bytes.subarray(0, 12));
   cipher.setAuthTag(bytes.subarray(12, 28));
-  return JSON.parse(Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString('utf8'));
+  const plain = Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]);
+  return JSON.parse((compressed ? gunzipSync(plain) : plain).toString('utf8'));
 }
+
+export const __snapshotCodec = { encrypt: (d) => encrypt(d), decrypt: (v) => decrypt(v) };
 
 export function captureState() {
   const tables = {};
@@ -107,7 +120,7 @@ async function remote(method, suffix = '', body) {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(120000)
+    signal: AbortSignal.timeout(REMOTE_TIMEOUT_MS)
   });
   if (!response.ok) {
     throw Error(`Không thể lưu database bền vững (HTTP ${response.status})`);
