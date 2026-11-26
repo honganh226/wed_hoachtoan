@@ -7,7 +7,7 @@
  * 2. Phân quyền RBAC (Chỉ DIRECTOR, ACCOUNTANT mới được thanh toán gộp)
  * 3. Kiểm tra tính toàn vẹn và từ chối khi chuyến nằm trong kỳ khóa sổ
  * 4. Thực thi thanh toán gộp 1 lô cuốc xe
- * 5. Xác minh đổi trạng thái chuyến xe (PAID, DA_TT)
+ * 5. Xác minh đổi trạng thái chuyến xe (PAID, customer_payment_status = DA_TT; không đổi eir_paid_status)
  * 6. Xác minh Audit Log ghi vết BATCH_PAYMENT
  * 7. Kiểm chứng số liệu P&L nhảy số tức thì
  * ============================================================
@@ -17,7 +17,7 @@ process.env.IS_TEST = 'true';
 
 import 'dotenv/config';
 import { db } from '../db/database.js';
-import { getUnpaidTripsByCustomer, batchPayTrips } from '../services/trip.service.js';
+import { getUnpaidTripsByCustomer, batchPayTrips, createTrip } from '../services/trip.service.js';
 import { lockPeriod, unlockPeriod } from '../services/periodLock.service.js';
 import { AUDIT_ACTIONS } from '../services/audit.service.js';
 import { TRIP_STATUSES, EIR_PAID_STATUSES } from '../db/schema.js';
@@ -36,7 +36,32 @@ function assert(condition, message) {
   }
 }
 
+// DB thử có thể không còn cuốc chưa thu (77 cuốc tháng 1 đều đã thu/đối trừ), nên tự tạo
+// 3 cuốc chưa thu cho một khách thử rồi xóa sau khi chạy.
+const SEED_CUSTOMER = 'KH THU TASK45';
+const seededIds = [];
+function seedUnpaidTrips() {
+  const seedUser = { id: 'usr_gd', username: 'giamdoc', role: 'DIRECTOR' };
+  for (const fare of [1500000, 2500000, 3500000]) {
+    const t = createTrip({ tripData: { trip_date: '2099-08-15', customer_name: SEED_CUSTOMER, base_revenue: fare }, user: seedUser });
+    seededIds.push(t.id);
+  }
+}
+function cleanupSeededTrips() {
+  for (const id of seededIds) {
+    for (const sql of [
+      'DELETE FROM containers WHERE trip_id = ?',
+      "DELETE FROM director_records WHERE entity = 'trips' AND record_id = ?",
+      "DELETE FROM director_history WHERE entity = 'trips' AND record_id = ?",
+      'DELETE FROM trips WHERE id = ?'
+    ]) {
+      try { db.prepare(sql).run(id); } catch { /* bảng có thể chưa tồn tại */ }
+    }
+  }
+}
+
 async function runTests() {
+  seedUnpaidTrips();
   console.log('============================================================');
   console.log('🚀 BẮT ĐẦU KIỂM THỬ TASK 4.5: THANH TOÁN GỘP THEO BẢNG KÊ');
   console.log('============================================================\n');
@@ -53,7 +78,8 @@ async function runTests() {
 
   // Test 2: Kiểm tra lọc theo tên khách hàng cụ thể
   console.log('\n--- TEST 2: Lọc công nợ theo khách hàng cụ thể ---');
-  const targetCust = unpaidSummary.customers[0];
+  const targetCust = unpaidSummary.customers.find(c => c.customer_name === SEED_CUSTOMER);
+  assert(targetCust && targetCust.total_trips === 3, 'Khách thử có đúng 3 cuốc chưa thu');
   const singleCustSummary = getUnpaidTripsByCustomer({ customerName: targetCust.customer_name });
   assert(singleCustSummary.customers.length === 1, `Lọc đúng 1 khách hàng [${targetCust.customer_name}]`);
   assert(singleCustSummary.customers[0].customer_name === targetCust.customer_name, 'Tên khách hàng khớp 100%');
@@ -130,7 +156,8 @@ async function runTests() {
   for (const tId of tripIdsToPay) {
     const row = db.prepare('SELECT * FROM trips WHERE id = ?').get(tId);
     assert(row.status === TRIP_STATUSES.PAID, `Chuyến ${row.trip_code} trạng thái đã là PAID`);
-    assert(row.eir_paid_status === EIR_PAID_STATUSES.DA_TT, `Chuyến ${row.trip_code} eir_paid_status đã là DA_TT`);
+    // Thu cước khách ghi ở customer_payment_status; eir_paid_status là tiền phơi, không được đổi.
+    assert(row.customer_payment_status === 'DA_TT', `Chuyến ${row.trip_code} customer_payment_status đã là DA_TT`);
   }
 
   // Test 7: Kiểm tra Audit Log có ghi nhận lô thanh toán không
@@ -160,7 +187,8 @@ async function runTests() {
   console.log('============================================================\n');
 }
 
-runTests().catch(err => {
+runTests().then(cleanupSeededTrips).catch(err => {
+  cleanupSeededTrips();
   console.error('LỖI KIỂM THỬ:', err);
   process.exit(1);
 });

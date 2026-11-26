@@ -68,3 +68,33 @@ test('unpaid-trip list and batch collection agree on base fare, stored VAT remai
   assert.equal(stored.total_revenue, 1080000);
   assert.equal(stored.status, 'PAID');
 });
+test('batch collection writes the customer payment status, leaves EIR status alone and clears the debt', () => {
+  const customer = 'TEST BATCH STATUS';
+  const a = createTrip({ tripData: { trip_date: '2099-07-10', customer_name: customer, base_revenue: 2000000 }, user });
+  const b = createTrip({ tripData: { trip_date: '2099-07-10', customer_name: customer, base_revenue: 3000000 }, user });
+  let rowB = listEntity('trips').find(t => t.id === b.id);
+  saveEntity('trips', b.id, { received_amount: 500000 }, rowB._version, user, 'Thu trước một phần');
+  const eirBefore = db.prepare('SELECT eir_paid_status FROM trips WHERE id=?').get(a.id).eir_paid_status;
+  const batch = batchPayTrips({ tripIds: [a.id, b.id], customerName: customer, paymentDate: '2099-07-11', paymentNote: 'UNC-TEST', user });
+  assert.equal(batch.total_amount, 4500000); // 2.000.000 + phần còn thiếu 2.500.000
+  for (const id of [a.id, b.id]) {
+    const sql = db.prepare('SELECT customer_payment_status,eir_paid_status,status FROM trips WHERE id=?').get(id);
+    assert.equal(sql.customer_payment_status, 'DA_TT');
+    assert.equal(sql.status, 'PAID');
+    const row = listEntity('trips').find(t => t.id === id);
+    assert.equal(row.customer_payment_status, 'DA_TT');
+    assert.equal(row.received_amount, row.cuoc_goc);
+  }
+  assert.equal(db.prepare('SELECT eir_paid_status FROM trips WHERE id=?').get(a.id).eir_paid_status, eirBefore);
+  const debt = excelMonthService.getDebtsData({ start_date: '2099-07-10', end_date: '2099-07-10' }).receivables;
+  assert.equal(debt.total_due, 0);
+  assert.equal(debt.total_paid, 5000000);
+  assert.equal(getUnpaidTripsByCustomer({ customerName: customer, user }).total_unpaid_trips, 0);
+  assert.throws(() => batchPayTrips({ tripIds: [a.id], user }), /đã ở trạng thái DA_TT/);
+  // Cuốc có khoản đối trừ không được thu gộp (tránh biến đối trừ thành tiền thu)
+  const c = createTrip({ tripData: { trip_date: '2099-07-12', customer_name: customer, base_revenue: 1000000 }, user });
+  const rowC = listEntity('trips').find(t => t.id === c.id);
+  saveEntity('trips', c.id, { offset_amount: 200000 }, rowC._version, user, 'Đối trừ một phần');
+  assert.throws(() => batchPayTrips({ tripIds: [c.id], user }), /đối trừ/);
+  assert.equal(listEntity('trips').find(t => t.id === c.id).customer_payment_status, 'CHUA_TT');
+});

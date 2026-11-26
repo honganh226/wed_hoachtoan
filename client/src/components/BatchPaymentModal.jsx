@@ -8,7 +8,7 @@
  * 3. Tích chọn hàng loạt (Select All) hoặc từng chuyến lẻ.
  * 4. Tự động tính toán tổng tiền cước cần thanh toán (Integer VND).
  * 5. Nhập số UNC / Bảng kê / Ngày chuyển khoản.
- * 6. Xác nhận thanh toán lô -> API cập nhật trạng thái PAID & DA_TT,
+ * 6. Xác nhận thanh toán lô -> API cập nhật PAID & customer_payment_status = DA_TT (không đổi tiền phơi),
  *    đồng thời kích hoạt SSE để Dashboard P&L nhảy số tức thì!
  * ============================================================
  */

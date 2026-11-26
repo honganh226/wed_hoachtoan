@@ -22,6 +22,7 @@ import { calculateFareBreakdown, calculateFuelCost, calculateTripFinancials, nor
 import { getFuelPriceForDate } from './fuelPrice.service.js';
 import { createEirAdvance } from './eirAdvance.service.js';
 import { invalidateExcelMonthCache } from './excelMonthService.js';
+import { listEntity, saveEntity } from './directorData.service.js';
 if(!db.prepare('PRAGMA table_info(expenses)').all().some(c=>c.name==='source_component'))db.exec('ALTER TABLE expenses ADD COLUMN source_component TEXT');
 
 /**
@@ -976,7 +977,8 @@ export function getUnpaidTripsByCustomer({ customerName = null, user = null } = 
            MIN(c.dropoff_yard) as dropoff_yard
     FROM trips t
     LEFT JOIN containers c ON t.id = c.trip_id
-    WHERE (t.status != '${TRIP_STATUSES.PAID}' OR t.eir_paid_status != '${EIR_PAID_STATUSES.DA_TT}' OR t.eir_paid_status IS NULL)
+    WHERE t.status != '${TRIP_STATUSES.PAID}'
+      AND COALESCE(t.customer_payment_status, 'CHUA_TT') NOT IN ('DA_TT', 'TUOI', 'DOI_TRU')
   `;
   const params = [];
 
@@ -1025,6 +1027,7 @@ export function getUnpaidTripsByCustomer({ customerName = null, user = null } = 
       total_revenue_with_vat: Math.round(Number(trip.total_revenue) || 0),
       eir_status: trip.eir_status,
       eir_paid_status: trip.eir_paid_status,
+      customer_payment_status: trip.customer_payment_status,
       container_number: trip.container_numbers,
       notes: trip.notes,
       is_locked: trip.is_locked
@@ -1083,25 +1086,42 @@ export function batchPayTrips({
     throw new Error(`Không thể thanh toán do có chuyến nằm trong kỳ đã KHÓA SỔ: ${lockedCodes}`);
   }
 
-  // Tính tổng tiền thanh toán
-  const totalAmount = trips.reduce((sum, t) => sum + (Math.round(Number(t.trip_revenue)) || 0), 0);
+  // Trạng thái thu khách nằm ở customer_payment_status trên bảng công nợ (lớp phủ director_records),
+  // không phải eir_paid_status (đó là trạng thái thanh toán tiền phơi).
+  // Cuốc đã thu / tươi / đối trừ, hoặc có khoản đối trừ, không được thu gộp để khỏi ghi đè số đã có.
+  const ledger = new Map(listEntity('trips').map(r => [String(r.id), r]));
+  const blocked = [];
+  for (const t of trips) {
+    const row = ledger.get(String(t.id));
+    if (!row) blocked.push(`${t.trip_code}: không có trên bảng công nợ`);
+    else if (['DA_TT', 'TUOI', 'DOI_TRU'].includes(row.customer_payment_status)) blocked.push(`${t.trip_code}: đã ở trạng thái ${row.customer_payment_status}`);
+    else if (toIntVnd(row.offset_amount) > 0) blocked.push(`${t.trip_code}: có khoản đối trừ, cần sửa từng cuốc`);
+  }
+  if (blocked.length > 0) {
+    throw new Error(`Không thể thanh toán gộp: ${blocked.join('; ')}`);
+  }
+
+  // Tổng tiền thu đợt này = phần cước gốc còn thiếu của từng cuốc (khách không trả VAT)
+  const totalAmount = trips.reduce((sum, t) => {
+    const row = ledger.get(String(t.id));
+    return sum + Math.max(0, toIntVnd(row.cuoc_goc) - toIntVnd(row.received_amount));
+  }, 0);
 
   // Tạo ID định danh cho đợt thanh toán bảng kê
   const batchId = uuidv4();
   const batchCode = `BATCH-${effectiveDate.replace(/-/g, '')}-${Date.now().toString().slice(-4)}`;
 
   // Thực thi cập nhật lô trong Database Transaction
+  const batchReason = `Thanh toán gộp ${batchCode} theo ${paymentNote || 'bảng kê định kỳ'}`;
   const executeBatch = db.transaction(() => {
-    const updateStmt = db.prepare(`
-      UPDATE trips 
-      SET status = ?, 
-          eir_paid_status = ?, 
-          updated_at = ?
-      WHERE id = ?
-    `);
-
+    // saveEntity: đặt DA_TT, received_amount = cước gốc, đồng bộ bảng trips, kiểm khóa sổ, ghi lịch sử.
     for (const t of trips) {
-      updateStmt.run(TRIP_STATUSES.PAID, EIR_PAID_STATUSES.DA_TT, now, t.id);
+      const row = ledger.get(String(t.id));
+      saveEntity('trips', row.id, { customer_payment_status: 'DA_TT' }, row._version, user, batchReason);
+    }
+    const updateStmt = db.prepare('UPDATE trips SET status = ?, updated_at = ? WHERE id = ?');
+    for (const t of trips) {
+      updateStmt.run(TRIP_STATUSES.PAID, now, t.id);
     }
 
     // Ghi Audit Log cho cả lô thanh toán
@@ -1115,8 +1135,9 @@ export function batchPayTrips({
         id: t.id,
         trip_code: t.trip_code,
         status: t.status,
-        eir_paid_status: t.eir_paid_status,
-        total_revenue: t.total_revenue
+        customer_payment_status: ledger.get(String(t.id)).customer_payment_status,
+        received_amount: ledger.get(String(t.id)).received_amount,
+        trip_revenue: t.trip_revenue
       })),
       newValues: {
         batch_id: batchId,
@@ -1129,7 +1150,7 @@ export function batchPayTrips({
         payment_note: paymentNote,
         trip_ids: tripIds,
         applied_status: TRIP_STATUSES.PAID,
-        applied_eir_paid_status: EIR_PAID_STATUSES.DA_TT
+        applied_customer_payment_status: 'DA_TT'
       },
       reason: `Thanh toán gộp ${trips.length} chuyến [${customerName || trips[0]?.customer_name || 'Bảng Kê'}] theo ${paymentNote || 'Bảng kê định kỳ'} - Tổng tiền: ${totalAmount.toLocaleString('vi-VN')}₫`,
       ipAddress
