@@ -1,6 +1,6 @@
 # CLAUDE.md — Kiến thức dự án WED_HOACHTOAN
 
-Cập nhật lần đầu: 25/11/2026. Cập nhật gần nhất: 26/11/2026 (sau commit `15a6f50`; chi tiết trong `CLAUDE_BAN_GIAO_2026-11-26.md`).
+Cập nhật lần đầu: 25/11/2026. Cập nhật gần nhất: 26/11/2026 (sau commit `1650972`; chi tiết trong `CLAUDE_BAN_GIAO_2026-11-26.md`).
 Ký hiệu: **[XM]** = đã xác minh trực tiếp từ mã/tài liệu/lệnh chạy trong phiên này. **[GĐ]** = giả định hoặc suy luận, cần kiểm lại trước khi dựa vào.
 
 ## 0. Quy tắc bắt buộc (đọc trước mọi thay đổi)
@@ -97,7 +97,7 @@ Xác nhận 25/11/2026: khách KHÔNG trả VAT. Đã thu / còn phải thu / c�
 Còn mở:
 - Mỗi lần ghi phải chụp và nén cả DB, làm event loop trễ vài giây. Về lâu dài nên ghi snapshot tăng dần, hoặc dùng Postgres làm DB chính.
 - `director_history` lưu toàn bộ before/after (khoảng 7 KB mỗi lần sửa), làm snapshot phình dần.
-- Dữ liệu online nhập trước 25/11 có thể còn cont trống bị gán 40DC [GĐ — chưa rà].
+- ĐÃ SỬA 26/11/2026 (`1650972`): 777 cuốc online để trống loại cont trong Excel nhưng bị gán 40DC đã về trống (endpoint `POST /manage/trips/batch-clear-container-type`, có lịch sử rút gọn, không hoàn tác bằng nút). Online còn loại cont lạ chưa chuẩn hóa: `20'`, `40'`, `KẸP`, `X`, `15C35983`, `15H00267` [XM].
 - Có nhiều định nghĩa "lãi": `chenh_lech_sau_tru_17`, `chenh_lech_truoc_tru_*`, `trip_profit` (= cước gốc − chi phí trước dầu), `temp_profit`.
 - Client có chỗ tính dự phòng VAT trên tổng kỳ (`DirectorDebtsView.jsx` ~357, 545) và `round(x×1,08×0,83)` một bước (`ExcelImportModal.jsx` ~753) — lệch quy tắc làm tròn theo dòng.
 - Khóa sổ chỉ áp ở trips/expenses/advances/eir/fuelPrice; chưa thấy ở nhập Excel commit và `/manage` cho thực thể khác trips [GĐ — cần đọc kỹ].
