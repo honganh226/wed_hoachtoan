@@ -1,6 +1,6 @@
 # CLAUDE.md — Kiến thức dự án WED_HOACHTOAN
 
-Cập nhật lần đầu: 25/11/2026. Cập nhật gần nhất: 26/11/2026 (sau commit `1650972`; chi tiết trong `CLAUDE_BAN_GIAO_2026-11-26.md`).
+Cập nhật lần đầu: 25/11/2026. Cập nhật gần nhất: 27/11/2026 (sau commit `df4b8ee`; chi tiết trong `CLAUDE_BAN_GIAO_2026-11-26.md`).
 Ký hiệu: **[XM]** = đã xác minh trực tiếp từ mã/tài liệu/lệnh chạy trong phiên này. **[GĐ]** = giả định hoặc suy luận, cần kiểm lại trước khi dựa vào.
 
 ## 0. Quy tắc bắt buộc (đọc trước mọi thay đổi)
@@ -34,7 +34,7 @@ Nhiều tác nhân AI đã làm trước đó: "Anti" (file `ANTI_*.md`) và "Co
   - Từ 26/11/2026 snapshot có tiền tố `gz1:`; bản cũ chưa nén vẫn đọc được. **Không rollback code về trước `5eae177`**, vì code cũ không đọc được `gz1`. Thời gian chờ gọi Supabase là 300 giây.
   - Số đo online 26/11/2026: JSON khoảng 10,5 MB, gửi đi khoảng 1,3 MB. Mỗi lần ghi mất 5–12 giây, RSS khoảng 220 MB (gói Free 512 MB). Khởi động và khôi phục mất khoảng 1 phút. [XM]
   - Ghi nhiều lần liên tiếp: gom lại thành lô nhỏ (khoảng 5 cuốc mỗi request). Một lô 70 cuốc từng làm máy chủ khởi động lại.
-- **Triển khai**: `Dockerfile` (Node 22, build client, chạy `initRenderTest.js` rồi `index.js`). Đang chạy trên Render Free; Supabase pg_cron gọi `/api/v1/health/live` mỗi 10 phút để tránh ngủ (theo `CODEX_KEEPALIVE_SUPABASE_2026-11-08.md`). Dockerfile đặt `MALLOC_ARENA_MAX=2`. Có cấu hình cũ cho Railway, Cloudflare Tunnel (`cloudflare/`) và PM2/NSSM Windows service (`ecosystem.config.cjs`, `*.bat`), đã đưa vào repo ngày 26/11/2026. Render service `srv-dbj1vhmtlv9c73c18qfg` tự deploy khi push `main`; bản đang chạy là `15a6f50`. [XM 26/11/2026]
+- **Triển khai**: `Dockerfile` (Node 22, build client, chạy `initRenderTest.js` rồi `index.js`). Đang chạy trên Render Free; Supabase pg_cron gọi `/api/v1/health/live` mỗi 10 phút để tránh ngủ (theo `CODEX_KEEPALIVE_SUPABASE_2026-11-08.md`). Dockerfile đặt `MALLOC_ARENA_MAX=2`. Có cấu hình cũ cho Railway, Cloudflare Tunnel (`cloudflare/`) và PM2/NSSM Windows service (`ecosystem.config.cjs`, `*.bat`), đã đưa vào repo ngày 26/11/2026. Render service `srv-dbj1vhmtlv9c73c18qfg` tự deploy khi push `main`. **Từ 26/11/2026 21:26 Render tạm ngừng vì hết băng thông gói Free** (7,43/5 GB, phần lớn do gửi snapshot). Từ 27/11/2026 web chạy tạm trên máy chủ dự án (bản clone `df4b8ee`, cổng 5055, `server/.env` riêng) qua Cloudflare Quick Tunnel, dùng cùng Supabase. Link tạm đổi mỗi lần chạy lại. KHÔNG để Render và bản trên máy cùng chạy (ghi đè snapshot). [XM 27/11/2026]
 
 ## 3. Cấu trúc chính [XM]
 
@@ -97,7 +97,7 @@ Xác nhận 25/11/2026: khách KHÔNG trả VAT. Đã thu / còn phải thu / c�
 Còn mở:
 - Mỗi lần ghi phải chụp và nén cả DB, làm event loop trễ vài giây. Về lâu dài nên ghi snapshot tăng dần, hoặc dùng Postgres làm DB chính.
 - `director_history` lưu toàn bộ before/after (khoảng 7 KB mỗi lần sửa), làm snapshot phình dần.
-- ĐÃ SỬA 26/11/2026 (`1650972`): 777 cuốc online để trống loại cont trong Excel nhưng bị gán 40DC đã về trống (endpoint `POST /manage/trips/batch-clear-container-type`, có lịch sử rút gọn, không hoàn tác bằng nút). Online còn loại cont lạ chưa chuẩn hóa: `20'`, `40'`, `KẸP`, `X`, `15C35983`, `15H00267` [XM].
+- ĐÃ SỬA 26/11/2026 (`1650972`): 777 cuốc online để trống loại cont trong Excel nhưng bị gán 40DC đã về trống (endpoint `POST /manage/trips/batch-clear-container-type`, có lịch sử rút gọn, không hoàn tác bằng nút). 27/11/2026 (`df4b8ee`): 20 cuốc `20'`/`40'` thành 20/40; `KẸP`, `X`, biển số giữ nguyên theo quyết định của chủ dự án [XM].
 - Có nhiều định nghĩa "lãi": `chenh_lech_sau_tru_17`, `chenh_lech_truoc_tru_*`, `trip_profit` (= cước gốc − chi phí trước dầu), `temp_profit`.
 - Client có chỗ tính dự phòng VAT trên tổng kỳ (`DirectorDebtsView.jsx` ~357, 545) và `round(x×1,08×0,83)` một bước (`ExcelImportModal.jsx` ~753) — lệch quy tắc làm tròn theo dòng.
 - Khóa sổ chỉ áp ở trips/expenses/advances/eir/fuelPrice; chưa thấy ở nhập Excel commit và `/manage` cho thực thể khác trips [GĐ — cần đọc kỹ].
